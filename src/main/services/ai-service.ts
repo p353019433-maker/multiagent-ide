@@ -229,23 +229,38 @@ export class AIService {
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
         stream: true,
+        stream_options: { include_usage: true },
       },
       { signal: this.abortController?.signal }
     );
 
     let content = '';
     const toolCallAccum: Record<number, { id: string; name: string; args: string }> = {};
+    let finishReason: 'tool_calls' | 'stop' | 'length' = 'stop';
+    let usage: ChatResult['usage'];
 
+    // Consume the entire stream before finalizing. Returning early on the first
+    // finish_reason chunk used to drop the trailing usage chunk and, for some
+    // providers that split tool-call arguments across the final chunks, the tail
+    // of a parallel tool call's arguments.
     for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      if (!delta) continue;
+      if (chunk.usage) {
+        usage = {
+          promptTokens: chunk.usage.prompt_tokens,
+          completionTokens: chunk.usage.completion_tokens,
+        };
+      }
 
-      if (delta.content) {
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+      const delta = choice.delta;
+
+      if (delta?.content) {
         content += delta.content;
         callbacks.onToken(delta.content);
       }
 
-      if (delta.tool_calls) {
+      if (delta?.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index;
           if (!toolCallAccum[idx]) {
@@ -257,26 +272,28 @@ export class AIService {
         }
       }
 
-      const finishReason = chunk.choices[0]?.finish_reason;
-      if (finishReason === 'tool_calls' || finishReason === 'stop') {
-        const toolCalls: ToolCall[] = Object.values(toolCallAccum).map((tc) => ({
-          id: tc.id,
-          name: tc.name,
-          arguments: (() => { try { return JSON.parse(tc.args); } catch { return {}; } })(),
-        }));
-
-        for (const tc of toolCalls) callbacks.onToolCall(tc);
-
-        callbacks.onComplete({
-          content,
-          toolCalls: toolCalls.length ? toolCalls : undefined,
-          finishReason: finishReason === 'tool_calls' ? 'tool_calls' : 'stop',
-        });
-        return;
-      }
+      if (choice.finish_reason === 'tool_calls') finishReason = 'tool_calls';
+      else if (choice.finish_reason === 'length') finishReason = 'length';
+      else if (choice.finish_reason === 'stop') finishReason = 'stop';
     }
 
-    callbacks.onComplete({ content, finishReason: 'stop' });
+    const toolCalls: ToolCall[] = Object.values(toolCallAccum).map((tc) => ({
+      id: tc.id,
+      name: tc.name,
+      arguments: (() => { try { return JSON.parse(tc.args); } catch { return {}; } })(),
+    }));
+    // If the model emitted tool calls, that is the effective finish reason even
+    // when the terminal chunk reported 'stop'.
+    if (toolCalls.length) finishReason = 'tool_calls';
+
+    for (const tc of toolCalls) callbacks.onToolCall(tc);
+
+    callbacks.onComplete({
+      content,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+      finishReason,
+      usage,
+    });
   }
 
   // ─── Anthropic ───────────────────────────────────────────────────────────────
@@ -318,16 +335,58 @@ export class AIService {
         });
       }
     }
+
+    // Place a cache breakpoint on the last content block of the most recent
+    // message. On each agent turn the conversation prefix is identical, so the
+    // whole history up to here is served from cache rather than re-billed.
+    const last = result[result.length - 1];
+    if (last) {
+      if (typeof last.content === 'string') {
+        last.content = [
+          { type: 'text', text: last.content, cache_control: { type: 'ephemeral' } },
+        ] as unknown as Anthropic.MessageParam['content'];
+      } else if (Array.isArray(last.content) && last.content.length) {
+        const block = last.content[last.content.length - 1] as unknown as Record<string, unknown>;
+        block.cache_control = { type: 'ephemeral' };
+      }
+    }
+
     return result;
   }
 
   private buildAnthropicTools(options: ChatOptions): Anthropic.Tool[] | undefined {
     if (!options.tools?.length) return undefined;
-    return options.tools.map((t) => ({
+    const tools = options.tools.map((t) => ({
       name: t.name,
       description: t.description,
       input_schema: t.parameters as Anthropic.Tool['input_schema'],
     }));
+    // Mark the last (and therefore the whole) tool definition block as cacheable.
+    // The tool list is large and stable across an agent loop, so caching it
+    // avoids re-billing those tokens on every turn.
+    if (tools.length) {
+      (tools[tools.length - 1] as Record<string, unknown>).cache_control = {
+        type: 'ephemeral',
+      };
+    }
+    return tools;
+  }
+
+  /**
+   * Build a cacheable system prompt block for Anthropic. The system prompt is
+   * identical on every turn of an agent loop, so caching it is a large win.
+   */
+  private buildAnthropicSystem(
+    systemPrompt?: string
+  ): Anthropic.MessageParam['content'] | string | undefined {
+    if (!systemPrompt) return undefined;
+    return [
+      {
+        type: 'text' as const,
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' as const },
+      },
+    ] as unknown as Anthropic.MessageParam['content'];
   }
 
   private async chatAnthropic(
@@ -343,7 +402,7 @@ export class AIService {
     const resp = await client.messages.create({
       model: options.model || provider.defaultModel,
       max_tokens: options.maxTokens ?? 4096,
-      system: options.systemPrompt,
+      system: this.buildAnthropicSystem(options.systemPrompt) as any,
       messages: anthropicMessages,
       tools,
     });
@@ -388,7 +447,7 @@ export class AIService {
       {
         model: options.model || provider.defaultModel,
         max_tokens: options.maxTokens ?? 4096,
-        system: options.systemPrompt,
+        system: this.buildAnthropicSystem(options.systemPrompt) as any,
         messages: anthropicMessages,
         tools,
       },
@@ -435,12 +494,18 @@ export class AIService {
       }
     });
 
-    await stream.finalMessage();
+    const final = await stream.finalMessage();
 
     callbacks.onComplete({
       content,
       toolCalls: toolCalls.length ? toolCalls : undefined,
       finishReason: toolCalls.length ? 'tool_calls' : 'stop',
+      usage: final?.usage
+        ? {
+            promptTokens: final.usage.input_tokens,
+            completionTokens: final.usage.output_tokens,
+          }
+        : undefined,
     });
   }
 }

@@ -82,10 +82,21 @@ Agent 模式下 AI 可以调用以下工具：
 |------|------|
 | `read_file` | 读取文件内容 |
 | `write_file` | 创建/覆盖文件 |
-| `edit_file` | 局部编辑文件 |
+| `replace_in_file` | 局部编辑文件 |
 | `list_directory` | 列出目录内容 |
 | `search_files` | 全项目文本搜索 |
+| `codebase_search` | 语义/概念检索（符号索引 + 相关度打分，回退全文） |
 | `run_command` | 执行 shell 命令 |
+
+> 完整工具集共 40+ 个，涵盖文件、代码分析、Git、Worktree、命令、Web、GitHub 等。
+
+## 上下文与性能
+
+- **Prompt Caching** — Anthropic 请求自动对 system prompt、工具定义和历史前缀打 `cache_control` 缓存断点，Agent 多轮循环显著降低 token 成本。
+- **上下文压缩** — 长会话超过阈值时自动将早期对话压缩为摘要，避免上下文无限增长。
+- **`@` 文件引用** — 在对话中输入 `@path/to/file` 即可把该文件完整内容注入上下文。
+- **持久化记忆** — `save_context` / `load_context` 落盘到本地存储，重启不丢失。
+- **Agent 鲁棒性** — 工具失败按错误类型自动重试（指数退避），并检测无进展的重复调用自动停止。
 
 ## 支持的 AI 供应商
 

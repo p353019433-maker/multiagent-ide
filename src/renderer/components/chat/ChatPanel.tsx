@@ -9,7 +9,6 @@ import DiffPreview from '../editor/DiffPreview';
 import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution } from '@shared/types';
 import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
 import { setAiCompleteFn, updateInlineCompletionConfig } from '../editor/aiInlineCompletion';
-import type { AiProviderConfig } from '../../context/AIContext';
 
 export default function ChatPanel() {
   const {
@@ -64,15 +63,17 @@ ${suffix.slice(0, 500)}
 === COMPLETION ===`;
 
       try {
-        const result = await window.api.ai.chat(activeProviderId, {
-          model: activeModel || 'default',
-          messages: [
-            { role: 'user', content: prompt },
-          ],
-          systemPrompt: 'You are a code completion engine. Return ONLY raw code. No backticks. No markdown. No explanations. Just the code that should appear at the cursor position.',
-          maxTokens: 200,
-          temperature: 0.1,
-        } as any);
+        const result = await window.api.ai.chat(
+          activeProviderId,
+          [{ role: 'user', content: prompt }],
+          {
+            model: activeModel || 'default',
+            systemPrompt:
+              'You are a code completion engine. Return ONLY raw code. No backticks. No markdown. No explanations. Just the code that should appear at the cursor position.',
+            maxTokens: 200,
+            temperature: 0.1,
+          }
+        );
 
         if (result?.content) {
           // Clean up common AI artifacts
@@ -109,6 +110,19 @@ ${suffix.slice(0, 500)}
       }
     }
 
+    // Inject any @-referenced files (e.g. "@src/main/index.ts") so the model
+    // gets their full content up front, like Cursor's @file mentions.
+    const mentioned = Array.from(input.matchAll(/@([^\s@]+)/g)).map((m) => m[1]);
+    for (const ref of mentioned) {
+      try {
+        const refPath = resolvePath(ref);
+        const content = await window.api.fs.readFile(refPath);
+        contextPrefix += `[引用文件: ${ref}]\n\`\`\`\n${content.slice(0, 4000)}\n\`\`\`\n\n`;
+      } catch {
+        // Not a resolvable file path — leave the @mention as plain text.
+      }
+    }
+
     const userMsg: ChatMessageType = {
       id: uuid(),
       role: 'user',
@@ -130,13 +144,17 @@ ${suffix.slice(0, 500)}
   }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles]);
 
   const runAgentLoop = async (convId: string, apiMessages: ChatMessageType[]) => {
-    let loopMessages = [...apiMessages];
+    let loopMessages = compactMessages([...apiMessages]);
     let iterations = 0;
-    const maxIterations = 10;
+    const maxIterations = 25;
+    // Track repeated identical tool calls to detect a stuck agent.
+    let lastToolSignature = '';
+    let repeatCount = 0;
 
     while (iterations < maxIterations) {
       iterations++;
       setStreamContent('');
+      loopMessages = compactMessages(loopMessages);
 
       try {
         const result = await new Promise<any>((resolve, reject) => {
@@ -187,6 +205,26 @@ ${suffix.slice(0, 500)}
           break;
         }
 
+        // Detect a stuck loop: the same tool calls repeated with no change.
+        const signature = JSON.stringify(
+          result.toolCalls.map((tc: ToolCall) => [tc.name, tc.arguments])
+        );
+        if (signature === lastToolSignature) {
+          repeatCount++;
+        } else {
+          repeatCount = 0;
+          lastToolSignature = signature;
+        }
+        if (repeatCount >= 2) {
+          addMessage(convId, {
+            id: uuid(),
+            role: 'assistant',
+            content: '⚠️ 检测到 Agent 重复执行相同操作且无进展，已自动停止。',
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
         const toolResults = await executeTools(result.toolCalls);
 
         const toolMsg: ChatMessageType = {
@@ -211,7 +249,69 @@ ${suffix.slice(0, 500)}
       }
     }
 
+    if (iterations >= maxIterations) {
+      addMessage(convId, {
+        id: uuid(),
+        role: 'assistant',
+        content: `⚠️ 已达到最大 ${maxIterations} 轮工具调用上限，自动停止。如需继续可再发一条消息。`,
+        timestamp: Date.now(),
+      });
+    }
+
     setIsStreaming(false);
+  };
+
+  /**
+   * Keep the conversation within a sane size for the model. When the history
+   * grows past a threshold we summarize the older turns into a single synthetic
+   * message and keep the most recent turns verbatim. This prevents unbounded
+   * token growth (and cost) on long agent sessions.
+   */
+  const COMPACT_THRESHOLD = 40;
+  const KEEP_RECENT = 16;
+  const compactMessages = (msgs: ChatMessageType[]): ChatMessageType[] => {
+    if (msgs.length <= COMPACT_THRESHOLD) return msgs;
+
+    const head = msgs.slice(0, msgs.length - KEEP_RECENT);
+    const tail = msgs.slice(msgs.length - KEEP_RECENT);
+
+    // Build a compact textual summary of the older turns. Tool payloads are
+    // dropped; only roles and trimmed content/tool names are retained.
+    const summaryLines: string[] = [];
+    for (const m of head) {
+      if (m.role === 'user') {
+        summaryLines.push(`用户: ${m.content.slice(0, 200)}`);
+      } else if (m.role === 'assistant') {
+        if (m.content) summaryLines.push(`助手: ${m.content.slice(0, 200)}`);
+        if (m.toolCalls?.length) {
+          summaryLines.push(`助手调用工具: ${m.toolCalls.map((t) => t.name).join(', ')}`);
+        }
+      } else if (m.role === 'tool' && m.toolResults) {
+        summaryLines.push(
+          `工具结果: ${m.toolResults
+            .map((r) => (r.isError ? '失败' : '成功'))
+            .join(', ')}`
+        );
+      }
+    }
+
+    const summary: ChatMessageType = {
+      id: uuid(),
+      role: 'user',
+      content:
+        '[以下是早期对话的压缩摘要，用于节省上下文]\n' +
+        summaryLines.join('\n').slice(0, 4000),
+      timestamp: head[0]?.timestamp || Date.now(),
+    };
+
+    // The tail must not start with a dangling tool result whose tool_use is now
+    // in the summarized head — drop leading tool messages to keep the API happy.
+    let trimmedTail = tail;
+    while (trimmedTail.length && trimmedTail[0].role === 'tool') {
+      trimmedTail = trimmedTail.slice(1);
+    }
+
+    return [summary, ...trimmedTail];
   };
 
   const executeTools = async (toolCalls: ToolCall[]) => {
@@ -227,20 +327,57 @@ ${suffix.slice(0, 500)}
       setToolExecutions((prev) => [...prev, execution]);
 
       try {
-        const result = await executeSingleTool(tc);
+        const result = await executeToolWithRetry(tc);
         setToolExecutions((prev) =>
           prev.map((e) => (e.id === tc.id ? { ...e, status: 'success', result } : e))
         );
         results.push({ toolCallId: tc.id, content: result });
       } catch (err: any) {
+        const { message, retriable } = classifyToolError(err);
         setToolExecutions((prev) =>
-          prev.map((e) => (e.id === tc.id ? { ...e, status: 'error', error: err.message } : e))
+          prev.map((e) => (e.id === tc.id ? { ...e, status: 'error', error: message } : e))
         );
-        results.push({ toolCallId: tc.id, content: `错误：${err.message}`, isError: true });
+        // Give the model a structured, actionable error rather than a raw string.
+        results.push({
+          toolCallId: tc.id,
+          content: `错误（${retriable ? '可重试' : '不可重试'}）：${message}`,
+          isError: true,
+        });
       }
     }
 
     return results;
+  };
+
+  /**
+   * Classify a tool error so the agent gets actionable feedback. Transient
+   * failures (network/timeout/locks) are retriable; logic errors are not.
+   */
+  const classifyToolError = (err: any): { message: string; retriable: boolean } => {
+    const message = err?.message || String(err);
+    const lower = message.toLowerCase();
+    const retriable =
+      /etimedout|econnreset|enotfound|socket hang up|network|timeout|429|rate limit|temporarily|eai_again|lock/i.test(
+        lower
+      );
+    return { message, retriable };
+  };
+
+  /** Run a tool, retrying transient failures with exponential backoff. */
+  const executeToolWithRetry = async (tc: ToolCall, maxAttempts = 3): Promise<string> => {
+    let lastErr: any;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await executeSingleTool(tc);
+      } catch (err: any) {
+        lastErr = err;
+        const { retriable } = classifyToolError(err);
+        // Approval rejections and logic errors should fail fast.
+        if (!retriable || attempt === maxAttempts) throw err;
+        await new Promise((r) => setTimeout(r, 2 ** (attempt - 1) * 500));
+      }
+    }
+    throw lastErr;
   };
 
   const resolvePath = (p: string): string => {
@@ -416,6 +553,20 @@ ${suffix.slice(0, 500)}
       case 'extract_symbols': {
         const filePath = resolvePath(args.path as string);
         return await window.api.symbols.extract(filePath);
+      }
+      case 'codebase_search': {
+        if (!rootPath) throw new Error('未打开工作区');
+        const query = args.query as string;
+        const limit = (args.limit as number) || 10;
+        const res = await window.api.codebase.search(rootPath, query, limit);
+        if (!res.hits.length) return `未找到与 "${query}" 相关的代码`;
+        const header = res.fellBack
+          ? `（符号索引无命中，回退到全文搜索）共 ${res.hits.length} 处：`
+          : `语义检索命中 ${res.hits.length} 处（按相关度排序）：`;
+        const body = res.hits
+          .map((h: any) => `${h.file}:${h.line}  [${h.kind}] ${h.name}`)
+          .join('\n');
+        return `${header}\n${body}`;
       }
 
       // ── Git ──

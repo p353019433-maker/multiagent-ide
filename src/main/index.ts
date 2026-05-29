@@ -7,6 +7,7 @@ import { StoreService } from './services/store-service';
 import { AIService } from './services/ai-service';
 import { GitService } from './services/git-service';
 import { WebService } from './services/web-service';
+import { IndexService } from './services/index-service';
 
 let mainWindow: BrowserWindow | null = null;
 let fileService: FileService;
@@ -15,7 +16,7 @@ let storeService: StoreService;
 let aiService: AIService;
 let gitService: GitService;
 let webService: WebService;
-let contextStore: Map<string, string> = new Map();
+let indexService: IndexService;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -376,18 +377,50 @@ function setupIPC() {
     return extractSymbols(filePath);
   });
 
-  // ==================== Context ====================
+  // ==================== Context (persisted to store) ====================
+
+  const CONTEXT_KEY = 'agentContextMemory';
+  const readContextStore = (): Record<string, string> =>
+    (storeService.get(CONTEXT_KEY) as Record<string, string>) || {};
 
   ipcMain.handle('context:save', async (_, key: string, content: string, merge?: boolean) => {
-    if (merge && contextStore.has(key)) {
-      contextStore.set(key, contextStore.get(key)! + '\n\n' + content);
+    const store = readContextStore();
+    if (merge && store[key]) {
+      store[key] = store[key] + '\n\n' + content;
     } else {
-      contextStore.set(key, content);
+      store[key] = content;
     }
+    storeService.set(CONTEXT_KEY, store);
   });
 
   ipcMain.handle('context:load', async (_, key: string) => {
-    return contextStore.get(key) || null;
+    return readContextStore()[key] || null;
+  });
+
+  ipcMain.handle('context:list', async () => {
+    return Object.keys(readContextStore());
+  });
+
+  // ==================== Codebase Search ====================
+
+  ipcMain.handle('codebase:search', async (_, root: string, query: string, limit?: number) => {
+    await indexService.ensureIndex(root);
+    const hits = indexService.search(query, limit || 10);
+    if (hits.length > 0) {
+      return { hits, fellBack: false as const };
+    }
+    // Fall back to full-text search when the symbol/path index has nothing.
+    const text = await fileService.searchFiles(root, query);
+    return {
+      hits: text.slice(0, limit || 10).map((r) => ({
+        file: path.relative(root, r.path),
+        line: r.line,
+        kind: 'text',
+        name: r.preview.slice(0, 80),
+        score: 1,
+      })),
+      fellBack: true as const,
+    };
   });
 }
 
@@ -468,6 +501,7 @@ app.whenReady().then(() => {
   aiService = new AIService(storeService);
   gitService = new GitService();
   webService = new WebService();
+  indexService = new IndexService();
 
   setupIPC();
   createWindow();
