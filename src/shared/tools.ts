@@ -180,6 +180,98 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: 'git_branch_list',
+    description: '列出所有分支。',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'git_create_branch',
+    description: '创建并切换到新分支。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '新分支名称。' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'git_switch_branch',
+    description: '切换到已有分支。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '目标分支名称。' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'git_commit',
+    description: '暂存所有变更并提交。会自动暂存！',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: '提交信息。' },
+      },
+      required: ['message'],
+    },
+  },
+  {
+    name: 'git_push',
+    description: '推送当前分支到远程。',
+    parameters: {
+      type: 'object',
+      properties: {
+        remote: { type: 'string', description: '远程仓库名，默认 origin。' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'git_worktree_list',
+    description: '列出当前仓库所有 worktree。',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'git_worktree_add',
+    description: '创建新的 git worktree 隔离分支（类似 Codex fork session）。Agent 可在新 worktree 里独立工作。',
+    parameters: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: '新分支名称。' },
+        base: { type: 'string', description: '基础分支，默认当前分支。' },
+        path: { type: 'string', description: 'worktree 路径，默认自动生成。' },
+      },
+      required: ['branch'],
+    },
+  },
+  {
+    name: 'git_merge',
+    description: '将指定分支合并到当前分支。支持 merge/squash/rebase。',
+    parameters: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: '要合并的源分支。' },
+        method: { type: 'string', description: '合并方式：merge（默认）, squash, rebase。' },
+      },
+      required: ['source'],
+    },
+  },
+  {
+    name: 'git_merge_diff',
+    description: '查看两个分支之间的差异（源分支相对于目标分支的变更）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        base: { type: 'string', description: '基础分支。' },
+        head: { type: 'string', description: '比较的分支，默认当前分支。' },
+      },
+      required: ['base'],
+      required: [],
+    },
+  },
 
   // ── Command Execution ──
   {

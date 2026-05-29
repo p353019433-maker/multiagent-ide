@@ -50,6 +50,12 @@ export interface Conversation {
   model: string;
   createdAt: number;
   updatedAt: number;
+  /** If this session runs in an isolated git worktree */
+  worktree?: {
+    path: string;
+    branch: string;
+    baseBranch: string;
+  };
 }
 
 // ============================================================

@@ -101,4 +101,88 @@ export class GitService {
     const { stdout } = await this.git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
     return stdout.trim();
   }
+
+  // ── Worktree operations ──
+
+  /** Create a new linked worktree at the given path, on a new branch or detached HEAD. */
+  async worktreeAdd(
+    cwd: string,
+    worktreePath: string,
+    branchName: string,
+    baseBranch?: string
+  ): Promise<{ success: boolean; message: string; path?: string }> {
+    const args = ['worktree', 'add', worktreePath, '-b', branchName];
+    if (baseBranch) args.splice(2, 0, baseBranch); // git worktree add <path> <base> -b <name>
+    const { stdout, stderr, exitCode } = await this.git(cwd, args);
+    if (exitCode !== 0) return { success: false, message: stderr };
+    return { success: true, message: stdout || `已创建 worktree ${branchName}`, path: worktreePath };
+  }
+
+  /** List all worktrees for the repo. */
+  async worktreeList(cwd: string): Promise<
+    { path: string; branch: string; bare: boolean; detached: boolean; locked: boolean }[]
+  > {
+    const { stdout } = await this.git(cwd, ['worktree', 'list', '--porcelain']);
+    // Parse porcelain output
+    const entries: ReturnType<GitService['worktreeList']> extends Promise<(infer T)[]> ? any[] : never = [];
+    let current: any = {};
+    for (const line of stdout.split('\n')) {
+      if (line === '') {
+        if (current.path) entries.push(current);
+        current = {};
+        continue;
+      }
+      const space = line.indexOf(' ');
+      const key = line.slice(0, space);
+      const val = line.slice(space + 1);
+      if (key === 'worktree') current.path = val;
+      else if (key === 'bare') current.bare = val === 'true';
+      else if (key === 'detached') current.detached = val === 'true';
+      else if (key === 'branch') current.branch = val.replace('refs/heads/', '');
+      else if (key === 'locked') current.locked = val === 'true';
+    }
+    if (current.path) entries.push(current);
+    return entries;
+  }
+
+  /** Remove a worktree and delete its directory. */
+  async worktreeRemove(cwd: string, worktreePath: string): Promise<{ success: boolean; message: string }> {
+    const { stdout, stderr, exitCode } = await this.git(cwd, ['worktree', 'remove', worktreePath, '--force']);
+    if (exitCode !== 0) return { success: false, message: stderr };
+    return { success: true, message: stdout || `已删除 worktree ${worktreePath}` };
+  }
+
+  /** Prune stale worktree entries from repo metadata. */
+  async worktreePrune(cwd: string): Promise<string> {
+    const { stdout } = await this.git(cwd, ['worktree', 'prune']);
+    return stdout || '已清理过期 worktree 记录';
+  }
+
+  /** Merge a branch into the current branch. Supports merge/squash/rebase. */
+  async worktreeMerge(
+    cwd: string,
+    sourceBranch: string,
+    method: 'merge' | 'squash' | 'rebase' = 'merge'
+  ): Promise<{ success: boolean; message: string }> {
+    let args: string[];
+    switch (method) {
+      case 'squash':
+        args = ['merge', '--squash', sourceBranch];
+        break;
+      case 'rebase':
+        args = ['rebase', sourceBranch];
+        break;
+      default:
+        args = ['merge', sourceBranch];
+    }
+    const { stdout, stderr, exitCode } = await this.git(cwd, args);
+    if (exitCode !== 0) return { success: false, message: stderr };
+    return { success: true, message: stdout || `已${method} ${sourceBranch}` };
+  }
+
+  /** Get merge diff between two branches (what B has that A doesn't). */
+  async worktreeMergeDiff(cwd: string, baseBranch: string, headBranch: string): Promise<string> {
+    const { stdout } = await this.git(cwd, ['diff', `${baseBranch}...${headBranch}`]);
+    return stdout || '没有差异';
+  }
 }

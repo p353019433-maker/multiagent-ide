@@ -17,6 +17,7 @@ interface AIContextValue {
   testProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
 
   newConversation: (providerId?: string, model?: string) => string;
+  newWorktreeConversation: (worktreePath: string, branch: string, baseBranch: string) => Promise<string>;
   setActiveConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
   addConversation: (conv: Conversation) => void;
@@ -144,6 +145,29 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     [activeProviderId, activeModel]
   );
 
+  /** Create a conversation bound to a git worktree (isolated agent workspace). */
+  const newWorktreeConversation = useCallback(
+    async (worktreePath: string, branch: string, baseBranch: string): Promise<string> => {
+      const id = uuid();
+      const pid = activeProviderId || '';
+      const mdl = activeModel || '';
+      const conv: Conversation = {
+        id,
+        title: `🪵 ${branch}`,
+        messages: [],
+        providerId: pid,
+        model: mdl,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        worktree: { path: worktreePath, branch, baseBranch },
+      };
+      setConversations((prev) => [conv, ...prev]);
+      setActiveConversationId(id);
+      return id;
+    },
+    [activeProviderId, activeModel]
+  );
+
   const addConversation = useCallback((conv: Conversation) => {
     setConversations((prev) => {
       if (prev.find((c) => c.id === conv.id)) return prev;
@@ -214,6 +238,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
         deleteProvider,
         testProvider,
         newConversation,
+        newWorktreeConversation,
         setActiveConversation,
         deleteConversation,
         addConversation,
