@@ -95,6 +95,18 @@ const api = {
     diff: (cwd: string, staged?: boolean, filePath?: string) =>
       ipcRenderer.invoke('git:diff', cwd, staged, filePath),
     log: (cwd: string, count?: number) => ipcRenderer.invoke('git:log', cwd, count),
+    stage: (cwd: string, files: string[]) => ipcRenderer.invoke('git:stage', cwd, files),
+    unstage: (cwd: string, files: string[]) => ipcRenderer.invoke('git:unstage', cwd, files),
+    stageAll: (cwd: string) => ipcRenderer.invoke('git:stageAll', cwd),
+    commit: (cwd: string, message: string) => ipcRenderer.invoke('git:commit', cwd, message),
+    push: (cwd: string, remote?: string, branch?: string) =>
+      ipcRenderer.invoke('git:push', cwd, remote, branch),
+    pull: (cwd: string, remote?: string, branch?: string) =>
+      ipcRenderer.invoke('git:pull', cwd, remote, branch),
+    branchList: (cwd: string) => ipcRenderer.invoke('git:branchList', cwd),
+    branchSwitch: (cwd: string, name: string) => ipcRenderer.invoke('git:branchSwitch', cwd, name),
+    branchCreate: (cwd: string, name: string) => ipcRenderer.invoke('git:branchCreate', cwd, name),
+    currentBranch: (cwd: string) => ipcRenderer.invoke('git:currentBranch', cwd),
   },
 
   // Web
