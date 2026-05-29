@@ -116,6 +116,22 @@ Agent 模式下 AI 可以调用以下工具：
   - **本地模型**（Ollama/vLLM）：Qwen-Coder、DeepSeek-Coder、StarCoder2、CodeLlama、CodeGemma 等 → 按各自 sentinel token 格式
 - **聊天模型自动回退** — Claude / GPT / Gemini 无 FIM 接口，回退到聊天式补全（原逻辑）
 - FIM 模型补全又快又省，debounce/cooldown 自动调低（150ms / 300ms），聊天模型保持保守节流（300ms / 2s）
+- **编辑感知预测**：记录最近的编辑作为上下文，补全会预测"下一处自然修改"（类 Cursor Tab，如批量重命名/应用同一模式）
+
+## 代码导航与编辑
+
+- **find_definition / find_references**：Agent 工具，基于符号表的跳转定义 + 按词边界的全工作区引用查找，用于评估改动影响面
+- **Apply Model（容差编辑应用）**：`replace_in_file` 编辑通过三级级联应用——精确 → 忽略空白/缩进 → 首尾锚点，模型引用片段有空白差异也能成功落地
+- **可验证交付物（Artifacts）**：每轮 Agent 改完代码自动产出交付报告（改动文件 + ESLint/tsc 验证结果 + diff 统计），存到 `.ide/artifacts/`，面板可查看
+
+## 测试
+
+```bash
+npm test          # 运行测试（vitest）
+npm run test:watch
+```
+
+纯逻辑模块（Apply Model、命令策略、FIM 探测、agent 工具）已有单元测试覆盖。
 
 ## 项目规则
 
