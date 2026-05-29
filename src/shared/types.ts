@@ -136,3 +136,25 @@ export interface AgentToolExecution {
   needsApproval?: boolean;
   diff?: { before: string; after: string; filePath: string };
 }
+
+// ============================================================
+// Multi-Agent Orchestration
+// ============================================================
+
+export interface OrchestrationTask {
+  id: string;
+  description: string;
+  conversationId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'merged';
+  result?: string;
+  error?: string;
+}
+
+export interface OrchestrationSession {
+  id: string;
+  goal: string;
+  tasks: OrchestrationTask[];
+  createdAt: number;
+  completedAt?: number;
+  status: 'running' | 'completed' | 'failed';
+}

@@ -5,8 +5,9 @@ import FileTree from './FileTree';
 import GitPanel from './GitPanel';
 import ProblemsPanel from './ProblemsPanel';
 import GitHubPanel from './GitHubPanel';
+import MultiAgentPanel from './MultiAgentPanel';
 
-type SidebarTab = 'explorer' | 'git' | 'github' | 'problems';
+type SidebarTab = 'explorer' | 'git' | 'github' | 'problems' | 'multiagent';
 
 export default function Sidebar() {
   const { rootPath, rootName, fileTree, openFolder, refreshTree } = useWorkspace();
@@ -45,6 +46,7 @@ export default function Sidebar() {
     { id: 'git', label: 'Git', icon: '⑂' },
     { id: 'github', label: 'GitHub', icon: '🐙' },
     { id: 'problems', label: '问题', icon: '⚠' },
+    { id: 'multiagent', label: '多 Agent', icon: '🎯' },
   ];
 
   return (
@@ -143,6 +145,14 @@ export default function Sidebar() {
 
         {activeTab === 'problems' && (
           rootPath ? <ProblemsPanel /> : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-gray-500">需要先打开项目文件夹</p>
+            </div>
+          )
+        )}
+
+        {activeTab === 'multiagent' && (
+          rootPath ? <MultiAgentPanel /> : (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-gray-500">需要先打开项目文件夹</p>
             </div>

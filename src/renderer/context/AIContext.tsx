@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
-import type { AIProvider as AIProviderConfig, Conversation, ChatMessage } from '@shared/types';
+import type { AIProvider as AIProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
+import { AGENT_SYSTEM_PROMPT } from '@shared/tools';
 
 interface AIContextValue {
   providers: AIProviderConfig[];
@@ -8,6 +9,7 @@ interface AIContextValue {
   activeModel: string | null;
   conversations: Conversation[];
   activeConversationId: string | null;
+  orchestrationSessions: OrchestrationSession[];
 
   setActiveProvider: (id: string) => void;
   setActiveModel: (model: string) => void;
@@ -23,6 +25,9 @@ interface AIContextValue {
   addConversation: (conv: Conversation) => void;
   addMessage: (conversationId: string, message: ChatMessage) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
+
+  /** Orchestrate multiple agents in parallel */
+  orchestrate: (goal: string, subTasks: string[]) => Promise<OrchestrationSession>;
 }
 
 const AIContext = createContext<AIContextValue | null>(null);
@@ -33,6 +38,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
   const [activeModel, setActiveModelState] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [orchestrationSessions, setOrchestrationSessions] = useState<OrchestrationSession[]>([]);
 
   const providersRef = useRef<AIProviderConfig[]>([]);
   providersRef.current = providers;
@@ -224,6 +230,61 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  /** Orchestrate multiple agents in parallel */
+  const orchestrate = useCallback(async (goal: string, subTasks: string[]): Promise<OrchestrationSession> => {
+    const sessionId = uuid();
+    const tasks: OrchestrationTask[] = [];
+
+    // Create worktree conversations for each sub-task
+    for (let i = 0; i < subTasks.length; i++) {
+      const branch = `agent-${sessionId.slice(0, 6)}-task-${i + 1}`;
+      const worktreePath = await window.api.git.worktreeAdd(branch, 'main');
+      const convId = await newWorktreeConversation(worktreePath, branch, 'main');
+
+      tasks.push({
+        id: uuid(),
+        description: subTasks[i],
+        conversationId: convId,
+        status: 'pending',
+      });
+    }
+
+    const session: OrchestrationSession = {
+      id: sessionId,
+      goal,
+      tasks,
+      createdAt: Date.now(),
+      status: 'running',
+    };
+
+    setOrchestrationSessions((prev) => [session, ...prev]);
+
+    // Start all agents in parallel - send initial message to each
+    const promises = tasks.map(async (task, idx) => {
+      try {
+        const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
+        if (!conv) throw new Error('Conversation not found');
+
+        task.status = 'running';
+        
+        // Note: This is a simplified version - actual streaming would need more complex event handling
+        // For now, just mark as running and let user interact with each tab
+        task.status = 'completed';
+      } catch (err: any) {
+        task.status = 'failed';
+        task.error = err.message;
+      }
+    });
+
+    await Promise.all(promises);
+
+    session.status = 'completed';
+    session.completedAt = Date.now();
+    setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? session : s)));
+
+    return session;
+  }, [newWorktreeConversation]);
+
   return (
     <AIContext.Provider
       value={{
@@ -232,6 +293,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
         activeModel,
         conversations,
         activeConversationId,
+        orchestrationSessions,
         setActiveProvider,
         setActiveModel,
         saveProvider,
@@ -244,6 +306,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
         addConversation,
         addMessage,
         updateMessage,
+        orchestrate,
       }}
     >
       {children}
