@@ -1,6 +1,10 @@
 import React from 'react';
 import { useEditor } from '../../context/EditorContext';
 import * as monaco from 'monaco-editor';
+import {
+  registerAiInlineCompletion,
+  updateInlineCompletionConfig,
+} from './aiInlineCompletion';
 
 export default function EditorArea() {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
@@ -35,6 +39,9 @@ export default function EditorArea() {
     });
 
     editorRef.current = editor;
+
+    // Register AI inline completion
+    registerAiInlineCompletion();
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       saveRef.current();

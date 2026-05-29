@@ -8,6 +8,8 @@ import AgentToolView from './AgentToolView';
 import DiffPreview from '../editor/DiffPreview';
 import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution } from '@shared/types';
 import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
+import { setAiCompleteFn, updateInlineCompletionConfig } from '../editor/aiInlineCompletion';
+import type { AiProviderConfig } from '../../context/AIContext';
 
 export default function ChatPanel() {
   const {
@@ -37,6 +39,58 @@ export default function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamContent, toolExecutions]);
+
+  // ── AI Inline Completion setup ──
+  useEffect(() => {
+    updateInlineCompletionConfig({
+      providerId: activeProviderId,
+      model: activeModel,
+    });
+
+    if (!activeProviderId) return;
+
+    setAiCompleteFn(async ({ prefix, suffix, language }) => {
+      const provider = window.api.ai; // use preload API
+      const prompt = `Complete the code at the cursor. Return ONLY the code to insert — no explanations, no markdown, no code fences. The completion should follow naturally from the prefix and suffix.
+
+Language: ${language}
+
+=== PREFIX (before cursor) ===
+${prefix.slice(-2000)}
+
+=== SUFFIX (after cursor) ===
+${suffix.slice(0, 500)}
+
+=== COMPLETION ===`;
+
+      try {
+        const result = await window.api.ai.chat(activeProviderId, {
+          model: activeModel || 'default',
+          messages: [
+            { role: 'user', content: prompt },
+          ],
+          systemPrompt: 'You are a code completion engine. Return ONLY raw code. No backticks. No markdown. No explanations. Just the code that should appear at the cursor position.',
+          maxTokens: 200,
+          temperature: 0.1,
+        } as any);
+
+        if (result?.content) {
+          // Clean up common AI artifacts
+          let text = result.content.trim();
+          // Remove markdown code fences if present
+          text = text.replace(/^```[\s\S]*?\n?/g, '').replace(/```$/g, '');
+          return text || null;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    });
+
+    return () => {
+      setAiCompleteFn(() => Promise.resolve(null));
+    };
+  }, [activeProviderId, activeModel]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || !activeProviderId || !activeModel) return;

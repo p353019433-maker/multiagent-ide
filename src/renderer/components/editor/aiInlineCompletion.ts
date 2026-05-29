@@ -1,0 +1,131 @@
+/**
+ * AI Inline Completion provider for Monaco Editor.
+ * Uses current AI provider to generate code completions at cursor position.
+ * Does NOT use FIM (fill-in-the-middle) — sends context as chat completion.
+ */
+
+import * as monaco from 'monaco-editor';
+
+type ProviderConfig = {
+  providerId: string | null;
+  model: string | null;
+};
+
+type AiCompleteFn = (params: {
+  prefix: string;
+  suffix: string;
+  language: string;
+  filePath: string;
+}) => Promise<string | null>;
+
+let _aiCompleteFn: AiCompleteFn | null = null;
+let _pendingId = 0;
+let _lastRequestTime = 0;
+const DEBOUNCE_MS = 300;
+const COOLDOWN_MS = 2000;
+
+export function setAiCompleteFn(fn: AiCompleteFn) {
+  _aiCompleteFn = fn;
+}
+
+let _disposables: monaco.IDisposable[] = [];
+let _config: ProviderConfig = { providerId: null, model: null };
+
+export function registerAiInlineCompletion() {
+  // Unregister old if any
+  unregisterAiInlineCompletion();
+
+  const provider: monaco.languages.InlineCompletionsProvider = {
+    provideInlineCompletions: async (
+      model: monaco.editor.ITextModel,
+      position: monaco.Position,
+      _context: monaco.languages.InlineCompletionContext,
+      _token: monaco.CancellationToken
+    ): Promise<monaco.languages.InlineCompletions> => {
+      if (!_aiCompleteFn || !_config.providerId) return { items: [] };
+
+      // Cooldown: don't fire more than once per COOLDOWN_MS
+      const now = Date.now();
+      if (now - _lastRequestTime < COOLDOWN_MS) return { items: [] };
+
+      // Debounce: assign an ID and wait
+      const thisId = ++_pendingId;
+      await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
+
+      // If another request came in during debounce, skip this one
+      if (thisId !== _pendingId || _token.isCancellationRequested) return { items: [] };
+
+      _lastRequestTime = Date.now();
+
+      const prefix = model.getValueInRange({
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column,
+      });
+
+      const suffix = model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: position.column,
+        endLineNumber: model.getLineCount(),
+        endColumn: model.getLineMaxColumn(model.getLineCount()),
+      });
+
+      // Skip if prefix is too short (less than 10 chars of code)
+      const codeChars = prefix.replace(/[\s]/g, '').length;
+      if (codeChars < 10) return { items: [] };
+
+      const language = model.getLanguageId();
+
+      try {
+        const result = await _aiCompleteFn({
+          prefix,
+          suffix,
+          language,
+          filePath: model.uri.fsPath,
+        });
+
+        if (!result || result.trim().length === 0 || _token.isCancellationRequested) return { items: [] };
+
+        return {
+          items: [
+            {
+              insertText: result,
+              range: new monaco.Range(
+                position.lineNumber,
+                position.column,
+                position.lineNumber,
+                position.column
+              ),
+            },
+          ],
+        };
+      } catch {
+        return { items: [] };
+      }
+    },
+    freeInlineCompletions: () => {},
+  };
+
+  const d1 = monaco.languages.registerInlineCompletionsProvider(
+    { pattern: '**/*' },
+    provider
+  );
+
+  _disposables = [d1];
+}
+
+export function unregisterAiInlineCompletion() {
+  _disposables.forEach((d) => d.dispose());
+  _disposables = [];
+  _config = { providerId: null, model: null };
+}
+
+export function updateInlineCompletionConfig(config: ProviderConfig) {
+  _config = config;
+  if (!config.providerId) {
+    unregisterAiInlineCompletion();
+  } else if (_disposables.length === 0) {
+    registerAiInlineCompletion();
+  }
+}
