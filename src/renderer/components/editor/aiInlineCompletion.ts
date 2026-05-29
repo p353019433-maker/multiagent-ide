@@ -19,9 +19,20 @@ type AiCompleteFn = (params: {
   suffix: string;
   language: string;
   filePath: string;
+  /** Recent edits in this session — lets the model predict the *next* edit. */
+  recentEdits: string[];
 }) => Promise<string | null>;
 
 let _aiCompleteFn: AiCompleteFn | null = null;
+
+// Ring buffer of recent edits (Cursor-Tab style "next edit" context).
+const _recentEdits: string[] = [];
+export function recordEdit(snippet: string) {
+  const s = snippet.trim();
+  if (!s || s.length < 2) return;
+  _recentEdits.push(s.slice(0, 200));
+  if (_recentEdits.length > 5) _recentEdits.shift();
+}
 let _pendingId = 0;
 let _lastRequestTime = 0;
 // FIM models are fast & cheap, so we can fire much more often than chat models.
@@ -92,6 +103,7 @@ export function registerAiInlineCompletion() {
           suffix,
           language,
           filePath: model.uri.fsPath,
+          recentEdits: [..._recentEdits],
         });
 
         if (!result || result.trim().length === 0 || _token.isCancellationRequested) return { items: [] };

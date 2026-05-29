@@ -101,7 +101,11 @@ export default function ChatPanel() {
         updateInlineCompletionConfig({ providerId: activeProviderId, model: activeModel })
       );
 
-    setAiCompleteFn(async ({ prefix, suffix, language }) => {
+    setAiCompleteFn(async ({ prefix, suffix, language, recentEdits }) => {
+      // Recent edits steer the model toward the *next* edit (Cursor-Tab style).
+      const editsCtx = recentEdits.length
+        ? `\n\n=== RECENT EDITS (predict the natural next change) ===\n${recentEdits.join('\n---\n')}`
+        : '';
       // Prefer a real FIM transport when the active model is a dedicated code
       // model (DeepSeek V3/V4, Codestral, Qwen-Coder, etc.). FIM uses both
       // prefix and suffix natively, giving faster and more accurate inline
@@ -111,7 +115,8 @@ export default function ChatPanel() {
           providerId: activeProviderId,
           model: activeModel || 'default',
           // FIM models handle large context; give them a generous window.
-          prefix: prefix.slice(-4000),
+          // Recent edits are prepended as a comment to bias the next edit.
+          prefix: (editsCtx ? `/* recent edits:\n${recentEdits.join('\n')}\n*/\n` : '') + prefix.slice(-4000),
           suffix: suffix.slice(0, 2000),
           maxTokens: 256,
         });
@@ -125,7 +130,7 @@ export default function ChatPanel() {
         // fall through to chat-based completion
       }
 
-      const prompt = `Complete the code at the cursor. Return ONLY the code to insert — no explanations, no markdown, no code fences. The completion should follow naturally from the prefix and suffix.
+      const prompt = `Complete the code at the cursor. Return ONLY the code to insert — no explanations, no markdown, no code fences. The completion should follow naturally from the prefix and suffix. If recent edits suggest a repetitive change (e.g. a rename or a pattern being applied), predict that next edit.
 
 Language: ${language}
 
@@ -133,7 +138,7 @@ Language: ${language}
 ${prefix.slice(-2000)}
 
 === SUFFIX (after cursor) ===
-${suffix.slice(0, 500)}
+${suffix.slice(0, 500)}${editsCtx}
 
 === COMPLETION ===`;
 

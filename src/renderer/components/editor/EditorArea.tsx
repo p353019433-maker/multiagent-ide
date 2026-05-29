@@ -4,6 +4,7 @@ import * as monaco from 'monaco-editor';
 import {
   registerAiInlineCompletion,
   updateInlineCompletionConfig,
+  recordEdit,
 } from './aiInlineCompletion';
 
 export default function EditorArea() {
@@ -75,9 +76,13 @@ export default function EditorArea() {
     if (!listenedModelsRef.current.has(activeFile.path)) {
       listenedModelsRef.current.add(activeFile.path);
       const filePath = activeFile.path;
-      model.onDidChangeContent(() => {
+      model.onDidChangeContent((e) => {
         const m = modelsRef.current.get(filePath);
         if (m) updateFileContent(filePath, m.getValue());
+        // Feed non-trivial inserts to the next-edit predictor.
+        for (const c of e.changes) {
+          if (c.text && c.text.trim().length > 1) recordEdit(c.text);
+        }
       });
     }
 
