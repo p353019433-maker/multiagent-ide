@@ -140,9 +140,13 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const limit = (args.limit as number) || 10;
       const res = await window.api.codebase.search(rootPath, query, limit);
       if (!res.hits.length) return `未找到与 "${query}" 相关的代码`;
-      const header = res.fellBack
-        ? `（符号索引无命中，回退到全文搜索）共 ${res.hits.length} 处：`
-        : `语义检索命中 ${res.hits.length} 处（按相关度排序）：`;
+      const modeLabel =
+        res.mode === 'embedding'
+          ? '向量语义检索'
+          : res.mode === 'text'
+          ? '全文检索（符号索引无命中）'
+          : '符号检索';
+      const header = `${modeLabel}命中 ${res.hits.length} 处（按相关度排序）：`;
       const body = res.hits
         .map((h: any) => `${h.file}:${h.line}  [${h.kind}] ${h.name}`)
         .join('\n');

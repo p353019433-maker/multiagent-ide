@@ -3,6 +3,7 @@ import type { FileNode } from '@shared/types';
 interface CodebaseSearchResult {
   hits: { file: string; line: number; kind: string; name: string; score: number }[];
   fellBack: boolean;
+  mode?: 'embedding' | 'symbol' | 'text';
 }
 
 declare global {
@@ -132,6 +133,7 @@ declare global {
       };
       codebase: {
         search: (root: string, query: string, limit?: number) => Promise<CodebaseSearchResult>;
+        reindex: (root: string) => Promise<{ ok: boolean; error?: string; chunks?: boolean }>;
       };
       github: {
         listIssues: (token: string, owner: string, repo: string, state?: string) => Promise<any>;

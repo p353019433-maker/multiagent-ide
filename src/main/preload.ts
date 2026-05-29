@@ -156,6 +156,7 @@ const api = {
   codebase: {
     search: (root: string, query: string, limit?: number) =>
       ipcRenderer.invoke('codebase:search', root, query, limit),
+    reindex: (root: string) => ipcRenderer.invoke('codebase:reindex', root),
   },
 
   // GitHub
