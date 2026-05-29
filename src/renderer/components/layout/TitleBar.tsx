@@ -6,9 +6,11 @@ interface Props {
   onToggleChat: () => void;
   onToggleTerminal: () => void;
   onToggleSearch: () => void;
+  onToggleBrowser: () => void;
   showChat: boolean;
   showTerminal: boolean;
   showSearch: boolean;
+  showBrowser: boolean;
 }
 
 export default function TitleBar({
@@ -16,9 +18,11 @@ export default function TitleBar({
   onToggleChat,
   onToggleTerminal,
   onToggleSearch,
+  onToggleBrowser,
   showChat,
   showTerminal,
   showSearch,
+  showBrowser,
 }: Props) {
   const { providers, activeProviderId, activeModel, setActiveProvider, setActiveModel } = useAI();
   const activeProvider = providers.find((p) => p.id === activeProviderId);
@@ -87,6 +91,15 @@ export default function TitleBar({
           title={showChat ? '收起对话' : '显示对话'}
         >
           💬
+        </button>
+        <button
+          onClick={onToggleBrowser}
+          className={`text-xs px-2 py-1 rounded transition-colors ${
+            showBrowser ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
+          }`}
+          title={showBrowser ? '收起浏览器' : '内置浏览器'}
+        >
+          🌐
         </button>
         <button
           onClick={onOpenSettings}
