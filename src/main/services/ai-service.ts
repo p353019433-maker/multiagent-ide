@@ -1,0 +1,446 @@
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
+import type { StoreService } from './store-service';
+import type {
+  ChatMessage,
+  ChatOptions,
+  ChatResult,
+  StreamCallbacks,
+  ToolCall,
+  AIProvider,
+} from '../../shared/types';
+
+export class AIService {
+  private store: StoreService;
+  private abortController: AbortController | null = null;
+
+  constructor(store: StoreService) {
+    this.store = store;
+  }
+
+  abort() {
+    this.abortController?.abort();
+    this.abortController = null;
+  }
+
+  private getProviders(): AIProvider[] {
+    return (this.store.get('providers') as AIProvider[]) || [];
+  }
+
+  private async getApiKey(provider: AIProvider): Promise<string> {
+    const encrypted = this.store.get(provider.apiKeyRef) as string | undefined;
+    if (!encrypted) return '';
+    try {
+      const { safeStorage } = await import('electron');
+      if (safeStorage.isEncryptionAvailable()) {
+        return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+      }
+    } catch {}
+    return encrypted;
+  }
+
+  async testConnection(providerId: string): Promise<{ ok: boolean; error?: string }> {
+    const providers = this.getProviders();
+    const provider = providers.find((p) => p.id === providerId);
+    if (!provider) return { ok: false, error: 'Provider not found' };
+
+    try {
+      const apiKey = await this.getApiKey(provider);
+      if (provider.type === 'anthropic') {
+        const client = new Anthropic({ apiKey, baseURL: provider.baseURL || undefined });
+        await client.messages.create({
+          model: provider.defaultModel || 'claude-3-haiku-20240307',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'hi' }],
+        });
+      } else {
+        // OpenAI-compatible
+        const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+        await client.chat.completions.create({
+          model: provider.defaultModel || 'gpt-4o-mini',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'hi' }],
+        });
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  async chat(
+    providerId: string,
+    messages: ChatMessage[],
+    options: ChatOptions
+  ): Promise<ChatResult> {
+    const providers = this.getProviders();
+    const provider = providers.find((p) => p.id === providerId);
+    if (!provider) throw new Error(`Provider "${providerId}" not found`);
+
+    const apiKey = await this.getApiKey(provider);
+
+    if (provider.type === 'anthropic') {
+      return this.chatAnthropic(apiKey, provider, messages, options);
+    }
+    return this.chatOpenAI(apiKey, provider, messages, options);
+  }
+
+  async chatStream(
+    providerId: string,
+    messages: ChatMessage[],
+    options: ChatOptions,
+    callbacks: StreamCallbacks
+  ): Promise<void> {
+    const providers = this.getProviders();
+    const provider = providers.find((p) => p.id === providerId);
+    if (!provider) {
+      callbacks.onError(`Provider "${providerId}" not found`);
+      return;
+    }
+
+    const apiKey = await this.getApiKey(provider);
+    this.abortController = new AbortController();
+
+    try {
+      if (provider.type === 'anthropic') {
+        await this.streamAnthropic(apiKey, provider, messages, options, callbacks);
+      } else {
+        await this.streamOpenAI(apiKey, provider, messages, options, callbacks);
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        callbacks.onError(e?.message || String(e));
+      }
+    } finally {
+      this.abortController = null;
+    }
+  }
+
+  // ─── OpenAI-compatible ───────────────────────────────────────────────────────
+
+  private buildOpenAIMessages(messages: ChatMessage[], systemPrompt?: string) {
+    const result: OpenAI.ChatCompletionMessageParam[] = [];
+    if (systemPrompt) result.push({ role: 'system', content: systemPrompt });
+
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+      if (msg.role === 'user') {
+        result.push({ role: 'user', content: msg.content });
+      } else if (msg.role === 'assistant') {
+        if (msg.toolCalls?.length) {
+          result.push({
+            role: 'assistant',
+            content: msg.content || null,
+            tool_calls: msg.toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+            })),
+          });
+        } else {
+          result.push({ role: 'assistant', content: msg.content });
+        }
+      } else if (msg.role === 'tool' && msg.toolResults) {
+        for (const tr of msg.toolResults) {
+          result.push({
+            role: 'tool',
+            tool_call_id: tr.toolCallId,
+            content: tr.content,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
+  private buildOpenAITools(options: ChatOptions): OpenAI.ChatCompletionTool[] | undefined {
+    if (!options.tools?.length) return undefined;
+    return options.tools.map((t) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters as Record<string, unknown>,
+      },
+    }));
+  }
+
+  private async chatOpenAI(
+    apiKey: string,
+    provider: AIProvider,
+    messages: ChatMessage[],
+    options: ChatOptions
+  ): Promise<ChatResult> {
+    const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+    const oaiMessages = this.buildOpenAIMessages(messages, options.systemPrompt);
+    const tools = this.buildOpenAITools(options);
+
+    const resp = await client.chat.completions.create({
+      model: options.model || provider.defaultModel,
+      messages: oaiMessages,
+      tools,
+      tool_choice: tools ? 'auto' : undefined,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    });
+
+    const choice = resp.choices[0];
+    const toolCalls: ToolCall[] = (choice.message.tool_calls || []).map((tc) => ({
+      id: tc.id,
+      name: tc.function.name,
+      arguments: JSON.parse(tc.function.arguments || '{}'),
+    }));
+
+    return {
+      content: choice.message.content || '',
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+      finishReason:
+        choice.finish_reason === 'tool_calls'
+          ? 'tool_calls'
+          : choice.finish_reason === 'stop'
+          ? 'stop'
+          : 'length',
+      usage: resp.usage
+        ? {
+            promptTokens: resp.usage.prompt_tokens,
+            completionTokens: resp.usage.completion_tokens,
+          }
+        : undefined,
+    };
+  }
+
+  private async streamOpenAI(
+    apiKey: string,
+    provider: AIProvider,
+    messages: ChatMessage[],
+    options: ChatOptions,
+    callbacks: StreamCallbacks
+  ): Promise<void> {
+    const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+    const oaiMessages = this.buildOpenAIMessages(messages, options.systemPrompt);
+    const tools = this.buildOpenAITools(options);
+
+    const stream = await client.chat.completions.create(
+      {
+        model: options.model || provider.defaultModel,
+        messages: oaiMessages,
+        tools,
+        tool_choice: tools ? 'auto' : undefined,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: true,
+      },
+      { signal: this.abortController?.signal }
+    );
+
+    let content = '';
+    const toolCallAccum: Record<number, { id: string; name: string; args: string }> = {};
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
+
+      if (delta.content) {
+        content += delta.content;
+        callbacks.onToken(delta.content);
+      }
+
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const idx = tc.index;
+          if (!toolCallAccum[idx]) {
+            toolCallAccum[idx] = { id: tc.id || '', name: tc.function?.name || '', args: '' };
+          }
+          if (tc.id) toolCallAccum[idx].id = tc.id;
+          if (tc.function?.name) toolCallAccum[idx].name = tc.function.name;
+          if (tc.function?.arguments) toolCallAccum[idx].args += tc.function.arguments;
+        }
+      }
+
+      const finishReason = chunk.choices[0]?.finish_reason;
+      if (finishReason === 'tool_calls' || finishReason === 'stop') {
+        const toolCalls: ToolCall[] = Object.values(toolCallAccum).map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: (() => { try { return JSON.parse(tc.args); } catch { return {}; } })(),
+        }));
+
+        for (const tc of toolCalls) callbacks.onToolCall(tc);
+
+        callbacks.onComplete({
+          content,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          finishReason: finishReason === 'tool_calls' ? 'tool_calls' : 'stop',
+        });
+        return;
+      }
+    }
+
+    callbacks.onComplete({ content, finishReason: 'stop' });
+  }
+
+  // ─── Anthropic ───────────────────────────────────────────────────────────────
+
+  private buildAnthropicMessages(messages: ChatMessage[]) {
+    const result: Anthropic.MessageParam[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+
+      if (msg.role === 'user') {
+        result.push({ role: 'user', content: msg.content });
+      } else if (msg.role === 'assistant') {
+        if (msg.toolCalls?.length) {
+          result.push({
+            role: 'assistant',
+            content: [
+              ...(msg.content ? [{ type: 'text' as const, text: msg.content }] : []),
+              ...msg.toolCalls.map((tc) => ({
+                type: 'tool_use' as const,
+                id: tc.id,
+                name: tc.name,
+                input: tc.arguments,
+              })),
+            ],
+          });
+        } else {
+          result.push({ role: 'assistant', content: msg.content });
+        }
+      } else if (msg.role === 'tool' && msg.toolResults) {
+        result.push({
+          role: 'user',
+          content: msg.toolResults.map((tr) => ({
+            type: 'tool_result' as const,
+            tool_use_id: tr.toolCallId,
+            content: tr.content,
+            is_error: tr.isError,
+          })),
+        });
+      }
+    }
+    return result;
+  }
+
+  private buildAnthropicTools(options: ChatOptions): Anthropic.Tool[] | undefined {
+    if (!options.tools?.length) return undefined;
+    return options.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.parameters as Anthropic.Tool['input_schema'],
+    }));
+  }
+
+  private async chatAnthropic(
+    apiKey: string,
+    provider: AIProvider,
+    messages: ChatMessage[],
+    options: ChatOptions
+  ): Promise<ChatResult> {
+    const client = new Anthropic({ apiKey, baseURL: provider.baseURL || undefined });
+    const anthropicMessages = this.buildAnthropicMessages(messages);
+    const tools = this.buildAnthropicTools(options);
+
+    const resp = await client.messages.create({
+      model: options.model || provider.defaultModel,
+      max_tokens: options.maxTokens ?? 4096,
+      system: options.systemPrompt,
+      messages: anthropicMessages,
+      tools,
+    });
+
+    let content = '';
+    const toolCalls: ToolCall[] = [];
+
+    for (const block of resp.content) {
+      if (block.type === 'text') content += block.text;
+      if (block.type === 'tool_use') {
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          arguments: block.input as Record<string, unknown>,
+        });
+      }
+    }
+
+    return {
+      content,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+      finishReason: resp.stop_reason === 'tool_use' ? 'tool_calls' : 'stop',
+      usage: {
+        promptTokens: resp.usage.input_tokens,
+        completionTokens: resp.usage.output_tokens,
+      },
+    };
+  }
+
+  private async streamAnthropic(
+    apiKey: string,
+    provider: AIProvider,
+    messages: ChatMessage[],
+    options: ChatOptions,
+    callbacks: StreamCallbacks
+  ): Promise<void> {
+    const client = new Anthropic({ apiKey, baseURL: provider.baseURL || undefined });
+    const anthropicMessages = this.buildAnthropicMessages(messages);
+    const tools = this.buildAnthropicTools(options);
+
+    const stream = client.messages.stream(
+      {
+        model: options.model || provider.defaultModel,
+        max_tokens: options.maxTokens ?? 4096,
+        system: options.systemPrompt,
+        messages: anthropicMessages,
+        tools,
+      },
+      { signal: this.abortController?.signal }
+    );
+
+    let content = '';
+    const toolCalls: ToolCall[] = [];
+    let currentToolCall: { id: string; name: string; args: string } | null = null;
+
+    stream.on('text', (text) => {
+      content += text;
+      callbacks.onToken(text);
+    });
+
+    stream.on('inputJson', (delta) => {
+      if (currentToolCall) currentToolCall.args += delta;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (stream as any).on('contentBlockStart', (event: any) => {
+      if (event.content_block.type === 'tool_use') {
+        currentToolCall = {
+          id: event.content_block.id,
+          name: event.content_block.name,
+          args: '',
+        };
+      }
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (stream as any).on('contentBlockStop', () => {
+      if (currentToolCall) {
+        const tc: ToolCall = {
+          id: currentToolCall.id,
+          name: currentToolCall.name,
+          arguments: (() => {
+            try { return JSON.parse(currentToolCall!.args || '{}'); } catch { return {}; }
+          })(),
+        };
+        toolCalls.push(tc);
+        callbacks.onToolCall(tc);
+        currentToolCall = null;
+      }
+    });
+
+    await stream.finalMessage();
+
+    callbacks.onComplete({
+      content,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+      finishReason: toolCalls.length ? 'tool_calls' : 'stop',
+    });
+  }
+}
