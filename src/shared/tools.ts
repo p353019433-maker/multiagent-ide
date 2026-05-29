@@ -341,6 +341,156 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: ['key'],
     },
   },
+
+  // ── GitHub ──
+  {
+    name: 'github_list_issues',
+    description: '列出 GitHub 仓库的 issues。',
+    parameters: {
+      type: 'object',
+      properties: {
+        state: {
+          type: 'string',
+          enum: ['open', 'closed', 'all'],
+          description: 'Issue 状态过滤，默认 open。',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'github_get_issue',
+    description: '获取某个 GitHub issue 的完整内容（含正文）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'Issue 编号。' },
+      },
+      required: ['number'],
+    },
+  },
+  {
+    name: 'github_create_issue',
+    description: '在 GitHub 仓库中创建新 issue。需要用户批准后执行。',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Issue 标题。' },
+        body: { type: 'string', description: 'Issue 正文（Markdown）。' },
+        labels: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '标签列表。',
+        },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'github_list_comments',
+    description: '列出某个 issue 的所有评论。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'Issue 编号。' },
+      },
+      required: ['number'],
+    },
+  },
+  {
+    name: 'github_add_comment',
+    description: '在 issue 上添加评论。需要用户批准后执行。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'Issue 编号。' },
+        body: { type: 'string', description: '评论正文（Markdown）。' },
+      },
+      required: ['number', 'body'],
+    },
+  },
+  {
+    name: 'github_list_prs',
+    description: '列出 GitHub 仓库的 Pull Requests。',
+    parameters: {
+      type: 'object',
+      properties: {
+        state: {
+          type: 'string',
+          enum: ['open', 'closed', 'all'],
+          description: 'PR 状态过滤，默认 open。',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'github_get_pr',
+    description: '获取某个 PR 的详细信息，包含标题、正文、分支。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'PR 编号。' },
+      },
+      required: ['number'],
+    },
+  },
+  {
+    name: 'github_get_pr_diff',
+    description: '获取某个 PR 的完整 diff。用于代码审查。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'PR 编号。' },
+      },
+      required: ['number'],
+    },
+  },
+  {
+    name: 'github_create_pr',
+    description: '创建新的 Pull Request。需要用户批准后执行。',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'PR 标题。' },
+        head: { type: 'string', description: '源分支名。' },
+        base: { type: 'string', description: '目标分支名，默认 main。' },
+        body: { type: 'string', description: 'PR 正文（Markdown）。' },
+      },
+      required: ['title', 'head'],
+    },
+  },
+  {
+    name: 'github_list_workflows',
+    description: '列出最近的 GitHub Actions CI 运行记录。',
+    parameters: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: '按分支过滤。' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'github_search_code',
+    description: '在 GitHub 上搜索代码。可以跨仓库搜索或限制在当前仓库内。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '搜索关键词（支持 GitHub 搜索语法）。' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'github_get_repo',
+    description: '获取当前仓库的元信息（star 数、默认分支、语言等）。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 export const AGENT_SYSTEM_PROMPT = `You are an AI coding assistant integrated into a code IDE. You help users by reading, writing, and modifying code in their workspace.
@@ -383,6 +533,14 @@ You have access to many tools that let you interact with the user's workspace:
 
 **Context:**
 - save_context / load_context: Save/load information for later use
+
+**GitHub:**
+- github_list_issues / github_get_issue / github_create_issue: Browse and create issues (create requires approval)
+- github_list_comments / github_add_comment: Read and post comments (post requires approval)
+- github_list_prs / github_get_pr / github_get_pr_diff / github_create_pr: Browse PRs, read diffs, create PRs (create requires approval)
+- github_list_workflows: Check CI/CD status
+- github_search_code: Search code on GitHub
+- github_get_repo: Get repo metadata
 
 ## Guidelines
 1. Gather context first: read relevant files, understand the codebase structure.

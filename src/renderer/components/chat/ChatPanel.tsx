@@ -203,13 +203,32 @@ export default function ChatPanel() {
     return rootPath + '/' + resolved.join('/');
   };
 
+  /** Get GitHub token and resolve owner/repo from git remote */
+  const getGitHubContext = async (): Promise<{
+    token: string | null;
+    info: { owner: string; repo: string } | null;
+  }> => {
+    const token = await window.api.store.decryptAndGet('github_token');
+    if (!token) return { token: null, info: null };
+    if (!rootPath) return { token, info: null };
+    try {
+      const result = await window.api.terminal.runCommand(rootPath, 'git remote get-url origin', 5000);
+      const url = result.stdout.trim();
+      if (!url) return { token, info: null };
+      const info = await window.api.github.parseRemote(url);
+      return { token, info };
+    } catch {
+      return { token, info: null };
+    }
+  };
+
   // ── Auto-approve mode: destructive writes auto-accept after a short preview, user can reject ──
   const autoApproveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const [pendingApproval, setPendingApproval] = useState<{
     toolCallId: string;
     filePath: string;
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace';
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github';
     before: string;
     after: string;
     resolve: (approved: boolean) => void;
@@ -218,7 +237,7 @@ export default function ChatPanel() {
   const requestApproval = (
     toolCallId: string,
     filePath: string,
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace',
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github',
     before: string,
     after: string
   ): Promise<boolean> => {
@@ -453,6 +472,90 @@ export default function ChatPanel() {
         return val || `未找到上下文 "${args.key}"`;
       }
 
+      // ── GitHub ──
+      case 'github_list_issues': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const issues = await window.api.github.listIssues(token, info.owner, info.repo, (args.state as string) || 'open');
+        return JSON.stringify(issues, null, 2);
+      }
+      case 'github_get_issue': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const issue = await window.api.github.getIssue(token, info.owner, info.repo, args.number as number);
+        return JSON.stringify(issue, null, 2);
+      }
+      case 'github_create_issue': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const approved = await requestApproval(tc.id, `github issue: ${args.title}`, 'github', '', args.title as string);
+        if (!approved) return 'GitHub 操作被用户拒绝';
+        const result = await window.api.github.createIssue(token, info.owner, info.repo, args.title as string, (args.body as string) || '', args.labels as string[]);
+        return `已创建 issue #${result.number}: ${result.html_url}`;
+      }
+      case 'github_list_comments': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const comments = await window.api.github.listIssueComments(token, info.owner, info.repo, args.number as number);
+        return JSON.stringify(comments, null, 2);
+      }
+      case 'github_add_comment': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const approved = await requestApproval(tc.id, `评论 issue`, 'github', '', (args.body as string));
+        if (!approved) return 'GitHub 操作被用户拒绝';
+        await window.api.github.addIssueComment(token, info.owner, info.repo, args.number as number, args.body as string);
+        return `评论已发布到 issue #${args.number}`;
+      }
+      case 'github_list_prs': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const prs = await window.api.github.listPRs(token, info.owner, info.repo, (args.state as string) || 'open');
+        return JSON.stringify(prs, null, 2);
+      }
+      case 'github_get_pr': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const pr = await window.api.github.getPR(token, info.owner, info.repo, args.number as number);
+        return JSON.stringify(pr, null, 2);
+      }
+      case 'github_get_pr_diff': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const diff = await window.api.github.getPRDiff(token, info.owner, info.repo, args.number as number);
+        return diff.slice(0, 8000);
+      }
+      case 'github_create_pr': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const title = args.title as string;
+        const head = args.head as string;
+        const base = (args.base as string) || 'main';
+        const body = (args.body as string) || '';
+        const approved = await requestApproval(tc.id, `创建 PR: ${title}`, 'github', '', `head: ${head} → base: ${base}\n${body}`);
+        if (!approved) return 'GitHub 操作被用户拒绝';
+        const result = await window.api.github.createPR(token, info.owner, info.repo, title, head, base, body);
+        return `已创建 PR #${result.number}: ${result.html_url}`;
+      }
+      case 'github_list_workflows': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const runs = await window.api.github.listWorkflowRuns(token, info.owner, info.repo, args.branch as string | undefined);
+        return JSON.stringify(runs, null, 2);
+      }
+      case 'github_search_code': {
+        const { token, info } = await getGitHubContext();
+        if (!token) throw new Error('未配置 GitHub token');
+        const results = await window.api.github.searchCode(token, args.query as string, info?.owner, info?.repo);
+        return JSON.stringify(results, null, 2);
+      }
+      case 'github_get_repo': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const repo = await window.api.github.getRepo(token, info.owner, info.repo);
+        return JSON.stringify(repo, null, 2);
+      }
+
       // ── Legacy compat ──
       case 'edit_file': {
         // Map to replace_in_file internally
@@ -524,7 +627,35 @@ export default function ChatPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {pendingApproval && (
+      {pendingApproval && pendingApproval.action === 'github' ? (
+        <div className="px-3 py-2 border-t border-editor-border flex-shrink-0 bg-yellow-900/10">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-yellow-400">
+              ⚡ GitHub 操作：{pendingApproval.filePath}
+            </span>
+            <span className="text-[11px] text-yellow-400 animate-pulse">
+              3 秒后自动接受
+            </span>
+          </div>
+          <pre className="text-[11px] text-gray-300 mt-1 whitespace-pre-wrap bg-black/20 rounded p-2">
+            {pendingApproval.after.slice(0, 500)}
+          </pre>
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={handleApprove}
+              className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              接受
+            </button>
+            <button
+              onClick={handleReject}
+              className="px-2 py-0.5 text-[11px] bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              ✕ 拒绝
+            </button>
+          </div>
+        </div>
+      ) : pendingApproval ? (
         <div className="h-[250px] border-t border-editor-border flex-shrink-0 relative">
           <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-editor-sidebar/90 rounded px-2 py-1 shadow">
             <span className="text-[11px] text-yellow-400 animate-pulse">
@@ -546,7 +677,7 @@ export default function ChatPanel() {
             onReject={handleReject}
           />
         </div>
-      )}
+      ) : null}
 
       <div className="p-3 border-t border-editor-border">
         {!activeProviderId ? (
