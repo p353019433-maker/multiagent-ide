@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { v4 as uuid } from 'uuid';
 import type { AIProvider as AIProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
 import { AGENT_SYSTEM_PROMPT } from '@shared/tools';
+import { useWorkspace } from './WorkspaceContext';
 
 interface AIContextValue {
   providers: AIProviderConfig[];
@@ -39,6 +40,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [orchestrationSessions, setOrchestrationSessions] = useState<OrchestrationSession[]>([]);
+  const { rootPath } = useWorkspace();
 
   const providersRef = useRef<AIProviderConfig[]>([]);
   providersRef.current = providers;
@@ -251,13 +253,17 @@ Rules:
 Response:`;
 
       try {
-        const result = await window.api.ai.chat(activeProviderId, {
-          model: activeModel,
-          messages: [{ role: 'user', content: decomposePrompt }],
-          systemPrompt: 'You are a task decomposition engine. Return ONLY a JSON array of subtask strings. No explanations. No markdown. Just the array.',
-          maxTokens: 400,
-          temperature: 0.1,
-        } as any);
+        const result = await window.api.ai.chat(
+          activeProviderId,
+          [{ role: 'user', content: decomposePrompt }],
+          {
+            model: activeModel,
+            systemPrompt:
+              'You are a task decomposition engine. Return ONLY a JSON array of subtask strings. No explanations. No markdown. Just the array.',
+            maxTokens: 400,
+            temperature: 0.1,
+          } as any
+        );
 
         const raw = result?.content?.trim() || '[]';
         // Try to extract JSON array
@@ -278,12 +284,20 @@ Response:`;
       }
     }
 
+    if (!rootPath) {
+      throw new Error('需要先打开一个 Git 项目才能进行多 Agent 编排');
+    }
+    const baseBranch = await window.api.git.currentBranch(rootPath);
+    const parentDir = rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath;
+
     // Step 2: Create worktree for each subtask
     for (let i = 0; i < subTasks.length; i++) {
       const branch = `agent-${sessionId.slice(0, 6)}-task-${i + 1}`;
+      const wtPath = `${parentDir}_wt/${branch}`;
       try {
-        const worktreePath = await window.api.git.worktreeAdd(branch, 'main');
-        const convId = await newWorktreeConversation(worktreePath, branch, 'main');
+        const res = await window.api.git.worktreeAdd(rootPath, wtPath, branch, baseBranch);
+        if (!res.success) throw new Error(res.message);
+        const convId = await newWorktreeConversation(res.path, branch, baseBranch);
 
         tasks.push({
           id: uuid(),
@@ -354,7 +368,7 @@ Response:`;
     setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? session : s)));
 
     return session;
-  }, [activeProviderId, activeModel, newWorktreeConversation]);
+  }, [activeProviderId, activeModel, newWorktreeConversation, rootPath]);
 
   return (
     <AIContext.Provider
