@@ -85,10 +85,18 @@ Agent 模式下 AI 可以调用以下工具：
 | `replace_in_file` | 局部编辑文件 |
 | `list_directory` | 列出目录内容 |
 | `search_files` | 全项目文本搜索 |
-| `codebase_search` | 语义/概念检索（符号索引 + 相关度打分，回退全文） |
+| `codebase_search` | 向量语义检索（配置 embedding 后），回退符号/全文 |
 | `run_command` | 执行 shell 命令 |
 
 > 完整工具集共 40+ 个，涵盖文件、代码分析、Git、Worktree、命令、Web、GitHub 等。
+
+## 代码语义检索（Embedding）
+
+在「设置 → 代码索引」配置 embedding 模型后，`codebase_search` 工具使用**真正的向量语义检索**——理解概念而非仅匹配关键词（例如问"哪里处理了超时重试"，即使代码里没有这些字眼也能命中）。
+
+- **OpenAI 兼容**：支持 DeepSeek (`deepseek-embedding-v2`)、OpenAI (`text-embedding-3-small`)、本地 Ollama (`nomic-embed-text` / `bge-m3`) 等任意兼容端点
+- **增量缓存**：代码切块后按内容 hash 缓存向量到本地，仅在文件变化时重算，重启不丢
+- **优雅降级**：未配置 embedding 时自动回退到符号索引 + 全文检索，零影响
 
 ## 上下文与性能
 

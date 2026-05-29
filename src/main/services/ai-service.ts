@@ -149,6 +149,28 @@ export class AIService {
     return getFimCapability(provider.type, model) !== null;
   }
 
+  /**
+   * Embed texts via an OpenAI-compatible /embeddings endpoint. Works for
+   * DeepSeek (deepseek-embedding-v2), OpenAI (text-embedding-3-small), Ollama
+   * (nomic-embed-text/bge-m3) and any compatible provider. Returns one vector
+   * per input, in order.
+   */
+  async embed(providerId: string, model: string, texts: string[]): Promise<number[][]> {
+    const provider = this.getProviders().find((p) => p.id === providerId);
+    if (!provider) throw new Error(`Provider "${providerId}" not found`);
+    if (texts.length === 0) return [];
+
+    const apiKey = await this.getApiKey(provider);
+    const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+    const resp = await client.embeddings.create({ model, input: texts });
+    // Preserve input order via the index field.
+    const out: number[][] = new Array(texts.length);
+    for (const item of resp.data) {
+      out[item.index] = item.embedding as number[];
+    }
+    return out;
+  }
+
   async chat(
     providerId: string,
     messages: ChatMessage[],

@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useAI } from '../../context/AIContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../theme';
 import type { AIProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
+
+/** Common embedding model names by provider, shown as quick hints. */
+const EMBEDDING_MODEL_HINTS = [
+  'deepseek-embedding-v2',
+  'text-embedding-3-small',
+  'text-embedding-3-large',
+  'nomic-embed-text',
+  'bge-m3',
+];
 
 interface Props {
   onClose: () => void;
@@ -51,12 +61,59 @@ const THEME_DISPLAY_NAME: Record<ThemeName, string> = {
 
 export default function SettingsModal({ onClose }: Props) {
   const { providers, saveProvider, deleteProvider, testProvider } = useAI();
+  const { rootPath } = useWorkspace();
   const { themeName, setThemeName } = useTheme();
-  const [tab, setTab] = useState<'providers' | 'editor'>('providers');
+  const [tab, setTab] = useState<'providers' | 'editor' | 'index'>('providers');
   const [editing, setEditing] = useState<AIProvider | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [testing, setTesting] = useState(false);
+
+  // ── Embedding (codebase semantic index) config ──
+  const [embedProviderId, setEmbedProviderId] = useState('');
+  const [embedModel, setEmbedModel] = useState('');
+  const [reindexState, setReindexState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [reindexMsg, setReindexMsg] = useState('');
+
+  useEffect(() => {
+    window.api.store.get('embeddingConfig').then((c: any) => {
+      if (c?.providerId) setEmbedProviderId(c.providerId);
+      if (c?.model) setEmbedModel(c.model);
+    });
+  }, []);
+
+  const saveEmbeddingConfig = (providerId: string, model: string) => {
+    setEmbedProviderId(providerId);
+    setEmbedModel(model);
+    if (providerId && model) {
+      window.api.store.set('embeddingConfig', { providerId, model });
+    } else {
+      window.api.store.set('embeddingConfig', null);
+    }
+  };
+
+  const handleReindex = async () => {
+    if (!rootPath) {
+      setReindexState('error');
+      setReindexMsg('请先打开一个工作区');
+      return;
+    }
+    if (!embedProviderId || !embedModel) {
+      setReindexState('error');
+      setReindexMsg('请先选择 embedding 服务和模型');
+      return;
+    }
+    setReindexState('running');
+    setReindexMsg('正在构建向量索引（首次可能较慢）...');
+    const res = await window.api.codebase.reindex(rootPath);
+    if (res.ok) {
+      setReindexState('done');
+      setReindexMsg('索引已构建完成');
+    } else {
+      setReindexState('error');
+      setReindexMsg(res.error || '索引失败');
+    }
+  };
 
   const handleAddPreset = (preset: typeof PRESET_PROVIDERS[0]) => {
     const provider: AIProvider = {
@@ -127,6 +184,12 @@ export default function SettingsModal({ onClose }: Props) {
             onClick={() => setTab('editor')}
           >
             编辑器
+          </button>
+          <button
+            className={`px-4 py-2 text-xs ${tab === 'index' ? 'text-white border-b-2 border-editor-accent' : 'text-gray-400'}`}
+            onClick={() => setTab('index')}
+          >
+            代码索引
           </button>
         </div>
 
@@ -293,6 +356,72 @@ export default function SettingsModal({ onClose }: Props) {
                 >
                   保存
                 </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'index' && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                配置 embedding 模型后，<code className="text-editor-accent">codebase_search</code> 工具将使用
+                真正的向量语义检索（理解概念，而非仅匹配关键词）。留空则回退到符号 + 全文检索。
+                向量按文件内容缓存，仅在代码变化时增量重算。
+              </p>
+
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Embedding 服务</label>
+                <select
+                  value={embedProviderId}
+                  onChange={(e) => saveEmbeddingConfig(e.target.value, embedModel)}
+                  className="w-full bg-editor-bg border border-editor-border rounded px-3 py-1.5 text-sm text-white outline-none focus:border-editor-accent"
+                >
+                  <option value="">（不启用，使用关键词检索）</option>
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Embedding 模型</label>
+                <input
+                  value={embedModel}
+                  onChange={(e) => saveEmbeddingConfig(embedProviderId, e.target.value)}
+                  placeholder="deepseek-embedding-v2"
+                  list="embed-model-hints"
+                  className="w-full bg-editor-bg border border-editor-border rounded px-3 py-1.5 text-sm text-white outline-none focus:border-editor-accent"
+                />
+                <datalist id="embed-model-hints">
+                  {EMBEDDING_MODEL_HINTS.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-gray-600 mt-1">
+                  常用：deepseek-embedding-v2 · text-embedding-3-small · nomic-embed-text · bge-m3
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleReindex}
+                  disabled={reindexState === 'running'}
+                  className="px-3 py-1.5 text-xs bg-editor-accent text-white rounded hover:opacity-90 disabled:opacity-40"
+                >
+                  {reindexState === 'running' ? '构建中...' : '重建索引'}
+                </button>
+                {reindexMsg && (
+                  <span
+                    className={`text-[11px] ${
+                      reindexState === 'error'
+                        ? 'text-red-400'
+                        : reindexState === 'done'
+                        ? 'text-green-400'
+                        : 'text-gray-400'
+                    }`}
+                  >
+                    {reindexMsg}
+                  </span>
+                )}
               </div>
             </div>
           )}

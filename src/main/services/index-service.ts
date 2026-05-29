@@ -215,4 +215,218 @@ export class IndexService {
   hasResults(query: string): boolean {
     return this.search(query, 1).length > 0;
   }
+
+  // ─── Embedding (vector) index ────────────────────────────────────────────
+
+  private vectors: ChunkVector[] = [];
+  private embeddedRoot: string | null = null;
+  private buildingEmbed: Promise<void> | null = null;
+
+  /**
+   * Build (or incrementally update) the embedding index for a workspace.
+   * Chunks every code file into overlapping line windows, embeds only chunks
+   * whose content hash isn't already cached, and persists vectors to disk so a
+   * restart doesn't re-embed unchanged code.
+   *
+   * @param embed  batched embedding callback (provider-agnostic)
+   * @param cacheFile  absolute path to persist/restore the vector cache
+   */
+  async ensureEmbeddingIndex(
+    root: string,
+    embed: (texts: string[]) => Promise<number[][]>,
+    cacheFile: string
+  ): Promise<void> {
+    if (this.buildingEmbed) return this.buildingEmbed;
+    this.buildingEmbed = this.buildEmbeddings(root, embed, cacheFile).finally(() => {
+      this.buildingEmbed = null;
+    });
+    return this.buildingEmbed;
+  }
+
+  private async buildEmbeddings(
+    root: string,
+    embed: (texts: string[]) => Promise<number[][]>,
+    cacheFile: string
+  ): Promise<void> {
+    // Restore cache (keyed by chunk content hash) on first use for this root.
+    if (this.embeddedRoot !== root) {
+      this.vectors = await this.loadVectorCache(cacheFile);
+      this.embeddedRoot = root;
+    }
+    const cached = new Map(this.vectors.map((v) => [v.hash, v]));
+
+    // Collect chunks across the workspace.
+    const chunks = await this.collectChunks(root);
+
+    // Figure out which chunks are new (not in cache).
+    const pending = chunks.filter((c) => !cached.has(c.hash));
+    const next: ChunkVector[] = [];
+
+    // Re-use cached vectors for chunks that still exist.
+    const liveHashes = new Set(chunks.map((c) => c.hash));
+    for (const v of this.vectors) {
+      if (liveHashes.has(v.hash)) next.push(v);
+    }
+
+    // Embed new chunks in batches.
+    const BATCH = 64;
+    for (let i = 0; i < pending.length; i += BATCH) {
+      const batch = pending.slice(i, i + BATCH);
+      let vecs: number[][];
+      try {
+        vecs = await embed(batch.map((c) => c.text));
+      } catch {
+        // Embedding failed (no provider / network) — abort, keep what we have.
+        break;
+      }
+      for (let j = 0; j < batch.length; j++) {
+        if (!vecs[j]) continue;
+        next.push({
+          file: batch[j].file,
+          startLine: batch[j].startLine,
+          endLine: batch[j].endLine,
+          hash: batch[j].hash,
+          vector: vecs[j],
+        });
+      }
+    }
+
+    this.vectors = next;
+    await this.saveVectorCache(cacheFile, next);
+  }
+
+  /** Chunk all code files into overlapping line windows. */
+  private async collectChunks(root: string): Promise<RawChunk[]> {
+    const chunks: RawChunk[] = [];
+    const WINDOW = 60;
+    const OVERLAP = 12;
+    let fileCount = 0;
+
+    const walk = async (dir: string): Promise<void> => {
+      if (fileCount > 4000) return;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (CODE_EXTS.has(path.extname(entry.name))) {
+          fileCount++;
+          try {
+            const stat = await fs.stat(full);
+            if (stat.size > 256 * 1024) continue;
+            const content = await fs.readFile(full, 'utf-8');
+            const rel = path.relative(root, full);
+            const lines = content.split('\n');
+            for (let start = 0; start < lines.length; start += WINDOW - OVERLAP) {
+              const slice = lines.slice(start, start + WINDOW);
+              const text = slice.join('\n').trim();
+              if (text.length < 20) continue;
+              // Prefix with the path so the embedding captures file context.
+              const payload = `// ${rel}\n${text}`;
+              chunks.push({
+                file: rel,
+                startLine: start + 1,
+                endLine: Math.min(start + WINDOW, lines.length),
+                text: payload,
+                hash: hashString(rel + ':' + start + ':' + payload),
+              });
+              if (start + WINDOW >= lines.length) break;
+            }
+          } catch {
+            // skip unreadable
+          }
+        }
+      }
+    };
+
+    await walk(root);
+    return chunks;
+  }
+
+  /** Cosine-similarity search over the embedding index. */
+  semanticSearch(queryVector: number[], limit = 10): CodebaseSearchHit[] {
+    if (this.vectors.length === 0) return [];
+    const scored = this.vectors.map((v) => ({
+      v,
+      score: cosineSimilarity(queryVector, v.vector),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map(({ v, score }) => ({
+      file: v.file,
+      line: v.startLine,
+      kind: 'chunk',
+      name: `${v.startLine}-${v.endLine}`,
+      score,
+    }));
+  }
+
+  hasEmbeddings(): boolean {
+    return this.vectors.length > 0;
+  }
+
+  private async loadVectorCache(cacheFile: string): Promise<ChunkVector[]> {
+    try {
+      const raw = await fs.readFile(cacheFile, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // no cache yet
+    }
+    return [];
+  }
+
+  private async saveVectorCache(cacheFile: string, vectors: ChunkVector[]): Promise<void> {
+    try {
+      await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+      await fs.writeFile(cacheFile, JSON.stringify(vectors), 'utf-8');
+    } catch {
+      // best-effort cache
+    }
+  }
+}
+
+interface RawChunk {
+  file: string;
+  startLine: number;
+  endLine: number;
+  text: string;
+  hash: string;
+}
+
+interface ChunkVector {
+  file: string;
+  startLine: number;
+  endLine: number;
+  hash: string;
+  vector: number[];
+}
+
+/** Stable non-crypto hash (FNV-1a) for chunk content keying. */
+function hashString(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }

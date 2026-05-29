@@ -437,16 +437,56 @@ function setupIPC() {
 
   // ==================== Codebase Search ====================
 
+  // Resolve a per-workspace cache file for the embedding index.
+  const embedCacheFile = (root: string) => {
+    const key = Buffer.from(root).toString('base64').replace(/[/+=]/g, '').slice(0, 40);
+    return path.join(app.getPath('userData'), 'codebase-index', `${key}.json`);
+  };
+
+  // Read embedding config: { providerId, model } | null. When set, codebase
+  // search uses real vector similarity; otherwise it falls back to the symbol
+  // index + full-text search.
+  const getEmbeddingConfig = (): { providerId: string; model: string } | null => {
+    const cfg = storeService.get('embeddingConfig') as { providerId?: string; model?: string } | undefined;
+    if (cfg?.providerId && cfg?.model) return { providerId: cfg.providerId, model: cfg.model };
+    return null;
+  };
+
   ipcMain.handle('codebase:search', async (_, root: string, query: string, limit?: number) => {
-    await indexService.ensureIndex(root);
-    const hits = indexService.search(query, limit || 10);
-    if (hits.length > 0) {
-      return { hits, fellBack: false as const };
+    const max = limit || 10;
+    const embedCfg = getEmbeddingConfig();
+
+    // 1. Real semantic search when an embedding provider is configured.
+    if (embedCfg) {
+      try {
+        await indexService.ensureEmbeddingIndex(
+          root,
+          (texts) => aiService.embed(embedCfg.providerId, embedCfg.model, texts),
+          embedCacheFile(root)
+        );
+        if (indexService.hasEmbeddings()) {
+          const [qVec] = await aiService.embed(embedCfg.providerId, embedCfg.model, [query]);
+          if (qVec) {
+            const hits = indexService.semanticSearch(qVec, max);
+            if (hits.length) return { hits, fellBack: false as const, mode: 'embedding' as const };
+          }
+        }
+      } catch {
+        // fall through to symbol/text search
+      }
     }
-    // Fall back to full-text search when the symbol/path index has nothing.
+
+    // 2. Symbol/path index.
+    await indexService.ensureIndex(root);
+    const hits = indexService.search(query, max);
+    if (hits.length > 0) {
+      return { hits, fellBack: false as const, mode: 'symbol' as const };
+    }
+
+    // 3. Full-text search.
     const text = await fileService.searchFiles(root, query);
     return {
-      hits: text.slice(0, limit || 10).map((r) => ({
+      hits: text.slice(0, max).map((r) => ({
         file: path.relative(root, r.path),
         line: r.line,
         kind: 'text',
@@ -454,7 +494,24 @@ function setupIPC() {
         score: 1,
       })),
       fellBack: true as const,
+      mode: 'text' as const,
     };
+  });
+
+  // Pre-build / refresh the embedding index on demand (Settings "重建索引").
+  ipcMain.handle('codebase:reindex', async (_, root: string) => {
+    const embedCfg = getEmbeddingConfig();
+    if (!embedCfg) return { ok: false, error: '未配置 embedding 模型' };
+    try {
+      await indexService.ensureEmbeddingIndex(
+        root,
+        (texts) => aiService.embed(embedCfg.providerId, embedCfg.model, texts),
+        embedCacheFile(root)
+      );
+      return { ok: true, chunks: indexService.hasEmbeddings() };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
   });
 
   // ==================== Lint check (structured, for self-heal loop) ====================
