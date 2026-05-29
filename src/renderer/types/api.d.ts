@@ -114,6 +114,13 @@ declare global {
       };
       lint: {
         run: (cwd: string, filePath?: string) => Promise<string>;
+        check: (
+          cwd: string,
+          files?: string[]
+        ) => Promise<{ hasErrors: boolean; output: string }>;
+      };
+      rules: {
+        load: (root: string) => Promise<{ file: string; content: string } | null>;
       };
       symbols: {
         extract: (filePath: string) => Promise<string>;
