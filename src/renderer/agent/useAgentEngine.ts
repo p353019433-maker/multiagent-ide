@@ -12,6 +12,7 @@ import type {
   ToolCall,
   AgentToolExecution,
   Checkpoint,
+  Artifact,
 } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
@@ -36,6 +37,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   const [streamContent, setStreamContent] = useState('');
   const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
   // Snapshots of files captured before the current turn modifies them, so a
   // checkpoint can be created when the turn finishes. Keyed by path.
@@ -305,9 +307,75 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         })),
       };
       setCheckpoints((prev) => [cp, ...prev].slice(0, 20));
+
+      // Produce a verifiable artifact: what changed + verification result.
+      await generateArtifact(turnLabel || '未命名改动', Array.from(turnSnapshots.current.keys()));
     }
 
     setIsStreaming(false);
+  };
+
+  /**
+   * Build an Antigravity-style verifiable deliverable for a turn that changed
+   * files: a markdown report listing the changed files, the post-change lint /
+   * type verification result, and a git diff stat. Persisted under
+   * .ide/artifacts/ so it survives and can be opened in the editor.
+   */
+  const generateArtifact = async (label: string, files: string[]) => {
+    let verified = true;
+    let lintSection = '';
+    if (rootPath) {
+      const check = await window.api.lint.check(rootPath, files).catch(() => null);
+      if (check) {
+        verified = !check.hasErrors;
+        lintSection = check.hasErrors
+          ? '❌ **验证未通过**\n\n```\n' + check.output.slice(0, 2000) + '\n```'
+          : '✅ **验证通过**（ESLint + tsc 无错误）';
+      }
+    }
+
+    let diffStat = '';
+    if (rootPath) {
+      try {
+        const out = await window.api.terminal.runCommand(rootPath, 'git diff --stat', 8000);
+        diffStat = (out.stdout || '').trim();
+      } catch {
+        // ignore
+      }
+    }
+
+    const rel = (p: string) => (rootPath && p.startsWith(rootPath) ? p.slice(rootPath.length + 1) : p);
+    const ts = new Date();
+    const report =
+      `# 改动交付报告：${label}\n\n` +
+      `> 生成时间：${ts.toLocaleString()}\n\n` +
+      `## 改动文件（${files.length}）\n` +
+      files.map((f) => `- \`${rel(f)}\``).join('\n') +
+      `\n\n## 验证\n${lintSection || '（未运行验证）'}\n` +
+      (diffStat ? `\n## Diff 统计\n\`\`\`\n${diffStat}\n\`\`\`\n` : '');
+
+    const artifact: Artifact = {
+      id: uuid(),
+      label,
+      createdAt: ts.getTime(),
+      files: files.map(rel),
+      verified,
+      report,
+    };
+
+    // Persist under .ide/artifacts/.
+    if (rootPath) {
+      try {
+        const fname = `${ts.toISOString().replace(/[:.]/g, '-')}.md`;
+        const apath = `${rootPath}/.ide/artifacts/${fname}`;
+        await window.api.fs.writeFile(apath, report);
+        artifact.path = apath;
+      } catch {
+        // best-effort
+      }
+    }
+
+    setArtifacts((prev) => [artifact, ...prev].slice(0, 20));
   };
 
   const abort = () => {
@@ -339,6 +407,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
     streamContent,
     toolExecutions,
     checkpoints,
+    artifacts,
     runTurn,
     abort,
     revertCheckpoint,

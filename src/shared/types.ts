@@ -45,6 +45,23 @@ export interface ChatMessage {
 }
 
 /**
+ * A verifiable deliverable produced at the end of an agent turn that changed
+ * files (Antigravity-style "Artifact"): what changed + verification result.
+ */
+export interface Artifact {
+  id: string;
+  label: string;
+  createdAt: number;
+  files: string[];
+  /** Whether post-change lint/type verification passed. */
+  verified: boolean;
+  /** Markdown report (also persisted under .ide/artifacts/). */
+  report: string;
+  /** Absolute path of the persisted report, if saved. */
+  path?: string;
+}
+
+/**
  * A snapshot of file contents taken before an agent turn modifies them, so the
  * user can revert all changes from that turn in one click.
  */
