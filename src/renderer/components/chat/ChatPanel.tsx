@@ -5,6 +5,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
 import ChatMessage from './ChatMessage';
 import AgentToolView from './AgentToolView';
+import DiffPreview from '../editor/DiffPreview';
 import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution } from '@shared/types';
 import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
 
@@ -205,7 +206,7 @@ export default function ChatPanel() {
   const [pendingApproval, setPendingApproval] = useState<{
     toolCallId: string;
     filePath: string;
-    action: 'write' | 'edit' | 'search_and_replace';
+    action: 'write' | 'edit' | 'search_and_replace' | 'replace_in_file';
     before: string;
     after: string;
     resolve: (approved: boolean) => void;
@@ -214,7 +215,7 @@ export default function ChatPanel() {
   const requestApproval = (
     toolCallId: string,
     filePath: string,
-    action: 'write' | 'edit',
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace',
     before: string,
     after: string
   ): Promise<boolean> => {
@@ -510,34 +511,15 @@ export default function ChatPanel() {
       </div>
 
       {pendingApproval && (
-        <div className="px-3 py-2 border-t border-editor-border bg-yellow-900/20">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-yellow-400">
-              ⚠️ {pendingApproval.action === 'write' ? '写入' : '编辑'}文件：{pendingApproval.filePath.split('/').pop()}
-            </span>
-          </div>
-          <div className="bg-black/30 rounded p-2 mb-2 max-h-32 overflow-y-auto">
-            <pre className="text-[11px] text-gray-300 whitespace-pre-wrap">
-              {pendingApproval.action === 'edit'
-                ? `--- 修改前\n+++ 修改后\n\n${pendingApproval.after.slice(0, 500)}`
-                : pendingApproval.after.slice(0, 500)}
-              {pendingApproval.after.length > 500 && '\n... （已截断）'}
-            </pre>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleApprove}
-              className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-            >
-              ✓ 批准
-            </button>
-            <button
-              onClick={handleReject}
-              className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-            >
-              ✕ 拒绝
-            </button>
-          </div>
+        <div className="h-[250px] border-t border-editor-border flex-shrink-0">
+          <DiffPreview
+            original={pendingApproval.before}
+            modified={pendingApproval.after}
+            filePath={pendingApproval.filePath}
+            visible={true}
+            onAccept={handleApprove}
+            onReject={handleReject}
+          />
         </div>
       )}
 
