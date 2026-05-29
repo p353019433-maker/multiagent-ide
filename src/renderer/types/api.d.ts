@@ -3,6 +3,7 @@ import type { FileNode } from '@shared/types';
 interface CodebaseSearchResult {
   hits: { file: string; line: number; kind: string; name: string; score: number }[];
   fellBack: boolean;
+  mode?: 'embedding' | 'symbol' | 'text';
 }
 
 declare global {
@@ -122,6 +123,16 @@ declare global {
       rules: {
         load: (root: string) => Promise<{ file: string; content: string } | null>;
       };
+      codeintel: {
+        definition: (
+          root: string,
+          name: string
+        ) => Promise<{ file: string; line: number; kind: string; name: string; score: number }[]>;
+        references: (
+          root: string,
+          name: string
+        ) => Promise<{ file: string; line: number; preview: string }[]>;
+      };
       symbols: {
         extract: (filePath: string) => Promise<string>;
       };
@@ -132,6 +143,7 @@ declare global {
       };
       codebase: {
         search: (root: string, query: string, limit?: number) => Promise<CodebaseSearchResult>;
+        reindex: (root: string) => Promise<{ ok: boolean; error?: string; chunks?: boolean }>;
       };
       github: {
         listIssues: (token: string, owner: string, repo: string, state?: string) => Promise<any>;

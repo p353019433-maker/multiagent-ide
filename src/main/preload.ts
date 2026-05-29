@@ -139,6 +139,14 @@ const api = {
     load: (root: string) => ipcRenderer.invoke('rules:load', root),
   },
 
+  // Code intelligence (navigation)
+  codeintel: {
+    definition: (root: string, name: string) =>
+      ipcRenderer.invoke('codeintel:definition', root, name),
+    references: (root: string, name: string) =>
+      ipcRenderer.invoke('codeintel:references', root, name),
+  },
+
   // Symbols
   symbols: {
     extract: (filePath: string) => ipcRenderer.invoke('symbols:extract', filePath),
@@ -156,6 +164,7 @@ const api = {
   codebase: {
     search: (root: string, query: string, limit?: number) =>
       ipcRenderer.invoke('codebase:search', root, query, limit),
+    reindex: (root: string) => ipcRenderer.invoke('codebase:reindex', root),
   },
 
   // GitHub

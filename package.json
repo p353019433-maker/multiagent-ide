@@ -10,12 +10,14 @@
     "build:main": "tsc -p tsconfig.main.json",
     "postinstall": "electron-rebuild",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "electron-store": "^6.0.1",
     "monaco-editor": "^0.52.0",
     "node-pty": "^1.0.0",
@@ -44,6 +46,7 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vite-plugin-monaco-editor": "^1.1.0",
+    "vitest": "^2.1.9",
     "wait-on": "^8.0.1"
   },
   "build": {
