@@ -206,7 +206,21 @@ export class AIService {
     for (const msg of messages) {
       if (msg.role === 'system') continue;
       if (msg.role === 'user') {
-        result.push({ role: 'user', content: msg.content });
+        if (msg.images?.length) {
+          // Multimodal user turn: text + image_url parts (OpenAI vision format).
+          result.push({
+            role: 'user',
+            content: [
+              { type: 'text' as const, text: msg.content },
+              ...msg.images.map((url) => ({
+                type: 'image_url' as const,
+                image_url: { url },
+              })),
+            ],
+          });
+        } else {
+          result.push({ role: 'user', content: msg.content });
+        }
       } else if (msg.role === 'assistant') {
         if (msg.toolCalls?.length) {
           result.push({
@@ -386,7 +400,29 @@ export class AIService {
       if (msg.role === 'system') continue;
 
       if (msg.role === 'user') {
-        result.push({ role: 'user', content: msg.content });
+        if (msg.images?.length) {
+          // Multimodal user turn for Anthropic: parse data URLs into base64
+          // image source blocks.
+          const blocks: Anthropic.ContentBlockParam[] = [
+            { type: 'text', text: msg.content },
+          ];
+          for (const url of msg.images) {
+            const m = url.match(/^data:(image\/[a-zA-Z.+-]+);base64,(.+)$/);
+            if (m) {
+              blocks.push({
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: m[1] as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                  data: m[2],
+                },
+              });
+            }
+          }
+          result.push({ role: 'user', content: blocks });
+        } else {
+          result.push({ role: 'user', content: msg.content });
+        }
       } else if (msg.role === 'assistant') {
         if (msg.toolCalls?.length) {
           result.push({

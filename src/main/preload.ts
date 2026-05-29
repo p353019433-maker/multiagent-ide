@@ -131,6 +131,12 @@ const api = {
   // Lint
   lint: {
     run: (cwd: string, filePath?: string) => ipcRenderer.invoke('lint:run', cwd, filePath),
+    check: (cwd: string, files?: string[]) => ipcRenderer.invoke('lint:check', cwd, files),
+  },
+
+  // Project rules (.cursorrules / AGENTS.md)
+  rules: {
+    load: (root: string) => ipcRenderer.invoke('rules:load', root),
   },
 
   // Symbols

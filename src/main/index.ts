@@ -409,6 +409,32 @@ function setupIPC() {
     return Object.keys(readContextStore());
   });
 
+  // ==================== Project Rules ====================
+
+  // Load project-level agent rules (like Cursor's .cursorrules / AGENTS.md).
+  // The first existing file wins; content is appended to the agent system prompt.
+  ipcMain.handle('rules:load', async (_, root: string) => {
+    const candidates = [
+      'AGENTS.md',
+      '.cursorrules',
+      '.cursor/rules',
+      '.github/copilot-instructions.md',
+      'CLAUDE.md',
+    ];
+    for (const rel of candidates) {
+      try {
+        const full = path.join(root, rel);
+        const content = await fs.readFile(full, 'utf-8');
+        if (content.trim()) {
+          return { file: rel, content: content.slice(0, 8000) };
+        }
+      } catch {
+        // not present, try next
+      }
+    }
+    return null;
+  });
+
   // ==================== Codebase Search ====================
 
   ipcMain.handle('codebase:search', async (_, root: string, query: string, limit?: number) => {
@@ -429,6 +455,62 @@ function setupIPC() {
       })),
       fellBack: true as const,
     };
+  });
+
+  // ==================== Lint check (structured, for self-heal loop) ====================
+
+  // A faster, scoped diagnostic check that returns a structured result the agent
+  // loop can act on. Used to auto-feed errors back after the agent edits files.
+  ipcMain.handle('lint:check', async (_, cwd: string, files?: string[]) => {
+    const target =
+      files && files.length
+        ? files.map((f) => `"${f}"`).join(' ')
+        : '.';
+    const ext = '--ext .ts,.tsx,.js,.jsx';
+    let output = '';
+    let hasErrors = false;
+
+    try {
+      const eslintCmd =
+        files && files.length
+          ? `npx eslint --format compact ${target} 2>&1 || true`
+          : `npx eslint --format compact . ${ext} 2>&1 || true`;
+      const out = await terminalService.runCommand(cwd, eslintCmd, 30_000);
+      const text = (out.stdout + out.stderr).trim();
+      if (text && /error/i.test(text)) {
+        hasErrors = true;
+        output += text + '\n';
+      }
+    } catch {
+      // eslint unavailable — ignore
+    }
+
+    try {
+      const out = await terminalService.runCommand(
+        cwd,
+        'npx tsc --noEmit --pretty false 2>&1 || true',
+        45_000
+      );
+      const text = out.stdout.trim();
+      if (text && /error TS\d+/i.test(text)) {
+        hasErrors = true;
+        // If specific files were edited, only surface diagnostics for them to
+        // keep the feedback focused.
+        if (files && files.length) {
+          const wanted = files.map((f) => path.basename(f));
+          const lines = text
+            .split('\n')
+            .filter((l) => wanted.some((w) => l.includes(w)));
+          output += (lines.length ? lines.join('\n') : text).slice(0, 4000) + '\n';
+        } else {
+          output += text.slice(0, 4000) + '\n';
+        }
+      }
+    } catch {
+      // tsc unavailable — ignore
+    }
+
+    return { hasErrors, output: output.trim() };
   });
 }
 
