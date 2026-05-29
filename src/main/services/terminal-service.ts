@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { v4 as uuid } from 'uuid';
 import os from 'os';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 
 // node-pty is optional: if not available we fall back to a no-op stub.
 // This keeps the project runnable without native compilation.
@@ -17,8 +17,17 @@ interface PtySession {
   proc: any;
 }
 
+interface BackgroundSession {
+  id: string;
+  proc: ChildProcess;
+  output: string;
+  running: boolean;
+  exitCode: number | null;
+}
+
 export class TerminalService {
   private sessions = new Map<string, PtySession>();
+  private bgSessions = new Map<string, BackgroundSession>();
 
   create(cwd: string, win: BrowserWindow): string | null {
     if (!pty) return null;
@@ -69,10 +78,15 @@ export class TerminalService {
       session.proc.kill();
     }
     this.sessions.clear();
+    // Also kill background sessions
+    for (const session of this.bgSessions.values()) {
+      session.proc.kill();
+    }
+    this.bgSessions.clear();
   }
 
   /** One-shot command execution for Agent's run_command tool. */
-  runCommand(cwd: string, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  runCommand(cwd: string, command: string, timeoutMs: number = 60000): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve) => {
       const shell = os.platform() === 'win32' ? 'powershell.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['-Command', command] : ['-c', command];
@@ -81,23 +95,80 @@ export class TerminalService {
       let stdout = '';
       let stderr = '';
 
-      const timeout = setTimeout(() => {
-        proc.kill();
-        resolve({ stdout, stderr: stderr + '\n[Command timed out after 60s]', exitCode: -1 });
-      }, 60000);
+      let timeout: NodeJS.Timeout | null = null;
+      if (timeoutMs > 0) {
+        timeout = setTimeout(() => {
+          proc.kill();
+          resolve({ stdout, stderr: stderr + '\n[命令超时]', exitCode: -1 });
+        }, timeoutMs);
+      }
 
-      proc.stdout.on('data', (data) => (stdout += data.toString()));
-      proc.stderr.on('data', (data) => (stderr += data.toString()));
+      proc.stdout?.on('data', (data) => (stdout += data.toString()));
+      proc.stderr?.on('data', (data) => (stderr += data.toString()));
 
       proc.on('close', (code) => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         resolve({ stdout, stderr, exitCode: code ?? 0 });
       });
 
       proc.on('error', (err) => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         resolve({ stdout, stderr: err.message, exitCode: -1 });
       });
     });
+  }
+
+  // ── Background Commands ──
+
+  startBackgroundCommand(cwd: string, command: string): string {
+    const shell = os.platform() === 'win32' ? 'powershell.exe' : '/bin/bash';
+    const args = os.platform() === 'win32' ? ['-Command', command] : ['-c', command];
+
+    const id = uuid();
+    const proc = spawn(shell, args, { cwd });
+    const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null };
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      session.output += data.toString();
+      // Keep only last 100KB
+      if (session.output.length > 100_000) {
+        session.output = session.output.slice(-80_000);
+      }
+    });
+    proc.stderr?.on('data', (data: Buffer) => {
+      session.output += data.toString();
+      if (session.output.length > 100_000) {
+        session.output = session.output.slice(-80_000);
+      }
+    });
+    proc.on('close', (code) => {
+      session.output += `\n[进程已退出，退出码 ${code}]`;
+      session.running = false;
+      session.exitCode = code ?? 0;
+    });
+    proc.on('error', (err) => {
+      session.output += `\n[错误：${err.message}]`;
+      session.running = false;
+      session.exitCode = -1;
+    });
+
+    this.bgSessions.set(id, session);
+    return id;
+  }
+
+  getBackgroundOutput(id: string): { output: string; running: boolean; exitCode: number | null } | null {
+    const session = this.bgSessions.get(id);
+    if (!session) return null;
+    return { output: session.output, running: session.running, exitCode: session.exitCode };
+  }
+
+  killBackgroundCommand(id: string): boolean {
+    const session = this.bgSessions.get(id);
+    if (!session) return false;
+    session.proc.kill();
+    session.output += '\n[被用户终止]';
+    session.running = false;
+    this.bgSessions.delete(id);
+    return true;
   }
 }
