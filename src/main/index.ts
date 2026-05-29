@@ -1,15 +1,21 @@
 import { app, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron';
 import path from 'path';
+import fs from 'fs/promises';
 import { FileService } from './services/file-service';
 import { TerminalService } from './services/terminal-service';
 import { StoreService } from './services/store-service';
 import { AIService } from './services/ai-service';
+import { GitService } from './services/git-service';
+import { WebService } from './services/web-service';
 
 let mainWindow: BrowserWindow | null = null;
 let fileService: FileService;
 let terminalService: TerminalService;
 let storeService: StoreService;
 let aiService: AIService;
+let gitService: GitService;
+let webService: WebService;
+let contextStore: Map<string, string> = new Map();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -39,7 +45,8 @@ function createWindow() {
 }
 
 function setupIPC() {
-  // File operations
+  // ==================== Dialog ====================
+
   ipcMain.handle('dialog:openFolder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
@@ -47,6 +54,8 @@ function setupIPC() {
     if (result.canceled) return null;
     return result.filePaths[0];
   });
+
+  // ==================== File System ====================
 
   ipcMain.handle('fs:readDirectory', async (_, dirPath: string) => {
     return fileService.readDirectory(dirPath);
@@ -80,7 +89,28 @@ function setupIPC() {
     return fileService.searchFiles(rootPath, query);
   });
 
-  // Terminal operations
+  ipcMain.handle('fs:findFiles', async (_, rootPath: string, pattern: string) => {
+    return fileService.findFiles(rootPath, pattern);
+  });
+
+  ipcMain.handle('fs:getFileInfo', async (_, filePath: string) => {
+    return fileService.getFileInfo(filePath);
+  });
+
+  ipcMain.handle('fs:readMultipleFiles', async (_, paths: string[]) => {
+    const results: Record<string, string> = {};
+    for (const p of paths) {
+      try {
+        results[p] = await fileService.readFile(p);
+      } catch {
+        results[p] = `[读取失败：${p}]`;
+      }
+    }
+    return results;
+  });
+
+  // ==================== Terminal ====================
+
   ipcMain.handle('terminal:create', async (_, cwd: string) => {
     if (!mainWindow) return null;
     return terminalService.create(cwd, mainWindow);
@@ -98,11 +128,24 @@ function setupIPC() {
     terminalService.close(id);
   });
 
-  ipcMain.handle('terminal:runCommand', async (_, cwd: string, command: string) => {
-    return terminalService.runCommand(cwd, command);
+  ipcMain.handle('terminal:runCommand', async (_, cwd: string, command: string, timeoutMs?: number) => {
+    return terminalService.runCommand(cwd, command, timeoutMs);
   });
 
-  // Store operations (settings, API keys)
+  ipcMain.handle('terminal:runBackgroundCommand', async (_, cwd: string, command: string) => {
+    return terminalService.startBackgroundCommand(cwd, command);
+  });
+
+  ipcMain.handle('terminal:getBackgroundOutput', async (_, id: string) => {
+    return terminalService.getBackgroundOutput(id);
+  });
+
+  ipcMain.handle('terminal:killBackgroundCommand', async (_, id: string) => {
+    return terminalService.killBackgroundCommand(id);
+  });
+
+  // ==================== Store ====================
+
   ipcMain.handle('store:get', async (_, key: string) => {
     return storeService.get(key);
   });
@@ -130,7 +173,8 @@ function setupIPC() {
     return null;
   });
 
-  // AI operations
+  // ==================== AI ====================
+
   ipcMain.handle('ai:chat', async (_, providerId: string, messages: unknown[], options: unknown) => {
     return aiService.chat(providerId, messages as any, options as any);
   });
@@ -167,6 +211,126 @@ function setupIPC() {
   ipcMain.handle('ai:testConnection', async (_, providerId: string) => {
     return aiService.testConnection(providerId);
   });
+
+  // ==================== Git ====================
+
+  ipcMain.handle('git:status', async (_, cwd: string) => {
+    return gitService.status(cwd);
+  });
+
+  ipcMain.handle('git:diff', async (_, cwd: string, staged?: boolean, filePath?: string) => {
+    return gitService.diff(cwd, staged, filePath);
+  });
+
+  ipcMain.handle('git:log', async (_, cwd: string, count?: number) => {
+    return gitService.log(cwd, count);
+  });
+
+  // ==================== Web ====================
+
+  ipcMain.handle('web:search', async (_, query: string, count?: number) => {
+    return webService.search(query, count);
+  });
+
+  ipcMain.handle('web:fetch', async (_, url: string, extractMode?: 'markdown' | 'text') => {
+    return webService.fetchUrl(url, extractMode);
+  });
+
+  // ==================== Lint ====================
+
+  ipcMain.handle('lint:run', async (_, cwd: string, filePath?: string) => {
+    return runLint(cwd, filePath);
+  });
+
+  // ==================== Symbols ====================
+
+  ipcMain.handle('symbols:extract', async (_, filePath: string) => {
+    return extractSymbols(filePath);
+  });
+
+  // ==================== Context ====================
+
+  ipcMain.handle('context:save', async (_, key: string, content: string, merge?: boolean) => {
+    if (merge && contextStore.has(key)) {
+      contextStore.set(key, contextStore.get(key)! + '\n\n' + content);
+    } else {
+      contextStore.set(key, content);
+    }
+  });
+
+  ipcMain.handle('context:load', async (_, key: string) => {
+    return contextStore.get(key) || null;
+  });
+}
+
+// ── Lint helper ──
+
+async function runLint(cwd: string, filePath?: string) {
+  const results: string[] = [];
+  try {
+    // Try npx eslint
+    const cmd = filePath
+      ? `npx eslint --format compact "${filePath}" 2>&1 || true`
+      : `npx eslint --format compact . --ext .ts,.tsx,.js,.jsx 2>&1 || true`;
+    const { TerminalService } = await import('./services/terminal-service');
+    const tmpTs = new TerminalService();
+    const out = await tmpTs.runCommand(cwd, cmd, 30_000);
+    if (out.stdout.trim()) results.push(out.stdout.trim());
+  } catch {
+    results.push('ESLint 不可用或未配置');
+  }
+
+  try {
+    // Try npx tsc --noEmit
+    const out = await terminalService.runCommand(cwd, 'npx tsc --noEmit --pretty false 2>&1 || true', 30_000);
+    if (out.stdout.trim()) results.push(out.stdout.trim());
+  } catch {
+    // TypeScript not available
+  }
+
+  return results.join('\n') || '未发现问题';
+}
+
+// ── Symbol extraction ──
+
+async function extractSymbols(filePath: string): Promise<string> {
+  try {
+    const content = await fileService.readFile(filePath);
+    const ext = path.extname(filePath);
+    if (!['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
+      return '仅支持 TypeScript/JavaScript 文件';
+    }
+    return parseSymbols(content);
+  } catch {
+    return '无法读取文件';
+  }
+}
+
+function parseSymbols(source: string): string {
+  const lines = source.split('\n');
+  const symbols: string[] = [];
+
+  const patterns: { re: RegExp; label: string }[] = [
+    { re: /^(export\s+)?(async\s+)?function\s+(\w+)/, label: 'function' },
+    { re: /^(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s*)?\(/, label: 'const-function' },
+    { re: /^(export\s+)?class\s+(\w+)/, label: 'class' },
+    { re: /^(export\s+)?interface\s+(\w+)/, label: 'interface' },
+    { re: /^(export\s+)?type\s+(\w+)/, label: 'type' },
+    { re: /^(export\s+)?enum\s+(\w+)/, label: 'enum' },
+    { re: /^export\s+default\s+(function|class|async\s+function)\s+(\w+)?/, label: 'export-default' },
+  ];
+
+  for (let i = 0; i < lines.length; i++) {
+    for (const { re, label } of patterns) {
+      const m = lines[i].match(re);
+      if (m) {
+        const name = m[3] || m[2] || '(default)';
+        symbols.push(`L${i + 1} [${label}] ${name}`);
+        break;
+      }
+    }
+  }
+  return symbols.join('\n') || '未找到符号';
 }
 
 app.whenReady().then(() => {
@@ -174,6 +338,8 @@ app.whenReady().then(() => {
   terminalService = new TerminalService();
   storeService = new StoreService();
   aiService = new AIService(storeService);
+  gitService = new GitService();
+  webService = new WebService();
 
   setupIPC();
   createWindow();

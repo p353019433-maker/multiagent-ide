@@ -205,7 +205,7 @@ export default function ChatPanel() {
   const [pendingApproval, setPendingApproval] = useState<{
     toolCallId: string;
     filePath: string;
-    action: 'write' | 'edit';
+    action: 'write' | 'edit' | 'search_and_replace';
     before: string;
     after: string;
     resolve: (approved: boolean) => void;
@@ -237,9 +237,18 @@ export default function ChatPanel() {
     const args = tc.arguments;
 
     switch (tc.name) {
+      // ── File Operations ──
       case 'read_file': {
         const filePath = resolvePath(args.path as string);
         const content = await window.api.fs.readFile(filePath);
+        const offset = (args.offset as number) || 0;
+        const limit = (args.limit as number) || 0;
+        if (offset || limit) {
+          const lines = content.split('\n');
+          const start = Math.max(0, offset - 1);
+          const end = limit ? start + limit : lines.length;
+          return lines.slice(start, end).join('\n').slice(0, 10000);
+        }
         return content.slice(0, 10000);
       }
       case 'write_file': {
@@ -256,23 +265,25 @@ export default function ChatPanel() {
         await window.api.fs.writeFile(filePath, newContent);
         return `已写入文件：${args.path}`;
       }
-      case 'edit_file': {
+      case 'replace_in_file': {
         const filePath = resolvePath(args.path as string);
         const content = await window.api.fs.readFile(filePath);
-        const oldStr = args.oldString as string;
-        const newStr = args.newString as string;
+        const oldStr = args.old_str as string;
+        const newStr = args.new_str as string;
+        const replaceAll = args.replace_all as boolean;
         const occurrences = content.split(oldStr).length - 1;
         if (occurrences === 0) {
-          throw new Error('文件中未找到 oldString');
+          throw new Error('文件中未找到 old_str');
         }
-        if (occurrences > 1) {
-          throw new Error(`oldString 在文件中出现 ${occurrences} 次，不唯一。请添加更多上下文以消除歧义。`);
+        if (!replaceAll && occurrences > 1) {
+          throw new Error(`old_str 在文件中出现 ${occurrences} 次，不唯一。请添加更多上下文或设置 replace_all: true。`);
         }
-        const updated = content.replace(oldStr, newStr);
+        const updated = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
         const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
         if (!approved) return '文件编辑被用户拒绝';
         await window.api.fs.writeFile(filePath, updated);
-        return `已编辑文件：${args.path}`;
+        const count = replaceAll ? occurrences : 1;
+        return `已在 ${args.path} 中替换 ${count} 处匹配`;
       }
       case 'list_directory': {
         const dirPath = resolvePath(args.path as string);
@@ -287,12 +298,163 @@ export default function ChatPanel() {
           .map((r: any) => `${r.path}:${r.line} ${r.preview}`)
           .join('\n');
       }
+      case 'find_files': {
+        if (!rootPath) throw new Error('未打开工作区');
+        const dir = args.directory ? resolvePath(args.directory as string) : rootPath;
+        const files = await window.api.fs.findFiles(dir, args.pattern as string);
+        return files.join('\n') || '未找到匹配的文件';
+      }
+      case 'get_file_info': {
+        const filePath = resolvePath(args.path as string);
+        const info = await window.api.fs.getFileInfo(filePath);
+        const sizeStr = info.size >= 1024 * 1024
+          ? (info.size / 1024 / 1024).toFixed(1) + ' MB'
+          : info.size >= 1024
+          ? (info.size / 1024).toFixed(1) + ' KB'
+          : info.size + ' B';
+        return `路径: ${filePath}\n大小: ${sizeStr}\n修改时间: ${info.modified}\n类型: ${info.isDirectory ? '目录' : '文件'}`;
+      }
+
+      // ── Code Analysis ──
+      case 'read_lints': {
+        const cwd = rootPath || '/';
+        const filePath = args.path ? resolvePath(args.path as string) : undefined;
+        return await window.api.lint.run(cwd, filePath);
+      }
+      case 'extract_symbols': {
+        const filePath = resolvePath(args.path as string);
+        return await window.api.symbols.extract(filePath);
+      }
+
+      // ── Git ──
+      case 'git_status': {
+        const cwd = rootPath || process.cwd();
+        return await window.api.git.status(cwd);
+      }
+      case 'git_diff': {
+        const cwd = rootPath || process.cwd();
+        const staged = args.staged as boolean;
+        const filePath = args.path ? resolvePath(args.path as string) : undefined;
+        return await window.api.git.diff(cwd, staged, filePath);
+      }
+      case 'git_log': {
+        const cwd = rootPath || process.cwd();
+        return await window.api.git.log(cwd, (args.count as number) || 10);
+      }
+
+      // ── Commands ──
       case 'run_command': {
         const cwd = rootPath || '/';
-        const result = await window.api.terminal.runCommand(cwd, args.command as string);
+        const timeoutMs = (args.timeout_ms as number) ?? 60000;
+        const result = await window.api.terminal.runCommand(cwd, args.command as string, timeoutMs);
         const output = (result.stdout + result.stderr).slice(0, 5000);
         return `退出码：${result.exitCode}\n${output}`;
       }
+      case 'run_background_command': {
+        const cwd = rootPath || '/';
+        const id = await window.api.terminal.runBackgroundCommand(cwd, args.command as string);
+        return `后台任务已启动，session ID: ${id}\n使用 get_background_output("${id}") 查看输出`;
+      }
+      case 'get_background_output': {
+        const info = await window.api.terminal.getBackgroundOutput(args.session_id as string);
+        if (!info) return 'session 不存在或已过期';
+        let status = info.running ? '运行中' : `已退出 (退出码 ${info.exitCode})`;
+        return `[${status}]\n${info.output}`;
+      }
+      case 'kill_background_command': {
+        const ok = await window.api.terminal.killBackgroundCommand(args.session_id as string);
+        return ok ? '后台任务已终止' : '未找到该 session';
+      }
+
+      // ── Web ──
+      case 'web_search': {
+        const results = await window.api.web.search(args.query as string, (args.count as number) || 5);
+        return results.map((r: any) => `${r.title}\n${r.url}\n${r.snippet}`).join('\n\n') || '无搜索结果';
+      }
+      case 'web_fetch': {
+        return await window.api.web.fetch(args.url as string, (args.extract_mode as any) || 'markdown');
+      }
+      case 'preview_url': {
+        const url = args.url as string;
+        // Open in system browser for now (can later embed in a view)
+        window.open(url, '_blank');
+        return `已在浏览器中打开 ${url}`;
+      }
+
+      // ── Multi-file ──
+      case 'read_multiple_files': {
+        const paths = (args.paths as string[]).map((p) => resolvePath(p));
+        const files = await window.api.fs.readMultipleFiles(paths);
+        return Object.entries(files)
+          .map(([p, content]) => `=== ${p} ===\n${content.slice(0, 5000)}`)
+          .join('\n\n');
+      }
+      case 'search_and_replace': {
+        if (!rootPath) throw new Error('未打开工作区');
+        const pattern = args.pattern as string;
+        const replacement = args.replacement as string;
+        const dryRun = args.dry_run as boolean;
+        // Search first
+        const results = await window.api.fs.searchFiles(rootPath, pattern);
+        if (results.length === 0) return '未找到匹配项';
+        if (dryRun) {
+          return `找到 ${results.length} 处匹配（预览模式，未修改文件）：\n` +
+            results.map((r: any) => `${r.path}:${r.line} ${r.preview}`).join('\n');
+        }
+        // Group by file
+        const byFile = new Map<string, { line: number; preview: string }[]>();
+        for (const r of results) {
+          if (!byFile.has(r.path)) byFile.set(r.path, []);
+          byFile.get(r.path)!.push({ line: r.line, preview: r.preview });
+        }
+        let changed = 0;
+        for (const [filePath, matches] of byFile) {
+          const content = await window.api.fs.readFile(filePath);
+          let updated = content;
+          // Replace all matches per file (case-insensitive, simple string replace)
+          for (const m of matches) {
+            updated = updated.split(m.preview).join(replacement);
+          }
+          const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
+          if (approved) {
+            await window.api.fs.writeFile(filePath, updated);
+            changed += matches.length;
+          }
+        }
+        return `已替换 ${changed} 处匹配（共 ${results.length} 处发现）`;
+      }
+
+      // ── Context ──
+      case 'save_context': {
+        await window.api.context.save(
+          args.key as string,
+          args.content as string,
+          (args.merge as boolean) || false
+        );
+        return `已保存上下文 "${args.key}"`;
+      }
+      case 'load_context': {
+        const val = await window.api.context.load(args.key as string);
+        return val || `未找到上下文 "${args.key}"`;
+      }
+
+      // ── Legacy compat ──
+      case 'edit_file': {
+        // Map to replace_in_file internally
+        const filePath = resolvePath(args.path as string);
+        const content = await window.api.fs.readFile(filePath);
+        const oldStr = args.oldString as string;
+        const newStr = args.newString as string;
+        const occurrences = content.split(oldStr).length - 1;
+        if (occurrences === 0) throw new Error('文件中未找到 oldString');
+        if (occurrences > 1) throw new Error(`oldString 在文件中出现 ${occurrences} 次，不唯一。`);
+        const updated = content.replace(oldStr, newStr);
+        const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
+        if (!approved) return '文件编辑被用户拒绝';
+        await window.api.fs.writeFile(filePath, updated);
+        return `已编辑文件：${args.path}`;
+      }
+
       default:
         throw new Error(`未知工具：${tc.name}`);
     }

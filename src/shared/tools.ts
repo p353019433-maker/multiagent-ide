@@ -1,19 +1,28 @@
 import type { ToolDefinition } from './types';
 
 /**
- * Built-in Agent tools. The model invokes these by name; the renderer
- * (or main process) executes them and feeds the result back.
+ * Expanded Agent tools.
+ * Grouped logically: file ops, code analysis, web, interaction, system.
  */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
+  // ── File Operations ──
   {
     name: 'read_file',
-    description: 'Read the contents of a file in the workspace.',
+    description: '读取工作区中某个文件的内容。',
     parameters: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description: 'Absolute or workspace-relative path to the file.',
+          description: '文件的绝对路径或相对于工作区根目录的路径。',
+        },
+        offset: {
+          type: 'number',
+          description: '从第几行开始读取（1-indexed）。用于超长文件的分段读取。',
+        },
+        limit: {
+          type: 'number',
+          description: '最多读取多少行。',
         },
       },
       required: ['path'],
@@ -22,62 +31,314 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     name: 'write_file',
     description:
-      'Create a new file or fully overwrite an existing file. User must approve before the change is applied.',
+      '创建新文件或完全覆盖已有文件。需要用户批准后才执行。',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'File path to write.' },
-        content: { type: 'string', description: 'Full file contents.' },
+        path: { type: 'string', description: '要写入的文件路径。' },
+        content: { type: 'string', description: '完整文件内容。' },
       },
       required: ['path', 'content'],
     },
   },
   {
-    name: 'edit_file',
+    name: 'replace_in_file',
     description:
-      'Replace a specific block of text in a file. The oldString must match exactly once. User must approve before the change is applied.',
+      '替换文件中某个精确匹配的文本块。old_str 必须在文件中唯一出现且精确匹配（包括空白字符）。这是修改已有文件的首选工具（比 write_file 修改整个文件更安全）。需要用户批准后才执行。',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string' },
-        oldString: { type: 'string', description: 'Exact text to find.' },
-        newString: { type: 'string', description: 'Replacement text.' },
+        path: { type: 'string', description: '文件路径。' },
+        old_str: { type: 'string', description: '要被替换的精确文本。' },
+        new_str: { type: 'string', description: '替换后的文本。' },
+        replace_all: {
+          type: 'boolean',
+          description: '设为 true 时替换所有匹配（需要用户批准）。',
+        },
       },
-      required: ['path', 'oldString', 'newString'],
+      required: ['path', 'old_str', 'new_str'],
     },
   },
   {
     name: 'list_directory',
-    description: 'List the immediate contents of a directory.',
+    description: '列出目录中的直接子项。',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Directory path.' },
+        path: { type: 'string', description: '目录路径。' },
       },
       required: ['path'],
     },
   },
   {
     name: 'search_files',
-    description: 'Search across the workspace for a text or regex pattern.',
+    description: '在工作区中搜索文本或正则表达式。',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'The text or regex to search for.' },
+        query: { type: 'string', description: '要搜索的文本或正则表达式。' },
+        file_pattern: {
+          type: 'string',
+          description: '可选的 glob 模式，如 "*.ts" 或 "src/**"，用于限制搜索范围。',
+        },
+        case_sensitive: {
+          type: 'boolean',
+          description: '是否区分大小写，默认不区分。',
+        },
+        include_hidden: {
+          type: 'boolean',
+          description: '是否包含隐藏文件和目录（. 开头），默认不包含。',
+        },
       },
       required: ['query'],
     },
   },
   {
-    name: 'run_command',
-    description:
-      'Execute a shell command in the workspace. Use sparingly; prefer file tools when possible.',
+    name: 'find_files',
+    description: '按 glob 模式查找文件名匹配的文件。例如 "*.tsx"、"test*.ts"。',
     parameters: {
       type: 'object',
       properties: {
-        command: { type: 'string', description: 'The shell command to run.' },
+        pattern: { type: 'string', description: 'Glob 匹配模式。' },
+        directory: {
+          type: 'string',
+          description: '起始目录，默认为工作区根目录。',
+        },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'get_file_info',
+    description: '获取文件或目录的详细信息：大小、修改时间、是否为目录。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '文件或目录路径。' },
+      },
+      required: ['path'],
+    },
+  },
+
+  // ── Code Analysis ──
+  {
+    name: 'read_lints',
+    description: '读取当前工作区的 ESLint 或 TypeScript 诊断信息。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: '可选：只检查特定文件或目录。不传则检查整个工作区。',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'extract_symbols',
+    description: '提取 TypeScript/JavaScript 文件中的符号：函数、类、导出、接口等。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '要分析的文件路径。' },
+      },
+      required: ['path'],
+    },
+  },
+
+  // ── Git Integration ──
+  {
+    name: 'git_status',
+    description: '查看当前 git 仓库状态：改变的文件、分支、暂存区。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'git_diff',
+    description: '查看当前工作区相对于 HEAD 的 diff。',
+    parameters: {
+      type: 'object',
+      properties: {
+        staged: { type: 'boolean', description: '是否只显示已暂存的变化。' },
+        path: { type: 'string', description: '可选：只显示特定文件的 diff。' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'git_log',
+    description: '查看 git 提交历史。',
+    parameters: {
+      type: 'object',
+      properties: {
+        count: { type: 'number', description: '返回条数，默认 10。' },
+      },
+      required: [],
+    },
+  },
+
+  // ── Command Execution ──
+  {
+    name: 'run_command',
+    description:
+      '在工作区中运行 shell 命令。对于需要交互的命令或长时间运行的命令（如 dev server），使用 run_background_command。',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: '要执行的 shell 命令。' },
+        timeout_ms: {
+          type: 'number',
+          description: '超时时间（毫秒），默认 60s。设为 0 表示不限制。',
+        },
       },
       required: ['command'],
+    },
+  },
+  {
+    name: 'run_background_command',
+    description:
+      '启动一个后台命令（如 npm run dev）并返回 session ID。后续使用 get_background_output 检查输出。',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: '要在后台执行的命令。' },
+      },
+      required: ['command'],
+    },
+  },
+  {
+    name: 'get_background_output',
+    description: '获取后台运行命令的最近输出。',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'run_background_command 返回的 session ID。' },
+      },
+      required: ['session_id'],
+    },
+  },
+  {
+    name: 'kill_background_command',
+    description: '终止一个正在运行的后台命令。',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: '要终止的 session ID。' },
+      },
+      required: ['session_id'],
+    },
+  },
+
+  // ── Web & External ──
+  {
+    name: 'web_search',
+    description: '在互联网上搜索信息。需要配置搜索 API（Tavily 等）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '搜索关键词。' },
+        count: { type: 'number', description: '结果数量，默认 5。' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'web_fetch',
+    description: '抓取一个 URL 的内容并提取为文本/Markdown。',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '要抓取的 HTTP(S) URL。' },
+        extract_mode: {
+          type: 'string',
+          enum: ['markdown', 'text'],
+          description: '提取模式：markdown 或纯文本。默认 markdown。',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'preview_url',
+    description: '在 IDE 内置浏览器中预览一个 URL。常用于查看 dev server 的运行效果。',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '要预览的 URL。' },
+      },
+      required: ['url'],
+    },
+  },
+
+  // ── Multi-file Operations ──
+  {
+    name: 'read_multiple_files',
+    description: '一次性读取多个文件的内容。比多次调用 read_file 更高效。',
+    parameters: {
+      type: 'object',
+      properties: {
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要读取的文件路径列表。',
+        },
+      },
+      required: ['paths'],
+    },
+  },
+  {
+    name: 'search_and_replace',
+    description:
+      '在整个工作区中搜索并替换文本。会先列出所有匹配项让用户确认。这是批量重构的有力工具。需要用户批准。',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: '要搜索的文本或正则。' },
+        replacement: { type: 'string', description: '替换内容。' },
+        file_pattern: {
+          type: 'string',
+          description: '限制文件范围的 glob 模式，如 "*.ts"。',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: '设为 true 只预览不改文件。',
+        },
+      },
+      required: ['pattern', 'replacement'],
+    },
+  },
+
+  // ── Context & Memory ──
+  {
+    name: 'save_context',
+    description:
+      '保存一段上下文信息，供后续对话使用。例如项目的架构概览、关键决策等。',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: '上下文键名。' },
+        content: { type: 'string', description: '要保存的内容。' },
+        merge: {
+          type: 'boolean',
+          description: '如果键已存在，是否追加（默认覆盖）。',
+        },
+      },
+      required: ['key', 'content'],
+    },
+  },
+  {
+    name: 'load_context',
+    description: '加载之前保存的上下文信息。',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: '要加载的上下文键名。' },
+      },
+      required: ['key'],
     },
   },
 ];
@@ -85,20 +346,51 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
 export const AGENT_SYSTEM_PROMPT = `You are an AI coding assistant integrated into a code IDE. You help users by reading, writing, and modifying code in their workspace.
 
 ## Capabilities
-You have access to tools that let you interact with the user's workspace:
-- read_file: Read any file
+You have access to many tools that let you interact with the user's workspace:
+
+**File Operations:**
+- read_file: Read any file (with optional offset/limit for large files)
 - write_file: Create or overwrite a file (requires user approval)
-- edit_file: Make a targeted edit to a file (requires user approval)
+- replace_in_file: Target a specific block of text in a file and replace it (requires user approval). Preferred over write_file for existing files.
 - list_directory: Browse the file tree
-- search_files: Search for text in the codebase
-- run_command: Execute shell commands
+- search_files: Search text/regex across the codebase with optional file pattern filtering
+- find_files: Find files by glob pattern (e.g. "*.tsx")
+- get_file_info: Get file size, modification time, etc.
+
+**Code Analysis:**
+- read_lints: Run ESLint/TypeScript diagnostics
+- extract_symbols: Extract functions, classes, exports, interfaces from TS/JS files
+
+**Git:**
+- git_status: See what's changed, current branch
+- git_diff: View changes vs HEAD
+- git_log: Recent commit history
+
+**Commands:**
+- run_command: Run a shell command (with timeout)
+- run_background_command: Start a long-running command (dev server, build watcher)
+- get_background_output: Check output from a background command
+- kill_background_command: Stop a background command
+
+**Web & External:**
+- web_search: Search the internet
+- web_fetch: Fetch a URL and extract content
+- preview_url: Open a URL in the IDE's built-in browser
+
+**Multi-file:**
+- read_multiple_files: Read several files at once
+- search_and_replace: Search-and-replace across the workspace (requires approval)
+
+**Context:**
+- save_context / load_context: Save/load information for later use
 
 ## Guidelines
-1. Before making changes, gather context: read relevant files, understand the codebase structure.
-2. Make precise, minimal edits. Prefer edit_file over write_file when modifying existing files.
+1. Gather context first: read relevant files, understand the codebase structure.
+2. Make precise, minimal edits. Prefer replace_in_file over write_file when modifying existing files.
 3. Explain your plan briefly before executing tools.
 4. After making changes, summarize what you did.
-5. If a task is unclear, ask the user before taking destructive actions.
-6. Never invent file contents - always read first.
+5. If a task is unclear, ask before taking destructive actions.
+6. Always read a file before editing it — never guess its contents.
+7. For multi-step tasks, plan ahead and execute tools in logical order.
 
 Be direct and concise. Focus on getting the task done.`;

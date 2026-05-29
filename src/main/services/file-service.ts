@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { statSync } from 'fs';
 
 export interface FileNode {
   name: string;
@@ -122,4 +123,48 @@ export class FileService {
     await walk(rootPath);
     return results;
   }
+
+  async findFiles(rootPath: string, pattern: string): Promise<string[]> {
+    const results: string[] = [];
+    const regex = globToRegex(pattern);
+
+    const walk = async (dir: string): Promise<void> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (IGNORED_DIRS.has(entry.name)) continue;
+        if (entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        const relative = path.relative(rootPath, full);
+        if (entry.isDirectory()) {
+          if (results.length >= 200) return;
+          await walk(full);
+        } else if (regex.test(relative) || regex.test(entry.name)) {
+          results.push(full);
+          if (results.length >= 200) return;
+        }
+      }
+    };
+
+    await walk(rootPath);
+    return results;
+  }
+
+  async getFileInfo(filePath: string): Promise<{ size: number; modified: string; isDirectory: boolean }> {
+    const st = statSync(filePath);
+    return {
+      size: st.size,
+      modified: st.mtime.toISOString(),
+      isDirectory: st.isDirectory(),
+    };
+  }
+}
+
+/** Convert a simple glob pattern (e.g. "*.ts" or "src/**\/*.ts") to a regex. */
+function globToRegex(pattern: string): RegExp {
+  let rx = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape special regex chars
+    .replace(/\*\*/g, '<<<GLOBSTAR>>>')
+    .replace(/\*/g, '[^/]*')
+    .replace(/<<<GLOBSTAR>>>/g, '.*');
+  return new RegExp('^' + rx + '$', 'i');
 }

@@ -17,6 +17,11 @@ const api = {
       ipcRenderer.invoke('fs:rename', oldPath, newPath),
     searchFiles: (rootPath: string, query: string) =>
       ipcRenderer.invoke('fs:searchFiles', rootPath, query),
+    findFiles: (rootPath: string, pattern: string) =>
+      ipcRenderer.invoke('fs:findFiles', rootPath, pattern),
+    getFileInfo: (path: string) => ipcRenderer.invoke('fs:getFileInfo', path),
+    readMultipleFiles: (paths: string[]) =>
+      ipcRenderer.invoke('fs:readMultipleFiles', paths),
   },
 
   // Terminal
@@ -26,8 +31,12 @@ const api = {
     resize: (id: string, cols: number, rows: number) =>
       ipcRenderer.invoke('terminal:resize', id, cols, rows),
     close: (id: string) => ipcRenderer.invoke('terminal:close', id),
-    runCommand: (cwd: string, command: string) =>
-      ipcRenderer.invoke('terminal:runCommand', cwd, command),
+    runCommand: (cwd: string, command: string, timeoutMs?: number) =>
+      ipcRenderer.invoke('terminal:runCommand', cwd, command, timeoutMs),
+    runBackgroundCommand: (cwd: string, command: string) =>
+      ipcRenderer.invoke('terminal:runBackgroundCommand', cwd, command),
+    getBackgroundOutput: (id: string) => ipcRenderer.invoke('terminal:getBackgroundOutput', id),
+    killBackgroundCommand: (id: string) => ipcRenderer.invoke('terminal:killBackgroundCommand', id),
     onData: (callback: (id: string, data: string) => void) => {
       const handler = (_: unknown, id: string, data: string) => callback(id, data);
       ipcRenderer.on('terminal:data', handler);
@@ -78,6 +87,38 @@ const api = {
       ipcRenderer.on('ai:stream-error', handler);
       return () => ipcRenderer.removeListener('ai:stream-error', handler);
     },
+  },
+
+  // Git
+  git: {
+    status: (cwd: string) => ipcRenderer.invoke('git:status', cwd),
+    diff: (cwd: string, staged?: boolean, filePath?: string) =>
+      ipcRenderer.invoke('git:diff', cwd, staged, filePath),
+    log: (cwd: string, count?: number) => ipcRenderer.invoke('git:log', cwd, count),
+  },
+
+  // Web
+  web: {
+    search: (query: string, count?: number) => ipcRenderer.invoke('web:search', query, count),
+    fetch: (url: string, extractMode?: 'markdown' | 'text') =>
+      ipcRenderer.invoke('web:fetch', url, extractMode),
+  },
+
+  // Lint
+  lint: {
+    run: (cwd: string, filePath?: string) => ipcRenderer.invoke('lint:run', cwd, filePath),
+  },
+
+  // Symbols
+  symbols: {
+    extract: (filePath: string) => ipcRenderer.invoke('symbols:extract', filePath),
+  },
+
+  // Context
+  context: {
+    save: (key: string, content: string, merge?: boolean) =>
+      ipcRenderer.invoke('context:save', key, content, merge),
+    load: (key: string) => ipcRenderer.invoke('context:load', key),
   },
 };
 
