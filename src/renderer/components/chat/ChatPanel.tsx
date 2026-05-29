@@ -28,7 +28,7 @@ export default function ChatPanel() {
     addMessage,
   } = useAI();
   const { rootPath } = useWorkspace();
-  const { activeFilePath, openFiles } = useEditor();
+  const { activeFilePath, openFiles, openFile } = useEditor();
 
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
@@ -71,7 +71,7 @@ export default function ChatPanel() {
   };
 
   // Agent engine: the multi-turn loop, tool execution, checkpoints, streaming.
-  const { isStreaming, streamContent, toolExecutions, checkpoints, runTurn, abort, revertCheckpoint } =
+  const { isStreaming, streamContent, toolExecutions, checkpoints, artifacts, runTurn, abort, revertCheckpoint } =
     useAgentEngine({ activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction });
   const handleAbort = abort;
 
@@ -380,6 +380,32 @@ ${suffix.slice(0, 500)}
                 >
                   ↩ 回滚
                 </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Artifacts — verifiable deliverables produced per turn */}
+      {artifacts.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-editor-border flex-shrink-0 max-h-28 overflow-y-auto">
+          <div className="text-[10px] text-gray-500 mb-1">📦 交付物（可验证）</div>
+          <div className="space-y-1">
+            {artifacts.slice(0, 5).map((a) => (
+              <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate flex items-center gap-1" title={a.label}>
+                  <span title={a.verified ? '验证通过' : '验证未通过'}>{a.verified ? '✅' : '❌'}</span>
+                  <span className="text-gray-400 truncate">{a.label}（{a.files.length} 文件）</span>
+                </span>
+                {a.path && (
+                  <button
+                    onClick={() => openFile(a.path!)}
+                    className="flex-shrink-0 px-1.5 py-0.5 rounded bg-editor-hover text-gray-300 hover:bg-editor-accent hover:text-white"
+                    title="打开交付报告"
+                  >
+                    查看
+                  </button>
+                )}
               </div>
             ))}
           </div>
