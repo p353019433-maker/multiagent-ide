@@ -6,7 +6,7 @@ import { useEditor } from '../../context/EditorContext';
 import ChatMessage from './ChatMessage';
 import AgentToolView from './AgentToolView';
 import DiffPreview from '../editor/DiffPreview';
-import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution } from '@shared/types';
+import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution, Checkpoint } from '@shared/types';
 import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
 import {
   type ApprovalMode,
@@ -37,8 +37,18 @@ export default function ChatPanel() {
   const [streamContent, setStreamContent] = useState('');
   const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>(DEFAULT_APPROVAL_MODE);
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Snapshots of files captured before the current turn modifies them, so a
+  // checkpoint can be created when the turn finishes. Keyed by path.
+  const turnSnapshots = useRef<Map<string, string | null>>(new Map());
+  // Files edited during the current turn — drives the auto-lint self-heal pass.
+  const turnEditedFiles = useRef<Set<string>>(new Set());
+  // Project rules (AGENTS.md / .cursorrules), appended to the system prompt.
+  const projectRules = useRef<{ file: string; content: string } | null>(null);
 
   // Keep a ref so tool execution (which runs outside React render) reads the
   // current mode without stale-closure issues.
@@ -55,6 +65,35 @@ export default function ChatPanel() {
   const changeApprovalMode = (m: ApprovalMode) => {
     setApprovalMode(m);
     window.api.store.set('approvalMode', m);
+  };
+
+  // Load project rules (AGENTS.md / .cursorrules) for the current workspace.
+  useEffect(() => {
+    if (!rootPath) {
+      projectRules.current = null;
+      return;
+    }
+    window.api.rules
+      .load(rootPath)
+      .then((r) => {
+        projectRules.current = r;
+      })
+      .catch(() => {
+        projectRules.current = null;
+      });
+  }, [rootPath]);
+
+  // Build the effective system prompt: base agent prompt + project rules.
+  const buildSystemPrompt = (): string => {
+    if (projectRules.current?.content) {
+      return (
+        AGENT_SYSTEM_PROMPT +
+        `\n\n## Project Rules (from ${projectRules.current.file})\n` +
+        'The user has defined project-specific rules. Follow them strictly:\n\n' +
+        projectRules.current.content
+      );
+    }
+    return AGENT_SYSTEM_PROMPT;
   };
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
@@ -149,7 +188,7 @@ ${suffix.slice(0, 500)}
   }, [activeProviderId, activeModel]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !activeProviderId || !activeModel) return;
+    if ((!input.trim() && pendingImages.length === 0) || !activeProviderId || !activeModel) return;
     if (isStreaming) return;
 
     let convId = activeConversationId;
@@ -182,29 +221,39 @@ ${suffix.slice(0, 500)}
       id: uuid(),
       role: 'user',
       content: input,
+      images: pendingImages.length ? pendingImages : undefined,
       timestamp: Date.now(),
     };
     addMessage(convId, userMsg);
+    const turnImages = pendingImages;
+    const turnLabel = input.slice(0, 60);
     setInput('');
+    setPendingImages([]);
     setIsStreaming(true);
     setStreamContent('');
     setToolExecutions([]);
 
+    // Begin a new turn: reset checkpoint/edit trackers.
+    turnSnapshots.current = new Map();
+    turnEditedFiles.current = new Set();
+
     const apiMessages: ChatMessageType[] = [
       ...messages,
-      { ...userMsg, content: contextPrefix + userMsg.content },
+      { ...userMsg, content: contextPrefix + userMsg.content, images: turnImages.length ? turnImages : undefined },
     ];
 
-    await runAgentLoop(convId, apiMessages);
-  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles]);
+    await runAgentLoop(convId, apiMessages, turnLabel);
+  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages]);
 
-  const runAgentLoop = async (convId: string, apiMessages: ChatMessageType[]) => {
+  const runAgentLoop = async (convId: string, apiMessages: ChatMessageType[], turnLabel = '') => {
     let loopMessages = compactMessages([...apiMessages]);
     let iterations = 0;
     const maxIterations = 25;
     // Track repeated identical tool calls to detect a stuck agent.
     let lastToolSignature = '';
     let repeatCount = 0;
+    // Auto-lint self-heal runs at most once per turn.
+    let selfHealAttempted = false;
 
     while (iterations < maxIterations) {
       iterations++;
@@ -241,7 +290,7 @@ ${suffix.slice(0, 500)}
           window.api.ai.chatStream(activeProviderId!, loopMessages, {
             model: activeModel!,
             tools: BUILTIN_TOOLS,
-            systemPrompt: AGENT_SYSTEM_PROMPT,
+            systemPrompt: buildSystemPrompt(),
             workspaceRoot: rootPath || undefined,
           });
         });
@@ -257,6 +306,28 @@ ${suffix.slice(0, 500)}
         setStreamContent('');
 
         if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
+          // The agent thinks it's done. Before stopping, run a self-heal lint
+          // pass on the files it edited and, if there are errors, feed them back
+          // once so the agent can fix them automatically.
+          if (!selfHealAttempted && turnEditedFiles.current.size > 0 && rootPath) {
+            selfHealAttempted = true;
+            const edited = Array.from(turnEditedFiles.current);
+            const check = await window.api.lint.check(rootPath, edited).catch(() => null);
+            if (check?.hasErrors && check.output) {
+              const healMsg: ChatMessageType = {
+                id: uuid(),
+                role: 'user',
+                content:
+                  '你刚才的改动引入了以下 lint/类型错误，请修复它们（不要重复无效操作）：\n\n```\n' +
+                  check.output.slice(0, 4000) +
+                  '\n```',
+                timestamp: Date.now(),
+              };
+              addMessage(convId, healMsg);
+              loopMessages = [...loopMessages, assistantMsg, healMsg];
+              continue;
+            }
+          }
           break;
         }
 
@@ -313,7 +384,41 @@ ${suffix.slice(0, 500)}
       });
     }
 
+    // Create a checkpoint from this turn's snapshots so the user can revert all
+    // file changes in one click.
+    if (turnSnapshots.current.size > 0) {
+      const cp: Checkpoint = {
+        id: uuid(),
+        label: turnLabel || '未命名改动',
+        createdAt: Date.now(),
+        files: Array.from(turnSnapshots.current.entries()).map(([path, before]) => ({
+          path,
+          before,
+        })),
+      };
+      setCheckpoints((prev) => [cp, ...prev].slice(0, 20));
+    }
+
     setIsStreaming(false);
+  };
+
+  /** Revert all file changes captured in a checkpoint. */
+  const revertCheckpoint = async (cp: Checkpoint) => {
+    if (!confirm(`回滚 ${cp.files.length} 个文件到「${cp.label}」之前的状态？`)) return;
+    for (const f of cp.files) {
+      try {
+        if (f.before === null) {
+          await window.api.fs.delete(f.path); // file was created in the turn
+        } else {
+          await window.api.fs.writeFile(f.path, f.before);
+        }
+      } catch {
+        // best-effort; continue reverting the rest
+      }
+    }
+    setCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
+    window.dispatchEvent(new CustomEvent('files-reverted'));
+    alert(`已回滚 ${cp.files.length} 个文件`);
   };
 
   /**
@@ -450,6 +555,25 @@ ${suffix.slice(0, 500)}
       }
     }
     return rootPath + '/' + resolved.join('/');
+  };
+
+  /**
+   * Write a file while recording a checkpoint snapshot. The first time a path is
+   * touched in a turn we capture its prior content (or null if it didn't exist)
+   * so the turn can be reverted later, and we mark it for the auto-lint pass.
+   */
+  const writeFileTracked = async (filePath: string, content: string) => {
+    if (!turnSnapshots.current.has(filePath)) {
+      let before: string | null = null;
+      try {
+        before = await window.api.fs.readFile(filePath);
+      } catch {
+        before = null; // new file
+      }
+      turnSnapshots.current.set(filePath, before);
+    }
+    await window.api.fs.writeFile(filePath, content);
+    turnEditedFiles.current.add(filePath);
   };
 
   /** Get GitHub token and resolve owner/repo from git remote */
@@ -589,7 +713,7 @@ ${suffix.slice(0, 500)}
         }
         const approved = await gateAction(tc.id, filePath, 'write', existingContent, newContent, 'write');
         if (!approved) return '文件写入被用户拒绝';
-        await window.api.fs.writeFile(filePath, newContent);
+        await writeFileTracked(filePath, newContent);
         return `已写入文件：${args.path}`;
       }
       case 'replace_in_file': {
@@ -608,7 +732,7 @@ ${suffix.slice(0, 500)}
         const updated = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
         const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
         if (!approved) return '文件编辑被用户拒绝';
-        await window.api.fs.writeFile(filePath, updated);
+        await writeFileTracked(filePath, updated);
         const count = replaceAll ? occurrences : 1;
         return `已在 ${args.path} 中替换 ${count} 处匹配`;
       }
@@ -833,7 +957,7 @@ ${suffix.slice(0, 500)}
           }
           const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
           if (approved) {
-            await window.api.fs.writeFile(filePath, updated);
+            await writeFileTracked(filePath, updated);
             changed += matches.length;
           }
         }
@@ -983,7 +1107,7 @@ ${suffix.slice(0, 500)}
         const updated = content.replace(oldStr, newStr);
         const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
         if (!approved) return '文件编辑被用户拒绝';
-        await window.api.fs.writeFile(filePath, updated);
+        await writeFileTracked(filePath, updated);
         return `已编辑文件：${args.path}`;
       }
 
@@ -1029,6 +1153,30 @@ ${suffix.slice(0, 500)}
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  // ── Image attachments (multimodal input) ──
+  const addImageFiles = (files: FileList | File[]) => {
+    Array.from(files)
+      .filter((f) => f.type.startsWith('image/'))
+      .forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setPendingImages((prev) => [...prev, reader.result as string].slice(0, 6));
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items);
+    const imgs = items.filter((i) => i.type.startsWith('image/'));
+    if (imgs.length) {
+      e.preventDefault();
+      addImageFiles(imgs.map((i) => i.getAsFile()).filter(Boolean) as File[]);
     }
   };
 
@@ -1117,6 +1265,29 @@ ${suffix.slice(0, 500)}
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Checkpoints — revert all file changes from a past turn */}
+      {checkpoints.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-editor-border flex-shrink-0 max-h-24 overflow-y-auto">
+          <div className="text-[10px] text-gray-500 mb-1">⏱ 检查点（可回滚）</div>
+          <div className="space-y-1">
+            {checkpoints.slice(0, 5).map((cp) => (
+              <div key={cp.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="text-gray-400 truncate" title={cp.label}>
+                  {cp.label || '改动'}（{cp.files.length} 文件）
+                </span>
+                <button
+                  onClick={() => revertCheckpoint(cp)}
+                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-editor-hover text-gray-300 hover:bg-red-600 hover:text-white"
+                  title="回滚此检查点的所有文件改动"
+                >
+                  ↩ 回滚
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {pendingApproval && pendingApproval.action !== 'edit' && pendingApproval.action !== 'write' && pendingApproval.action !== 'replace_in_file' && pendingApproval.action !== 'search_and_replace' ? (
         <div className={`px-3 py-2 border-t border-editor-border flex-shrink-0 ${pendingApproval.dangerReason ? 'bg-red-900/20' : 'bg-yellow-900/10'}`}>
           <div className="flex items-center justify-between">
@@ -1186,36 +1357,75 @@ ${suffix.slice(0, 500)}
             在设置中配置 AI 服务以开始对话
           </p>
         ) : (
-          <div className="flex gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="跟 AI 说点什么..."
-              className="flex-1 bg-editor-bg border border-editor-border rounded px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent transition-colors"
-              rows={2}
-              disabled={isStreaming}
-            />
-            <div className="flex flex-col gap-1">
-              {isStreaming ? (
-                <button
-                  onClick={handleAbort}
-                  className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+          <>
+            {/* Pending image thumbnails */}
+            {pendingImages.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {pendingImages.map((img, i) => (
+                  <div key={i} className="relative group">
+                    <img
+                      src={img}
+                      alt="attachment"
+                      className="h-12 w-12 object-cover rounded border border-editor-border"
+                    />
+                    <button
+                      onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-4 h-4 text-[10px] leading-none opacity-0 group-hover:opacity-100"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder="跟 AI 说点什么...（可粘贴/附加图片）"
+                className="flex-1 bg-editor-bg border border-editor-border rounded px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent transition-colors"
+                rows={2}
+                disabled={isStreaming}
+              />
+              <div className="flex flex-col gap-1">
+                <label
+                  className="px-3 py-1 bg-editor-hover text-gray-300 text-xs rounded hover:bg-editor-active transition-colors cursor-pointer text-center"
+                  title="附加图片"
                 >
-                  停止
-                </button>
-              ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  className="px-3 py-1 bg-editor-accent text-white text-xs rounded hover:opacity-90 transition-opacity disabled:opacity-40"
-                >
-                  发送
-                </button>
-              )}
+                  🖼
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) addImageFiles(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {isStreaming ? (
+                  <button
+                    onClick={handleAbort}
+                    className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                  >
+                    停止
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim() && pendingImages.length === 0}
+                    className="px-3 py-1 bg-editor-accent text-white text-xs rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+                  >
+                    发送
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

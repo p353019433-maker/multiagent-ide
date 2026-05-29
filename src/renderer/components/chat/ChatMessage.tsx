@@ -23,6 +23,19 @@ export default function ChatMessage({ message }: Props) {
             : 'bg-editor-active text-editor-text'
         }`}
       >
+        {message.images?.length ? (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.images.map((img, i) => (
+              <img
+                key={i}
+                src={img}
+                alt="attachment"
+                className="max-h-40 rounded border border-white/20"
+              />
+            ))}
+          </div>
+        ) : null}
+
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
