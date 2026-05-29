@@ -216,6 +216,16 @@ export class IndexService {
     return this.search(query, 1).length > 0;
   }
 
+  /**
+   * Find declaration sites of a symbol by exact name (go-to-definition,
+   * approximated via the symbol table). Returns all matching declarations.
+   */
+  findDefinition(name: string): CodebaseSearchHit[] {
+    return this.symbols
+      .filter((s) => s.name === name)
+      .map((s) => ({ file: s.file, line: s.line, kind: s.kind, name: s.name, score: 1 }));
+  }
+
   // ─── Embedding (vector) index ────────────────────────────────────────────
 
   private vectors: ChunkVector[] = [];

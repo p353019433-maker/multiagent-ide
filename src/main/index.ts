@@ -498,6 +498,24 @@ function setupIPC() {
     };
   });
 
+  // ==================== Code intelligence (navigation) ====================
+
+  // Go-to-definition (approximated via the symbol table).
+  ipcMain.handle('codeintel:definition', async (_, root: string, name: string) => {
+    await indexService.ensureIndex(root);
+    return indexService.findDefinition(name);
+  });
+
+  // Find references: word-boundary matches of the identifier across the workspace.
+  ipcMain.handle('codeintel:references', async (_, root: string, name: string) => {
+    const raw = await fileService.searchFiles(root, name);
+    const wordRe = new RegExp(`(^|[^A-Za-z0-9_$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9_$]|$)`);
+    return raw
+      .filter((r) => wordRe.test(r.preview))
+      .slice(0, 50)
+      .map((r) => ({ file: path.relative(root, r.path), line: r.line, preview: r.preview.slice(0, 120) }));
+  });
+
   // Pre-build / refresh the embedding index on demand (Settings "重建索引").
   ipcMain.handle('codebase:reindex', async (_, root: string) => {
     const embedCfg = getEmbeddingConfig();

@@ -155,6 +155,20 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
         .join('\n');
       return `${header}\n${body}`;
     }
+    case 'find_definition': {
+      if (!rootPath) throw new Error('未打开工作区');
+      const defs = await window.api.codeintel.definition(rootPath, args.name as string);
+      if (!defs.length) return `未找到 "${args.name}" 的定义`;
+      return `"${args.name}" 的定义（${defs.length} 处）：\n` +
+        defs.map((d: any) => `${d.file}:${d.line}  [${d.kind}]`).join('\n');
+    }
+    case 'find_references': {
+      if (!rootPath) throw new Error('未打开工作区');
+      const refs = await window.api.codeintel.references(rootPath, args.name as string);
+      if (!refs.length) return `未找到 "${args.name}" 的引用`;
+      return `"${args.name}" 的引用（${refs.length} 处）：\n` +
+        refs.map((r: any) => `${r.file}:${r.line}  ${r.preview}`).join('\n');
+    }
 
     // ── Git ──
     case 'git_status': {

@@ -123,6 +123,16 @@ declare global {
       rules: {
         load: (root: string) => Promise<{ file: string; content: string } | null>;
       };
+      codeintel: {
+        definition: (
+          root: string,
+          name: string
+        ) => Promise<{ file: string; line: number; kind: string; name: string; score: number }[]>;
+        references: (
+          root: string,
+          name: string
+        ) => Promise<{ file: string; line: number; preview: string }[]>;
+      };
       symbols: {
         extract: (filePath: string) => Promise<string>;
       };
