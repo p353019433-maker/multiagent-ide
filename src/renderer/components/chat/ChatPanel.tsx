@@ -16,6 +16,7 @@ export default function ChatPanel() {
     conversations,
     activeConversationId,
     newConversation,
+    newWorktreeConversation,
     setActiveConversation,
     deleteConversation,
     addMessage,
@@ -378,6 +379,58 @@ export default function ChatPanel() {
         const cwd = rootPath || process.cwd();
         return await window.api.git.log(cwd, (args.count as number) || 10);
       }
+      case 'git_branch_list': {
+        const cwd = rootPath || process.cwd();
+        return await window.api.git.branchList(cwd);
+      }
+      case 'git_create_branch': {
+        const cwd = rootPath || process.cwd();
+        return await window.api.git.branchCreate(cwd, args.name as string);
+      }
+      case 'git_switch_branch': {
+        const cwd = rootPath || process.cwd();
+        return await window.api.git.branchSwitch(cwd, args.name as string);
+      }
+      case 'git_commit': {
+        const cwd = rootPath || process.cwd();
+        await window.api.git.stageAll(cwd);
+        return await window.api.git.commit(cwd, args.message as string);
+      }
+      case 'git_push': {
+        const cwd = rootPath || process.cwd();
+        return await window.api.git.push(cwd, (args.remote as string) || 'origin');
+      }
+      case 'git_worktree_list': {
+        const cwd = rootPath || process.cwd();
+        const trees = await window.api.git.worktreeList(cwd);
+        return JSON.stringify(trees, null, 2);
+      }
+      case 'git_worktree_add': {
+        const cwd = rootPath || process.cwd();
+        const branch = args.branch as string;
+        const base = args.base as string | undefined;
+        const wtPath = args.path as string | undefined;
+        const parentDir = (cwd.endsWith('/') ? cwd.slice(0, -1) : cwd);
+        const path = wtPath || `${parentDir}_wt/${branch}`;
+        const res = await window.api.git.worktreeAdd(cwd, path, branch, base);
+        if (!res.success) throw new Error(res.message);
+        return `已创建隔离 worktree: ${res.path}
+分支: ${branch}`;
+      }
+      case 'git_merge': {
+        const cwd = rootPath || process.cwd();
+        const source = args.source as string;
+        const method = (args.method as string) || 'merge';
+        const res = await window.api.git.worktreeMerge(cwd, source, method as any);
+        if (!res.success) throw new Error(res.message);
+        return res.message;
+      }
+      case 'git_merge_diff': {
+        const cwd = rootPath || process.cwd();
+        const base = args.base as string;
+        const head = (args.head as string) || (await window.api.git.currentBranch(cwd));
+        return await window.api.git.worktreeMergeDiff(cwd, base, head);
+      }
 
       // ── Commands ──
       case 'run_command': {
@@ -617,6 +670,34 @@ export default function ChatPanel() {
     setIsStreaming(false);
   };
 
+  /** Create a new isolated worktree session */
+  const handleNewWorktreeSession = async () => {
+    if (!rootPath) {
+      alert('需要先打开一个 Git 项目才能创建隔离工作树');
+      return;
+    }
+    try {
+      // Check current branch
+      const currentBranch = await window.api.git.currentBranch(rootPath);
+      const branchName = `agent-${Date.now().toString(36)}`;
+      const parentDir = (window as any).__WORKTREE_PARENT__ || rootPath;
+      const wtPath = `${parentDir}_wt/${branchName}`;
+
+      const result = await window.api.git.worktreeAdd(rootPath, wtPath, branchName, currentBranch);
+      if (!result.success) {
+        alert(`创建 worktree 失败：${result.message}`);
+        return;
+      }
+
+      await newWorktreeConversation(wtPath, branchName, currentBranch);
+
+      // Open the worktree directory in FileService (requires update)
+      console.log(`Worktree created: ${wtPath}`);
+    } catch (e: any) {
+      alert(`创建隔离会话失败：${e.message || e}`);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -634,19 +715,29 @@ export default function ChatPanel() {
           onSelect={setActiveConversation}
           onDelete={deleteConversation}
           onNew={newConversation}
+          onNewWorktree={handleNewWorktreeSession}
         />
       ) : (
         <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
           <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
             AI 对话
           </span>
-          <button
-            onClick={() => newConversation()}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-            title="新建对话"
-          >
-            ＋
-          </button>
+          <div className="flex gap-1">
+            <button
+              onClick={() => newConversation()}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+              title="新建对话"
+            >
+              💬+
+            </button>
+            <button
+              onClick={handleNewWorktreeSession}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+              title="新建隔离工作树会话"
+            >
+              🪵+
+            </button>
+          </div>
         </div>
       )}
 
@@ -773,28 +864,94 @@ function SessionTabs({
   onSelect,
   onDelete,
   onNew,
+  onNewWorktree,
 }: {
   conversations: any[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onNew: () => string;
+  onNewWorktree: () => void;
 }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState('');
+  const [showMenu, setShowMenu] = React.useState(false);
+  const [mergeTarget, setMergeTarget] = React.useState<any | null>(null);
+  const [mergeDiff, setMergeDiff] = React.useState('');
+  const [mergeLoading, setMergeLoading] = React.useState(false);
+  const [mergeError, setMergeError] = React.useState('');
+  const [, forceRerender] = React.useState(0);
+
+  const handleMerge = (conv: any) => {
+    setMergeTarget(conv);
+    setMergeDiff('');
+    setMergeError('');
+    setMergeLoading(true);
+    window.api.git.worktreeMergeDiff('', conv.worktree.baseBranch, conv.worktree.branch)
+      .then((diff: string) => { setMergeDiff(diff); setMergeLoading(false); })
+      .catch((e: any) => { setMergeError(e.message); setMergeLoading(false); });
+  };
+
+  const handleMergeConfirm = async (method: string) => {
+    if (!mergeTarget) return;
+    setMergeLoading(true);
+    try {
+      const res = await window.api.git.worktreeMerge('', mergeTarget.worktree.branch, method);
+      if (!res.success) throw new Error(res.message);
+      // Push after merge
+      await window.api.git.push('', 'origin');
+      alert(`合并成功：${res.message}\n已推送到 origin`);
+      setMergeTarget(null);
+      // Optionally clean up worktree
+    } catch (e: any) {
+      setMergeError(e.message || String(e));
+    }
+    setMergeLoading(false);
+  };
+
+  const handleWorktreeCleanup = async (conv: any) => {
+    if (!confirm(`删除 ${conv.worktree.branch} 的 worktree 和分支？`)) return;
+    try {
+      await window.api.git.worktreeRemove('', conv.worktree.path);
+      alert('Worktree 已清理');
+      onDelete(conv.id);
+    } catch (e: any) {
+      alert(`清理失败：${e.message}`);
+    }
+  };
 
   return (
+    <>
     <div className="flex items-center border-b border-editor-border flex-shrink-0 overflow-x-auto hide-scrollbar">
       {conversations.map((conv) => (
         <div
           key={conv.id}
           onClick={() => onSelect(conv.id)}
-          className={`group flex items-center gap-1 px-3 py-1.5 cursor-pointer border-r border-editor-border min-w-0 max-w-[150px] ${
+          className={`group flex items-center gap-1 px-3 py-1.5 cursor-pointer border-r border-editor-border min-w-0 max-w-[160px] ${
             conv.id === activeId
-              ? 'bg-editor-bg text-white border-t-2 border-t-editor-accent'
+              ? 'bg-editor-bg text-white border-t-2 ' + (conv.worktree ? 'border-t-yellow-500' : 'border-t-editor-accent')
               : 'text-gray-400 hover:bg-editor-hover'
           }`}
         >
+          {conv.worktree && <span className="text-[10px] flex-shrink-0 group-hover:hidden">🪵</span>}
+          {conv.worktree && (
+            <div className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); handleMerge(conv); }}
+                className="text-[10px] text-emerald-400 hover:text-emerald-300"
+                title="合并到基础分支"
+              >
+                ⥄
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleWorktreeCleanup(conv); }}
+                className="text-[10px] text-red-400 hover:text-red-300"
+                title="清理 worktree"
+              >
+                🗑
+              </button>
+            </div>
+          )}
           {editingId === conv.id ? (
             <input
               value={draft}
@@ -835,13 +992,69 @@ function SessionTabs({
           )}
         </div>
       ))}
-      <button
-        onClick={() => onNew()}
-        className="flex-shrink-0 px-2 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-editor-hover"
-        title="新建会话"
-      >
-        +
-      </button>
+      <div className="relative flex-shrink-0">
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          className="px-2 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-editor-hover"
+          title="新建会话"
+        >
+          +
+        </button>
+        {showMenu && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+            <div className="absolute left-0 top-full z-20 mt-0.5 w-44 bg-editor-sidebar border border-editor-border rounded shadow-lg py-1">
+              <button
+                onClick={() => { onNew(); setShowMenu(false); }}
+                className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-editor-hover flex items-center gap-2"
+              >
+                <span className="text-xs">💬</span> 新建普通会话
+              </button>
+              <button
+                onClick={() => { onNewWorktree(); setShowMenu(false); }}
+                className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-editor-hover flex items-center gap-2"
+              >
+                <span className="text-xs">🪵</span> 新建隔离会话 (Worktree)
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
+
+    {/* ── Merge diff modal ── */}
+    {mergeTarget && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMergeTarget(null)}>
+        <div
+          className="bg-editor-sidebar border border-editor-border rounded-lg shadow-2xl w-[700px] max-h-[80vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-editor-border">
+            <span className="text-xs font-semibold text-gray-300">
+              🪵 合并 {mergeTarget.worktree.branch} → {mergeTarget.worktree.baseBranch}
+            </span>
+            <button onClick={() => setMergeTarget(null)} className="text-gray-500 hover:text-white text-sm">✕</button>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            {mergeLoading ? (
+              <p className="text-xs text-gray-500">加载 diff...</p>
+            ) : mergeError ? (
+              <p className="text-xs text-red-400">{mergeError}</p>
+            ) : (
+              <pre className="text-[11px] font-mono text-gray-300 whitespace-pre-wrap bg-black/20 rounded p-3">
+                {mergeDiff || '没有差异'}
+              </pre>
+            )}
+          </div>
+          <div className="flex gap-2 px-4 py-3 border-t border-editor-border justify-end">
+            <button onClick={() => handleMergeConfirm('merge')} className="px-3 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700">Merge</button>
+            <button onClick={() => handleMergeConfirm('squash')} className="px-3 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700">Squash</button>
+            <button onClick={() => handleMergeConfirm('rebase')} className="px-3 py-1 text-[11px] bg-purple-600 text-white rounded hover:bg-purple-700">Rebase</button>
+            <button onClick={() => setMergeTarget(null)} className="px-3 py-1 text-[11px] bg-gray-600 text-white rounded hover:bg-gray-700">取消</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

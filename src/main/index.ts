@@ -266,6 +266,26 @@ function setupIPC() {
     return gitService.currentBranch(cwd);
   });
 
+  // Worktree
+  ipcMain.handle('git:worktreeAdd', async (_, cwd: string, path: string, name: string, base?: string) => {
+    return gitService.worktreeAdd(cwd, path, name, base);
+  });
+  ipcMain.handle('git:worktreeList', async (_, cwd: string) => {
+    return gitService.worktreeList(cwd);
+  });
+  ipcMain.handle('git:worktreeRemove', async (_, cwd: string, path: string) => {
+    return gitService.worktreeRemove(cwd, path);
+  });
+  ipcMain.handle('git:worktreePrune', async (_, cwd: string) => {
+    return gitService.worktreePrune(cwd);
+  });
+  ipcMain.handle('git:worktreeMerge', async (_, cwd: string, sourceBranch: string, method: string) => {
+    return gitService.worktreeMerge(cwd, sourceBranch, method as any);
+  });
+  ipcMain.handle('git:worktreeMergeDiff', async (_, cwd: string, baseBranch: string, headBranch: string) => {
+    return gitService.worktreeMergeDiff(cwd, baseBranch, headBranch);
+  });
+
   // ==================== Web ====================
 
   ipcMain.handle('web:search', async (_, query: string, count?: number) => {
