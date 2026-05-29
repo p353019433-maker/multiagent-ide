@@ -147,6 +147,30 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'find_definition',
+    description:
+      '查找一个符号（函数/类/接口/类型等）的定义位置（类 go-to-definition）。返回所有声明该名字的文件与行号。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '要查找定义的符号名（精确匹配）。' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'find_references',
+    description:
+      '查找一个标识符在整个工作区的引用位置（类 find-references，按词边界匹配）。用于评估改动影响面。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '要查找引用的标识符。' },
+      },
+      required: ['name'],
+    },
+  },
+  {
     name: 'codebase_search',
     description:
       '按概念/语义在整个工作区检索最相关的代码位置。先在符号索引（函数/类/接口/类型名）中按相关度打分匹配，再回退到全文搜索。比 search_files 更适合“在哪里实现了 X”“处理 Y 的代码在哪”这类问题——无需事先知道确切关键词。',
