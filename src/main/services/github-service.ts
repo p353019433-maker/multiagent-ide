@@ -186,6 +186,63 @@ export class GitHubService {
     };
   }
 
+  // ── Reviews ──
+
+  async createReview(
+    token: string,
+    owner: string,
+    repo: string,
+    number: number,
+    event: string,
+    body: string,
+    comments?: { path: string; line: number; body: string }[]
+  ) {
+    await this.fetch(token, `/repos/${owner}/${repo}/pulls/${number}/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, body, comments }),
+    });
+  }
+
+  async mergePR(
+    token: string,
+    owner: string,
+    repo: string,
+    number: number,
+    method: string = 'merge'
+  ) {
+    return this.fetch(token, `/repos/${owner}/${repo}/pulls/${number}/merge`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ merge_method: method }),
+    });
+  }
+
+  // ── Releases ──
+
+  async createRelease(
+    token: string,
+    owner: string,
+    repo: string,
+    tag: string,
+    name: string,
+    body: string,
+    draft: boolean = false
+  ) {
+    const r = await this.fetch(token, `/repos/${owner}/${repo}/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tag_name: tag,
+        name: name || tag,
+        body,
+        draft,
+        generate_release_notes: !body,
+      }),
+    });
+    return { html_url: r.html_url };
+  }
+
   /** Derive owner/repo from git remote origin URL */
   parseRemoteUrl(remoteUrl: string): { owner: string; repo: string } | null {
     // HTTPS: https://github.com/owner/repo.git

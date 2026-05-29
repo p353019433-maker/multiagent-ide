@@ -555,6 +555,38 @@ export default function ChatPanel() {
         const repo = await window.api.github.getRepo(token, info.owner, info.repo);
         return JSON.stringify(repo, null, 2);
       }
+      case 'github_create_review': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const number = args.number as number;
+        const body = (args.body as string) || '';
+        const event = (args.event as string) || 'COMMENT';
+        const comments = args.comments as any[] | undefined;
+        await window.api.github.createReview(token, info.owner, info.repo, number, event, body, comments);
+        return event === 'APPROVE' ? `已批准 PR #${number}` : `已在 PR #${number} 上提交审查`;
+      }
+      case 'github_merge_pr': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const number = args.number as number;
+        const method = (args.method as string) || 'merge';
+        const approved = await requestApproval(tc.id, `合并 PR #${number}`, 'github', '', `${method} PR #${number}`);
+        if (!approved) return 'GitHub 操作被用户拒绝';
+        await window.api.github.mergePR(token, info.owner, info.repo, number, method);
+        return `PR #${number} 已合并`;
+      }
+      case 'github_create_release': {
+        const { token, info } = await getGitHubContext();
+        if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+        const tag = args.tag as string;
+        const name = (args.name as string) || tag;
+        const body = (args.body as string) || '';
+        const draft = args.draft as boolean | undefined;
+        const approved = await requestApproval(tc.id, `创建 release: ${tag}`, 'github', '', `tag: ${tag}\n${body}`);
+        if (!approved) return 'GitHub 操作被用户拒绝';
+        const result = await window.api.github.createRelease(token, info.owner, info.repo, tag, name, body, draft);
+        return `已创建 release ${tag}: ${result.html_url}`;
+      }
 
       // ── Legacy compat ──
       case 'edit_file': {

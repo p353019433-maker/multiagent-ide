@@ -332,6 +332,18 @@ function setupIPC() {
     return githubService.parseRemoteUrl(remoteUrl);
   });
 
+  ipcMain.handle('github:createReview', async (_, token: string, owner: string, repo: string, number: number, event: string, body?: string, comments?: any[]) => {
+    return githubService.createReview(token, owner, repo, number, event, body || '', comments);
+  });
+
+  ipcMain.handle('github:mergePR', async (_, token: string, owner: string, repo: string, number: number, method?: string) => {
+    return githubService.mergePR(token, owner, repo, number, method);
+  });
+
+  ipcMain.handle('github:createRelease', async (_, token: string, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) => {
+    return githubService.createRelease(token, owner, repo, tag, name || tag, body || '', draft || false);
+  });
+
   // ==================== Lint ====================
 
   ipcMain.handle('lint:run', async (_, cwd: string, filePath?: string) => {

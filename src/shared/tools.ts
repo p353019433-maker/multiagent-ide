@@ -491,6 +491,65 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: 'github_create_review',
+    description: '对 PR 提交代码审查（comment、approve 或 request changes）。审查内容是 AI 自动生成的代码审查意见。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'PR 编号。' },
+        event: {
+          type: 'string',
+          enum: ['COMMENT', 'APPROVE', 'REQUEST_CHANGES'],
+          description: '审查动作：COMMENT=纯评论，APPROVE=批准，REQUEST_CHANGES=要求修改。默认 COMMENT。',
+        },
+        body: { type: 'string', description: '审查总结（Markdown）。' },
+        comments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: '文件路径。' },
+              line: { type: 'number', description: '行号。' },
+              body: { type: 'string', description: 'Comment text.' },
+            },
+          },
+          description: '逐行审查意见。每个元素包含 path、line、body。',
+        },
+      },
+      required: ['number'],
+    },
+  },
+  {
+    name: 'github_merge_pr',
+    description: '合并 Pull Request。需要用户批准后执行。',
+    parameters: {
+      type: 'object',
+      properties: {
+        number: { type: 'number', description: 'PR 编号。' },
+        method: {
+          type: 'string',
+          enum: ['merge', 'squash', 'rebase'],
+          description: '合并方式，默认 merge。',
+        },
+      },
+      required: ['number'],
+    },
+  },
+  {
+    name: 'github_create_release',
+    description: '创建 GitHub Release。需要用户批准后执行。',
+    parameters: {
+      type: 'object',
+      properties: {
+        tag: { type: 'string', description: 'Tag（如 v1.0.0），如果 tag 不存在会自动创建。' },
+        name: { type: 'string', description: 'Release 名称，默认用 tag。' },
+        body: { type: 'string', description: 'Release 说明（Markdown）。' },
+        draft: { type: 'boolean', description: '是否存为草稿。' },
+      },
+      required: ['tag'],
+    },
+  },
 ];
 
 export const AGENT_SYSTEM_PROMPT = `You are an AI coding assistant integrated into a code IDE. You help users by reading, writing, and modifying code in their workspace.
