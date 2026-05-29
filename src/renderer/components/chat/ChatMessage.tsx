@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function ChatMessage({ message }: Props) {
-  if (message.role === 'tool') return null; // tool results are shown inline via AgentToolView
+  if (message.role === 'tool') return null;
 
   const isUser = message.role === 'user';
 
@@ -33,7 +33,6 @@ export default function ChatMessage({ message }: Props) {
                 code(props) {
                   const { className, children, ...rest } = props;
                   const match = /language-(\w+)/.exec(className || '');
-                  // If it has a language class, render as a code block
                   if (match) {
                     return (
                       <SyntaxHighlighter
@@ -46,7 +45,6 @@ export default function ChatMessage({ message }: Props) {
                       </SyntaxHighlighter>
                     );
                   }
-                  // Inline code
                   return (
                     <code className="bg-black/30 px-1 py-0.5 rounded text-xs" {...rest}>
                       {children}
@@ -60,7 +58,6 @@ export default function ChatMessage({ message }: Props) {
           </div>
         )}
 
-        {/* Show tool call indicators */}
         {message.toolCalls?.length ? (
           <div className="mt-2 pt-2 border-t border-white/10">
             {message.toolCalls.map((tc) => (

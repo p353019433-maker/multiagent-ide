@@ -85,17 +85,15 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         await window.api.fs.createDirectory(fullPath);
       }
       await refreshTree();
-      // Reload children
       if (expanded) {
         const loaded = await loadChildren(node);
         setChildren(loaded);
       }
-      // Open the new file
       if (creating === 'file') {
         openFile(fullPath);
       }
     } catch (err: any) {
-      // Silently handle — likely file already exists
+      // silently fail
     }
     setCreating(null);
     setNewName('');
@@ -103,10 +101,9 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
 
   const handleDelete = useCallback(async () => {
     const name = node.name;
-    const confirmed = window.confirm(`Delete "${name}"? This cannot be undone.`);
+    const confirmed = window.confirm(`确定删除「${name}」？此操作不可撤销。`);
     if (!confirmed) return;
     try {
-      // Close file if open
       closeFile(node.path);
       await window.api.fs.delete(node.path);
       await refreshTree();
@@ -115,7 +112,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         setChildren(loaded);
       }
     } catch (err: any) {
-      window.alert(`Failed to delete: ${err.message}`);
+      window.alert(`删除失败：${err.message}`);
     }
   }, [node, closeFile, refreshTree, expanded, loadChildren]);
 
@@ -135,7 +132,6 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
     const newPath = dir + '/' + newName.trim();
     try {
       await window.api.fs.rename(node.path, newPath);
-      // Update editor if open
       closeFile(node.path);
       closeFile(newPath);
       await refreshTree();
@@ -144,7 +140,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         setChildren(loaded);
       }
     } catch (err: any) {
-      window.alert(`Failed to rename: ${err.message}`);
+      window.alert(`重命名失败：${err.message}`);
     }
     setRenaming(false);
   }, [newName, node.name, node.path, rootPath, closeFile, refreshTree, expanded, loadChildren]);
@@ -158,17 +154,17 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
 
   const menuItems = isDirectory
     ? [
-        { label: 'New File', action: handleNewFile },
-        { label: 'New Folder', action: handleNewFolder },
+        { label: '新建文件', action: handleNewFile },
+        { label: '新建文件夹', action: handleNewFolder },
         { label: 'separator' },
-        { label: 'Rename', action: handleStartRename },
+        { label: '重命名', action: handleStartRename },
         { label: 'separator' },
-        { label: 'Delete', action: handleDelete },
+        { label: '删除', action: handleDelete },
       ]
     : [
-        { label: 'Rename', action: handleStartRename },
+        { label: '重命名', action: handleStartRename },
         { label: 'separator' },
-        { label: 'Delete', action: handleDelete },
+        { label: '删除', action: handleDelete },
       ];
 
   return (
@@ -203,7 +199,6 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         )}
       </div>
 
-      {/* Inline creation input */}
       {creating && (
         <div
           className="flex items-center gap-1 px-2 py-[2px]"
@@ -215,7 +210,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
             ref={createInputRef}
             className="bg-editor-active text-editor-text text-[13px] border border-editor-accent rounded px-1 py-0 outline-none flex-1 min-w-0"
             value={newName}
-            placeholder={creating === 'file' ? 'filename.ts' : 'folder-name'}
+            placeholder={creating === 'file' ? '文件名.ts' : '文件夹名'}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleCreateConfirm();
@@ -236,7 +231,6 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
 
       {expanded && children && <FileTree nodes={children} depth={depth + 1} />}
 
-      {/* Context menu */}
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

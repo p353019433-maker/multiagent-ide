@@ -5,6 +5,14 @@ interface Props {
   execution: AgentToolExecution;
 }
 
+const STATUS_NAMES: Record<string, string> = {
+  pending: '等待中',
+  running: '执行中',
+  success: '成功',
+  error: '失败',
+  rejected: '已拒绝',
+};
+
 export default function AgentToolView({ execution }: Props) {
   const [expanded, setExpanded] = useState(false);
 
@@ -33,7 +41,7 @@ export default function AgentToolView({ execution }: Props) {
         <span>{statusIcon}</span>
         <span className="font-mono text-editor-accent">{execution.name}</span>
         <span className={`ml-auto ${statusColor}`}>
-          {execution.status}
+          {STATUS_NAMES[execution.status] || execution.status}
         </span>
         <span className="text-gray-600">{expanded ? '▾' : '▸'}</span>
       </div>
@@ -41,14 +49,14 @@ export default function AgentToolView({ execution }: Props) {
       {expanded && (
         <div className="mt-2 space-y-1">
           <div>
-            <span className="text-gray-500">Args: </span>
+            <span className="text-gray-500">参数：</span>
             <code className="text-gray-300 text-[11px]">
               {JSON.stringify(execution.arguments, null, 2).slice(0, 500)}
             </code>
           </div>
           {execution.result && (
             <div>
-              <span className="text-gray-500">Result: </span>
+              <span className="text-gray-500">结果：</span>
               <pre className="text-gray-300 text-[11px] whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {execution.result.slice(0, 1000)}
               </pre>
@@ -56,7 +64,7 @@ export default function AgentToolView({ execution }: Props) {
           )}
           {execution.error && (
             <div className="text-red-400">
-              Error: {execution.error}
+              错误：{execution.error}
             </div>
           )}
         </div>

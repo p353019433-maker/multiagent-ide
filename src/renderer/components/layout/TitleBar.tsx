@@ -25,12 +25,10 @@ export default function TitleBar({
 
   return (
     <div className="h-10 flex items-center justify-between px-4 bg-editor-sidebar border-b border-editor-border drag-region">
-      {/* Left: app title */}
       <div className="flex items-center gap-3 no-drag">
         <span className="text-sm font-semibold text-white">AI Code IDE</span>
       </div>
 
-      {/* Center: provider + model selector */}
       <div className="flex items-center gap-2 no-drag">
         {providers.length > 0 && (
           <>
@@ -62,14 +60,13 @@ export default function TitleBar({
         )}
       </div>
 
-      {/* Right: actions */}
       <div className="flex items-center gap-2 no-drag">
         <button
           onClick={onToggleSearch}
           className={`text-xs px-2 py-1 rounded transition-colors ${
             showSearch ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
           }`}
-          title={'Search (Cmd+Shift+F)'}
+          title="搜索 (Cmd+Shift+F)"
         >
           🔍
         </button>
@@ -78,7 +75,7 @@ export default function TitleBar({
           className={`text-xs px-2 py-1 rounded transition-colors ${
             showTerminal ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
           }`}
-          title={showTerminal ? 'Hide terminal' : 'Show terminal'}
+          title={showTerminal ? '收起终端' : '显示终端'}
         >
           &gt;_
         </button>
@@ -87,14 +84,14 @@ export default function TitleBar({
           className={`text-xs px-2 py-1 rounded transition-colors ${
             showChat ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
           }`}
-          title={showChat ? 'Hide chat' : 'Show chat'}
+          title={showChat ? '收起对话' : '显示对话'}
         >
           💬
         </button>
         <button
           onClick={onOpenSettings}
           className="text-xs px-2 py-1 rounded hover:bg-editor-active transition-colors"
-          title="Settings"
+          title="设置"
         >
           ⚙️
         </button>
