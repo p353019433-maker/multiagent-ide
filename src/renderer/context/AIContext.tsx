@@ -26,8 +26,8 @@ interface AIContextValue {
   addMessage: (conversationId: string, message: ChatMessage) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
 
-  /** Orchestrate multiple agents in parallel */
-  orchestrate: (goal: string, subTasks: string[]) => Promise<OrchestrationSession>;
+  /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
+  orchestrate: (goal: string, subTasks?: string[]) => Promise<OrchestrationSession>;
 }
 
 const AIContext = createContext<AIContextValue | null>(null);
@@ -45,7 +45,6 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
 
-  // Load persisted state on mount
   useEffect(() => {
     (async () => {
       const storedProviders = (await window.api.store.get('providers')) as AIProviderConfig[] | undefined;
@@ -66,7 +65,6 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Persist conversations (debounced)
   useEffect(() => {
     if (conversations.length > 0) {
       window.api.store.set('conversations', conversations);
@@ -151,7 +149,6 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     [activeProviderId, activeModel]
   );
 
-  /** Create a conversation bound to a git worktree (isolated agent workspace). */
   const newWorktreeConversation = useCallback(
     async (worktreePath: string, branch: string, baseBranch: string): Promise<string> => {
       const id = uuid();
@@ -230,23 +227,79 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  /** Orchestrate multiple agents in parallel */
-  const orchestrate = useCallback(async (goal: string, subTasks: string[]): Promise<OrchestrationSession> => {
+  /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
+  const orchestrate = useCallback(async (goal: string, subTasks?: string[]): Promise<OrchestrationSession> => {
     const sessionId = uuid();
-    const tasks: OrchestrationTask[] = [];
+    let tasks: OrchestrationTask[] = [];
 
-    // Create worktree conversations for each sub-task
+    // Step 1: Auto-decompose via LLM if no subtasks provided
+    if (!subTasks || subTasks.length === 0) {
+      if (!activeProviderId || !activeModel) {
+        throw new Error('No active AI provider or model');
+      }
+
+      const decomposePrompt = `You are a task decomposition engine. Given a large goal, split it into 2-5 independent subtasks that can be executed in parallel by different agents.
+
+Goal: ${goal}
+
+Rules:
+- Each subtask must be independently actionable (no dependencies between subtasks)
+- Each subtask should be self-contained (clear start and end)
+- Return ONLY a JSON array of strings, nothing else. No markdown, no explanation.
+- Example format: ["task 1 description", "task 2 description", "task 3 description"]
+
+Response:`;
+
+      try {
+        const result = await window.api.ai.chat(activeProviderId, {
+          model: activeModel,
+          messages: [{ role: 'user', content: decomposePrompt }],
+          systemPrompt: 'You are a task decomposition engine. Return ONLY a JSON array of subtask strings. No explanations. No markdown. Just the array.',
+          maxTokens: 400,
+          temperature: 0.1,
+        } as any);
+
+        const raw = result?.content?.trim() || '[]';
+        // Try to extract JSON array
+        const jsonMatch = raw.match(/\[[\s\S]*?\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            subTasks = parsed.filter((s: string) => typeof s === 'string' && s.trim().length > 0);
+          }
+        }
+      } catch (err) {
+        console.error('Task decomposition failed:', err);
+      }
+
+      // Fallback if decomposition failed
+      if (!subTasks || subTasks.length === 0) {
+        subTasks = [goal]; // Fall back to single task
+      }
+    }
+
+    // Step 2: Create worktree for each subtask
     for (let i = 0; i < subTasks.length; i++) {
       const branch = `agent-${sessionId.slice(0, 6)}-task-${i + 1}`;
-      const worktreePath = await window.api.git.worktreeAdd(branch, 'main');
-      const convId = await newWorktreeConversation(worktreePath, branch, 'main');
+      try {
+        const worktreePath = await window.api.git.worktreeAdd(branch, 'main');
+        const convId = await newWorktreeConversation(worktreePath, branch, 'main');
 
-      tasks.push({
-        id: uuid(),
-        description: subTasks[i],
-        conversationId: convId,
-        status: 'pending',
-      });
+        tasks.push({
+          id: uuid(),
+          description: subTasks[i],
+          conversationId: convId,
+          status: 'pending',
+        });
+      } catch (err: any) {
+        tasks.push({
+          id: uuid(),
+          description: subTasks[i],
+          conversationId: '',
+          status: 'failed',
+          error: `创建 worktree 失败: ${err.message}`,
+        });
+      }
     }
 
     const session: OrchestrationSession = {
@@ -259,31 +312,49 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
 
     setOrchestrationSessions((prev) => [session, ...prev]);
 
-    // Start all agents in parallel - send initial message to each
-    const promises = tasks.map(async (task, idx) => {
-      try {
-        const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
-        if (!conv) throw new Error('Conversation not found');
+    // Step 3: Start all agents in parallel
+    const promises = tasks
+      .filter((t) => t.status !== 'failed')
+      .map(async (task) => {
+        try {
+          const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
+          if (!conv) throw new Error('Conversation not found');
 
-        task.status = 'running';
-        
-        // Note: This is a simplified version - actual streaming would need more complex event handling
-        // For now, just mark as running and let user interact with each tab
-        task.status = 'completed';
-      } catch (err: any) {
-        task.status = 'failed';
-        task.error = err.message;
-      }
-    });
+          task.status = 'running';
+          // Refresh session to show running state
+          setOrchestrationSessions((prev) =>
+            prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
+          );
 
-    await Promise.all(promises);
+          // Send initial message to the agent via main process (non-streaming for orchestration)
+          const result = await window.api.ai.chat(conv.providerId, [
+            { role: 'user', content: task.description }
+          ], {
+            model: conv.model,
+            systemPrompt: AGENT_SYSTEM_PROMPT,
+            workspaceRoot: conv.worktree?.path,
+            tools: [],
+          });
+          task.result = result?.content || '';
+          task.status = 'completed';
 
-    session.status = 'completed';
+          task.status = 'completed';
+        } catch (err: any) {
+          task.status = 'failed';
+          task.error = err.message;
+        }
+      });
+
+    await Promise.allSettled(promises);
+
+    // Check if all tasks failed
+    const allFailed = tasks.every((t) => t.status === 'failed');
+    session.status = allFailed ? 'failed' : 'completed';
     session.completedAt = Date.now();
     setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? session : s)));
 
     return session;
-  }, [newWorktreeConversation]);
+  }, [activeProviderId, activeModel, newWorktreeConversation]);
 
   return (
     <AIContext.Provider
