@@ -8,6 +8,13 @@ import AgentToolView from './AgentToolView';
 import DiffPreview from '../editor/DiffPreview';
 import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution } from '@shared/types';
 import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
+import {
+  type ApprovalMode,
+  DEFAULT_APPROVAL_MODE,
+  APPROVAL_MODE_META,
+  classifyCommand,
+  decideApproval,
+} from '@shared/command-policy';
 import { setAiCompleteFn, updateInlineCompletionConfig } from '../editor/aiInlineCompletion';
 
 export default function ChatPanel() {
@@ -29,8 +36,26 @@ export default function ChatPanel() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
   const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(DEFAULT_APPROVAL_MODE);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keep a ref so tool execution (which runs outside React render) reads the
+  // current mode without stale-closure issues.
+  const approvalModeRef = useRef<ApprovalMode>(DEFAULT_APPROVAL_MODE);
+  approvalModeRef.current = approvalMode;
+
+  // Load persisted approval mode once.
+  useEffect(() => {
+    window.api.store.get('approvalMode').then((m) => {
+      if (m === 'readonly' || m === 'auto' || m === 'full') setApprovalMode(m);
+    });
+  }, []);
+
+  const changeApprovalMode = (m: ApprovalMode) => {
+    setApprovalMode(m);
+    window.api.store.set('approvalMode', m);
+  };
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages || [];
@@ -416,37 +441,80 @@ ${suffix.slice(0, 500)}
     }
   };
 
-  // ── Auto-approve mode: destructive writes auto-accept after a short preview, user can reject ──
+  // ── Approval system (mode-aware) ──
+  // In `auto` mode workspace writes auto-accept after a countdown; in
+  // `readonly` mode (or for dangerous commands) approval is manual with no
+  // countdown; in `full` mode the gate is skipped entirely upstream.
+  const AUTO_ACCEPT_MS = 5000;
   const autoApproveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const [pendingApproval, setPendingApproval] = useState<{
     toolCallId: string;
     filePath: string;
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github';
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github' | 'command';
     before: string;
     after: string;
+    /** When true the approval auto-accepts after AUTO_ACCEPT_MS; otherwise manual. */
+    countdown: boolean;
+    /** Optional danger reason shown to the user (dangerous commands). */
+    dangerReason?: string;
     resolve: (approved: boolean) => void;
   } | null>(null);
 
   const requestApproval = (
     toolCallId: string,
     filePath: string,
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github',
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github' | 'command',
     before: string,
-    after: string
+    after: string,
+    opts?: { countdown?: boolean; dangerReason?: string }
   ): Promise<boolean> => {
+    const countdown = opts?.countdown ?? true;
     return new Promise((resolve) => {
-      setPendingApproval({ toolCallId, filePath, action, before, after, resolve });
-      // Auto-accept after 3 seconds — user can reject before that
-      autoApproveTimeout.current = setTimeout(() => {
-        setPendingApproval((prev) => {
-          if (prev?.toolCallId === toolCallId) {
-            prev.resolve(true);
-            return null;
-          }
-          return prev;
-        });
-      }, 3000);
+      setPendingApproval({
+        toolCallId,
+        filePath,
+        action,
+        before,
+        after,
+        countdown,
+        dangerReason: opts?.dangerReason,
+        resolve,
+      });
+      if (countdown) {
+        // Auto-accept after the countdown — user can reject before that.
+        autoApproveTimeout.current = setTimeout(() => {
+          setPendingApproval((prev) => {
+            if (prev?.toolCallId === toolCallId) {
+              prev.resolve(true);
+              return null;
+            }
+            return prev;
+          });
+        }, AUTO_ACCEPT_MS);
+      }
+    });
+  };
+
+  /**
+   * Central gate for a write/command/external action. Resolves the policy for
+   * the current mode and either runs immediately, shows a countdown preview, or
+   * blocks for manual approval. Returns true if the action may proceed.
+   */
+  const gateAction = (
+    toolCallId: string,
+    label: string,
+    kind: 'write' | 'command' | 'external',
+    before: string,
+    after: string,
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github' | 'command',
+    opts?: { dangerous?: boolean; dangerReason?: string }
+  ): Promise<boolean> => {
+    const decision = decideApproval(approvalModeRef.current, kind, { dangerous: opts?.dangerous });
+    if (decision === 'allow') return Promise.resolve(true);
+    return requestApproval(toolCallId, label, action, before, after, {
+      countdown: decision === 'auto',
+      dangerReason: opts?.dangerReason,
     });
   };
 
@@ -489,7 +557,7 @@ ${suffix.slice(0, 500)}
         } catch {
           // File doesn't exist yet
         }
-        const approved = await requestApproval(tc.id, filePath, 'write', existingContent, newContent);
+        const approved = await gateAction(tc.id, filePath, 'write', existingContent, newContent, 'write');
         if (!approved) return '文件写入被用户拒绝';
         await window.api.fs.writeFile(filePath, newContent);
         return `已写入文件：${args.path}`;
@@ -508,7 +576,7 @@ ${suffix.slice(0, 500)}
           throw new Error(`old_str 在文件中出现 ${occurrences} 次，不唯一。请添加更多上下文或设置 replace_all: true。`);
         }
         const updated = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
-        const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
+        const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
         if (!approved) return '文件编辑被用户拒绝';
         await window.api.fs.writeFile(filePath, updated);
         const count = replaceAll ? occurrences : 1;
@@ -640,14 +708,38 @@ ${suffix.slice(0, 500)}
       // ── Commands ──
       case 'run_command': {
         const cwd = rootPath || '/';
+        const command = args.command as string;
+        const risk = classifyCommand(command);
+        const approved = await gateAction(
+          tc.id,
+          command,
+          'command',
+          '',
+          command,
+          'command',
+          { dangerous: risk.dangerous, dangerReason: risk.reason }
+        );
+        if (!approved) return '命令执行被用户拒绝';
         const timeoutMs = (args.timeout_ms as number) ?? 60000;
-        const result = await window.api.terminal.runCommand(cwd, args.command as string, timeoutMs);
+        const result = await window.api.terminal.runCommand(cwd, command, timeoutMs);
         const output = (result.stdout + result.stderr).slice(0, 5000);
         return `退出码：${result.exitCode}\n${output}`;
       }
       case 'run_background_command': {
         const cwd = rootPath || '/';
-        const id = await window.api.terminal.runBackgroundCommand(cwd, args.command as string);
+        const command = args.command as string;
+        const risk = classifyCommand(command);
+        const approved = await gateAction(
+          tc.id,
+          command,
+          'command',
+          '',
+          command,
+          'command',
+          { dangerous: risk.dangerous, dangerReason: risk.reason }
+        );
+        if (!approved) return '命令执行被用户拒绝';
+        const id = await window.api.terminal.runBackgroundCommand(cwd, command);
         return `后台任务已启动，session ID: ${id}\n使用 get_background_output("${id}") 查看输出`;
       }
       case 'get_background_output': {
@@ -709,7 +801,7 @@ ${suffix.slice(0, 500)}
           for (const m of matches) {
             updated = updated.split(m.preview).join(replacement);
           }
-          const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
+          const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
           if (approved) {
             await window.api.fs.writeFile(filePath, updated);
             changed += matches.length;
@@ -748,7 +840,7 @@ ${suffix.slice(0, 500)}
       case 'github_create_issue': {
         const { token, info } = await getGitHubContext();
         if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-        const approved = await requestApproval(tc.id, `github issue: ${args.title}`, 'github', '', args.title as string);
+        const approved = await gateAction(tc.id, `github issue: ${args.title}`, 'external', '', args.title as string, 'github');
         if (!approved) return 'GitHub 操作被用户拒绝';
         const result = await window.api.github.createIssue(token, info.owner, info.repo, args.title as string, (args.body as string) || '', args.labels as string[]);
         return `已创建 issue #${result.number}: ${result.html_url}`;
@@ -762,7 +854,7 @@ ${suffix.slice(0, 500)}
       case 'github_add_comment': {
         const { token, info } = await getGitHubContext();
         if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-        const approved = await requestApproval(tc.id, `评论 issue`, 'github', '', (args.body as string));
+        const approved = await gateAction(tc.id, `评论 issue`, 'external', '', (args.body as string), 'github');
         if (!approved) return 'GitHub 操作被用户拒绝';
         await window.api.github.addIssueComment(token, info.owner, info.repo, args.number as number, args.body as string);
         return `评论已发布到 issue #${args.number}`;
@@ -792,7 +884,7 @@ ${suffix.slice(0, 500)}
         const head = args.head as string;
         const base = (args.base as string) || 'main';
         const body = (args.body as string) || '';
-        const approved = await requestApproval(tc.id, `创建 PR: ${title}`, 'github', '', `head: ${head} → base: ${base}\n${body}`);
+        const approved = await gateAction(tc.id, `创建 PR: ${title}`, 'external', '', `head: ${head} → base: ${base}\n${body}`, 'github');
         if (!approved) return 'GitHub 操作被用户拒绝';
         const result = await window.api.github.createPR(token, info.owner, info.repo, title, head, base, body);
         return `已创建 PR #${result.number}: ${result.html_url}`;
@@ -830,7 +922,7 @@ ${suffix.slice(0, 500)}
         if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
         const number = args.number as number;
         const method = (args.method as string) || 'merge';
-        const approved = await requestApproval(tc.id, `合并 PR #${number}`, 'github', '', `${method} PR #${number}`);
+        const approved = await gateAction(tc.id, `合并 PR #${number}`, 'external', '', `${method} PR #${number}`, 'github');
         if (!approved) return 'GitHub 操作被用户拒绝';
         await window.api.github.mergePR(token, info.owner, info.repo, number, method);
         return `PR #${number} 已合并`;
@@ -842,7 +934,7 @@ ${suffix.slice(0, 500)}
         const name = (args.name as string) || tag;
         const body = (args.body as string) || '';
         const draft = args.draft as boolean | undefined;
-        const approved = await requestApproval(tc.id, `创建 release: ${tag}`, 'github', '', `tag: ${tag}\n${body}`);
+        const approved = await gateAction(tc.id, `创建 release: ${tag}`, 'external', '', `tag: ${tag}\n${body}`, 'github');
         if (!approved) return 'GitHub 操作被用户拒绝';
         const result = await window.api.github.createRelease(token, info.owner, info.repo, tag, name, body, draft);
         return `已创建 release ${tag}: ${result.html_url}`;
@@ -859,7 +951,7 @@ ${suffix.slice(0, 500)}
         if (occurrences === 0) throw new Error('文件中未找到 oldString');
         if (occurrences > 1) throw new Error(`oldString 在文件中出现 ${occurrences} 次，不唯一。`);
         const updated = content.replace(oldStr, newStr);
-        const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
+        const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
         if (!approved) return '文件编辑被用户拒绝';
         await window.api.fs.writeFile(filePath, updated);
         return `已编辑文件：${args.path}`;
@@ -946,6 +1038,33 @@ ${suffix.slice(0, 500)}
         </div>
       )}
 
+      {/* Approval mode selector */}
+      <div className="flex items-center gap-1 px-3 py-1 border-b border-editor-border flex-shrink-0">
+        <span className="text-[10px] text-gray-500 mr-1">审批</span>
+        {(['readonly', 'auto', 'full'] as ApprovalMode[]).map((m) => {
+          const meta = APPROVAL_MODE_META[m];
+          const active = approvalMode === m;
+          return (
+            <button
+              key={m}
+              onClick={() => changeApprovalMode(m)}
+              title={meta.hint}
+              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                active
+                  ? m === 'full'
+                    ? 'bg-red-600/80 text-white'
+                    : m === 'readonly'
+                    ? 'bg-blue-600/80 text-white'
+                    : 'bg-editor-accent text-white'
+                  : 'text-gray-400 hover:bg-editor-hover'
+              }`}
+            >
+              {meta.icon} {meta.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 selectable">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
@@ -968,16 +1087,21 @@ ${suffix.slice(0, 500)}
         <div ref={messagesEndRef} />
       </div>
 
-      {pendingApproval && pendingApproval.action === 'github' ? (
-        <div className="px-3 py-2 border-t border-editor-border flex-shrink-0 bg-yellow-900/10">
+      {pendingApproval && pendingApproval.action !== 'edit' && pendingApproval.action !== 'write' && pendingApproval.action !== 'replace_in_file' && pendingApproval.action !== 'search_and_replace' ? (
+        <div className={`px-3 py-2 border-t border-editor-border flex-shrink-0 ${pendingApproval.dangerReason ? 'bg-red-900/20' : 'bg-yellow-900/10'}`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-yellow-400">
-              ⚡ GitHub 操作：{pendingApproval.filePath}
+            <span className={`text-xs font-semibold ${pendingApproval.dangerReason ? 'text-red-400' : 'text-yellow-400'}`}>
+              {pendingApproval.action === 'command' ? '🖥 执行命令' : '⚡ GitHub 操作'}：{pendingApproval.filePath.slice(0, 60)}
             </span>
-            <span className="text-[11px] text-yellow-400 animate-pulse">
-              3 秒后自动接受
+            <span className={`text-[11px] animate-pulse ${pendingApproval.dangerReason ? 'text-red-400' : 'text-yellow-400'}`}>
+              {pendingApproval.countdown ? '5 秒后自动接受' : '需手动批准'}
             </span>
           </div>
+          {pendingApproval.dangerReason && (
+            <div className="text-[11px] text-red-300 mt-1">
+              ⚠️ 高风险操作：{pendingApproval.dangerReason}
+            </div>
+          )}
           <pre className="text-[11px] text-gray-300 mt-1 whitespace-pre-wrap bg-black/20 rounded p-2">
             {pendingApproval.after.slice(0, 500)}
           </pre>
@@ -1000,8 +1124,14 @@ ${suffix.slice(0, 500)}
         <div className="h-[250px] border-t border-editor-border flex-shrink-0 relative">
           <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-editor-sidebar/90 rounded px-2 py-1 shadow">
             <span className="text-[11px] text-yellow-400 animate-pulse">
-              3 秒后自动接受
+              {pendingApproval.countdown ? '5 秒后自动接受' : '需手动批准'}
             </span>
+            <button
+              onClick={handleApprove}
+              className="px-1.5 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              接受
+            </button>
             <button
               onClick={handleReject}
               className="px-1.5 py-0.5 text-[11px] bg-red-600 text-white rounded hover:bg-red-700"
