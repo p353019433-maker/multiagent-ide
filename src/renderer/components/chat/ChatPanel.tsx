@@ -6,18 +6,13 @@ import { useEditor } from '../../context/EditorContext';
 import ChatMessage from './ChatMessage';
 import AgentToolView from './AgentToolView';
 import DiffPreview from '../editor/DiffPreview';
-import type { ChatMessage as ChatMessageType, ToolCall, AgentToolExecution, Checkpoint } from '@shared/types';
-import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
-import {
-  type ApprovalMode,
-  DEFAULT_APPROVAL_MODE,
-  APPROVAL_MODE_META,
-  classifyCommand,
-  decideApproval,
-} from '@shared/command-policy';
+import type { ChatMessage as ChatMessageType } from '@shared/types';
+import { AGENT_SYSTEM_PROMPT } from '@shared/tools';
+import { type ApprovalMode, APPROVAL_MODE_META } from '@shared/command-policy';
 import { setAiCompleteFn, updateInlineCompletionConfig } from '../editor/aiInlineCompletion';
-import { executeSingleTool as executeSingleTool_impl, type ToolContext } from '../../agent/toolExecutor';
-import { resolveWorkspacePath, classifyToolError, compactMessages } from '../../agent/agentUtils';
+import { resolveWorkspacePath } from '../../agent/agentUtils';
+import { useApproval } from '../../agent/useApproval';
+import { useAgentEngine } from '../../agent/useAgentEngine';
 import SessionTabs from './SessionTabs';
 
 export default function ChatPanel() {
@@ -36,39 +31,15 @@ export default function ChatPanel() {
   const { activeFilePath, openFiles } = useEditor();
 
   const [input, setInput] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamContent, setStreamContent] = useState('');
-  const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
-  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(DEFAULT_APPROVAL_MODE);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Snapshots of files captured before the current turn modifies them, so a
-  // checkpoint can be created when the turn finishes. Keyed by path.
-  const turnSnapshots = useRef<Map<string, string | null>>(new Map());
-  // Files edited during the current turn — drives the auto-lint self-heal pass.
-  const turnEditedFiles = useRef<Set<string>>(new Set());
   // Project rules (AGENTS.md / .cursorrules), appended to the system prompt.
   const projectRules = useRef<{ file: string; content: string } | null>(null);
 
-  // Keep a ref so tool execution (which runs outside React render) reads the
-  // current mode without stale-closure issues.
-  const approvalModeRef = useRef<ApprovalMode>(DEFAULT_APPROVAL_MODE);
-  approvalModeRef.current = approvalMode;
-
-  // Load persisted approval mode once.
-  useEffect(() => {
-    window.api.store.get('approvalMode').then((m) => {
-      if (m === 'readonly' || m === 'auto' || m === 'full') setApprovalMode(m);
-    });
-  }, []);
-
-  const changeApprovalMode = (m: ApprovalMode) => {
-    setApprovalMode(m);
-    window.api.store.set('approvalMode', m);
-  };
+  // Approval gate (mode + pending-approval state + decision logic).
+  const { approvalMode, changeApprovalMode, pendingApproval, gateAction, handleApprove, handleReject } =
+    useApproval();
 
   // Load project rules (AGENTS.md / .cursorrules) for the current workspace.
   useEffect(() => {
@@ -98,6 +69,13 @@ export default function ChatPanel() {
     }
     return AGENT_SYSTEM_PROMPT;
   };
+
+  // Agent engine: the multi-turn loop, tool execution, checkpoints, streaming.
+  const { isStreaming, streamContent, toolExecutions, checkpoints, runTurn, abort, revertCheckpoint } =
+    useAgentEngine({ activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction });
+  const handleAbort = abort;
+
+  const resolvePath = (p: string): string => resolveWorkspacePath(rootPath, p);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages || [];
@@ -232,394 +210,14 @@ ${suffix.slice(0, 500)}
     const turnLabel = input.slice(0, 60);
     setInput('');
     setPendingImages([]);
-    setIsStreaming(true);
-    setStreamContent('');
-    setToolExecutions([]);
-
-    // Begin a new turn: reset checkpoint/edit trackers.
-    turnSnapshots.current = new Map();
-    turnEditedFiles.current = new Set();
 
     const apiMessages: ChatMessageType[] = [
       ...messages,
       { ...userMsg, content: contextPrefix + userMsg.content, images: turnImages.length ? turnImages : undefined },
     ];
 
-    await runAgentLoop(convId, apiMessages, turnLabel);
+    await runTurn(convId, apiMessages, turnLabel);
   }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages]);
-
-  const runAgentLoop = async (convId: string, apiMessages: ChatMessageType[], turnLabel = '') => {
-    let loopMessages = compactMessages([...apiMessages]);
-    let iterations = 0;
-    const maxIterations = 25;
-    // Track repeated identical tool calls to detect a stuck agent.
-    let lastToolSignature = '';
-    let repeatCount = 0;
-    // Auto-lint self-heal runs at most once per turn.
-    let selfHealAttempted = false;
-
-    while (iterations < maxIterations) {
-      iterations++;
-      setStreamContent('');
-      loopMessages = compactMessages(loopMessages);
-
-      try {
-        const result = await new Promise<any>((resolve, reject) => {
-          let content = '';
-          const toolCalls: ToolCall[] = [];
-
-          const unsubToken = window.api.ai.onStreamToken((token) => {
-            content += token;
-            setStreamContent(content);
-          });
-          const unsubTool = window.api.ai.onStreamToolCall((tc) => {
-            toolCalls.push(tc);
-          });
-          const unsubComplete = window.api.ai.onStreamComplete((res) => {
-            unsubToken();
-            unsubTool();
-            unsubComplete();
-            unsubError();
-            resolve({ ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
-          });
-          const unsubError = window.api.ai.onStreamError((err) => {
-            unsubToken();
-            unsubTool();
-            unsubComplete();
-            unsubError();
-            reject(new Error(err));
-          });
-
-          window.api.ai.chatStream(activeProviderId!, loopMessages, {
-            model: activeModel!,
-            tools: BUILTIN_TOOLS,
-            systemPrompt: buildSystemPrompt(),
-            workspaceRoot: rootPath || undefined,
-          });
-        });
-
-        const assistantMsg: ChatMessageType = {
-          id: uuid(),
-          role: 'assistant',
-          content: result.content || '',
-          toolCalls: result.toolCalls,
-          timestamp: Date.now(),
-        };
-        addMessage(convId, assistantMsg);
-        setStreamContent('');
-
-        if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
-          // The agent thinks it's done. Before stopping, run a self-heal lint
-          // pass on the files it edited and, if there are errors, feed them back
-          // once so the agent can fix them automatically.
-          if (!selfHealAttempted && turnEditedFiles.current.size > 0 && rootPath) {
-            selfHealAttempted = true;
-            const edited = Array.from(turnEditedFiles.current);
-            const check = await window.api.lint.check(rootPath, edited).catch(() => null);
-            if (check?.hasErrors && check.output) {
-              const healMsg: ChatMessageType = {
-                id: uuid(),
-                role: 'user',
-                content:
-                  '你刚才的改动引入了以下 lint/类型错误，请修复它们（不要重复无效操作）：\n\n```\n' +
-                  check.output.slice(0, 4000) +
-                  '\n```',
-                timestamp: Date.now(),
-              };
-              addMessage(convId, healMsg);
-              loopMessages = [...loopMessages, assistantMsg, healMsg];
-              continue;
-            }
-          }
-          break;
-        }
-
-        // Detect a stuck loop: the same tool calls repeated with no change.
-        const signature = JSON.stringify(
-          result.toolCalls.map((tc: ToolCall) => [tc.name, tc.arguments])
-        );
-        if (signature === lastToolSignature) {
-          repeatCount++;
-        } else {
-          repeatCount = 0;
-          lastToolSignature = signature;
-        }
-        if (repeatCount >= 2) {
-          addMessage(convId, {
-            id: uuid(),
-            role: 'assistant',
-            content: '⚠️ 检测到 Agent 重复执行相同操作且无进展，已自动停止。',
-            timestamp: Date.now(),
-          });
-          break;
-        }
-
-        const toolResults = await executeTools(result.toolCalls);
-
-        const toolMsg: ChatMessageType = {
-          id: uuid(),
-          role: 'tool',
-          content: '',
-          toolResults,
-          timestamp: Date.now(),
-        };
-        addMessage(convId, toolMsg);
-
-        loopMessages = [...loopMessages, assistantMsg, toolMsg];
-      } catch (err: any) {
-        const errorMsg: ChatMessageType = {
-          id: uuid(),
-          role: 'assistant',
-          content: `❌ 错误：${err.message}`,
-          timestamp: Date.now(),
-        };
-        addMessage(convId, errorMsg);
-        break;
-      }
-    }
-
-    if (iterations >= maxIterations) {
-      addMessage(convId, {
-        id: uuid(),
-        role: 'assistant',
-        content: `⚠️ 已达到最大 ${maxIterations} 轮工具调用上限，自动停止。如需继续可再发一条消息。`,
-        timestamp: Date.now(),
-      });
-    }
-
-    // Create a checkpoint from this turn's snapshots so the user can revert all
-    // file changes in one click.
-    if (turnSnapshots.current.size > 0) {
-      const cp: Checkpoint = {
-        id: uuid(),
-        label: turnLabel || '未命名改动',
-        createdAt: Date.now(),
-        files: Array.from(turnSnapshots.current.entries()).map(([path, before]) => ({
-          path,
-          before,
-        })),
-      };
-      setCheckpoints((prev) => [cp, ...prev].slice(0, 20));
-    }
-
-    setIsStreaming(false);
-  };
-
-  /** Revert all file changes captured in a checkpoint. */
-  const revertCheckpoint = async (cp: Checkpoint) => {
-    if (!confirm(`回滚 ${cp.files.length} 个文件到「${cp.label}」之前的状态？`)) return;
-    for (const f of cp.files) {
-      try {
-        if (f.before === null) {
-          await window.api.fs.delete(f.path); // file was created in the turn
-        } else {
-          await window.api.fs.writeFile(f.path, f.before);
-        }
-      } catch {
-        // best-effort; continue reverting the rest
-      }
-    }
-    setCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
-    window.dispatchEvent(new CustomEvent('files-reverted'));
-    alert(`已回滚 ${cp.files.length} 个文件`);
-  };
-
-  const executeTools = async (toolCalls: ToolCall[]) => {
-    const results: { toolCallId: string; content: string; isError?: boolean }[] = [];
-
-    for (const tc of toolCalls) {
-      const execution: AgentToolExecution = {
-        id: tc.id,
-        name: tc.name,
-        arguments: tc.arguments,
-        status: 'running',
-      };
-      setToolExecutions((prev) => [...prev, execution]);
-
-      try {
-        const result = await executeToolWithRetry(tc);
-        setToolExecutions((prev) =>
-          prev.map((e) => (e.id === tc.id ? { ...e, status: 'success', result } : e))
-        );
-        results.push({ toolCallId: tc.id, content: result });
-      } catch (err: any) {
-        const { message, retriable } = classifyToolError(err);
-        setToolExecutions((prev) =>
-          prev.map((e) => (e.id === tc.id ? { ...e, status: 'error', error: message } : e))
-        );
-        // Give the model a structured, actionable error rather than a raw string.
-        results.push({
-          toolCallId: tc.id,
-          content: `错误（${retriable ? '可重试' : '不可重试'}）：${message}`,
-          isError: true,
-        });
-      }
-    }
-
-    return results;
-  };
-
-  /** Run a tool, retrying transient failures with exponential backoff. */
-  const executeToolWithRetry = async (tc: ToolCall, maxAttempts = 3): Promise<string> => {
-    let lastErr: any;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return await executeSingleTool(tc);
-      } catch (err: any) {
-        lastErr = err;
-        const { retriable } = classifyToolError(err);
-        // Approval rejections and logic errors should fail fast.
-        if (!retriable || attempt === maxAttempts) throw err;
-        await new Promise((r) => setTimeout(r, 2 ** (attempt - 1) * 500));
-      }
-    }
-    throw lastErr;
-  };
-
-  const resolvePath = (p: string): string => resolveWorkspacePath(rootPath, p);
-
-  /**
-   * Write a file while recording a checkpoint snapshot. The first time a path is
-   * touched in a turn we capture its prior content (or null if it didn't exist)
-   * so the turn can be reverted later, and we mark it for the auto-lint pass.
-   */
-  const writeFileTracked = async (filePath: string, content: string) => {
-    if (!turnSnapshots.current.has(filePath)) {
-      let before: string | null = null;
-      try {
-        before = await window.api.fs.readFile(filePath);
-      } catch {
-        before = null; // new file
-      }
-      turnSnapshots.current.set(filePath, before);
-    }
-    await window.api.fs.writeFile(filePath, content);
-    turnEditedFiles.current.add(filePath);
-  };
-
-  /** Get GitHub token and resolve owner/repo from git remote */
-  const getGitHubContext = async (): Promise<{
-    token: string | null;
-    info: { owner: string; repo: string } | null;
-  }> => {
-    const token = await window.api.store.decryptAndGet('github_token');
-    if (!token) return { token: null, info: null };
-    if (!rootPath) return { token, info: null };
-    try {
-      const result = await window.api.terminal.runCommand(rootPath, 'git remote get-url origin', 5000);
-      const url = result.stdout.trim();
-      if (!url) return { token, info: null };
-      const info = await window.api.github.parseRemote(url);
-      return { token, info };
-    } catch {
-      return { token, info: null };
-    }
-  };
-
-  // ── Approval system (mode-aware) ──
-  // In `auto` mode workspace writes auto-accept after a countdown; in
-  // `readonly` mode (or for dangerous commands) approval is manual with no
-  // countdown; in `full` mode the gate is skipped entirely upstream.
-  const AUTO_ACCEPT_MS = 5000;
-  const autoApproveTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  const [pendingApproval, setPendingApproval] = useState<{
-    toolCallId: string;
-    filePath: string;
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github' | 'command';
-    before: string;
-    after: string;
-    /** When true the approval auto-accepts after AUTO_ACCEPT_MS; otherwise manual. */
-    countdown: boolean;
-    /** Optional danger reason shown to the user (dangerous commands). */
-    dangerReason?: string;
-    resolve: (approved: boolean) => void;
-  } | null>(null);
-
-  const requestApproval = (
-    toolCallId: string,
-    filePath: string,
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github' | 'command',
-    before: string,
-    after: string,
-    opts?: { countdown?: boolean; dangerReason?: string }
-  ): Promise<boolean> => {
-    const countdown = opts?.countdown ?? true;
-    return new Promise((resolve) => {
-      setPendingApproval({
-        toolCallId,
-        filePath,
-        action,
-        before,
-        after,
-        countdown,
-        dangerReason: opts?.dangerReason,
-        resolve,
-      });
-      if (countdown) {
-        // Auto-accept after the countdown — user can reject before that.
-        autoApproveTimeout.current = setTimeout(() => {
-          setPendingApproval((prev) => {
-            if (prev?.toolCallId === toolCallId) {
-              prev.resolve(true);
-              return null;
-            }
-            return prev;
-          });
-        }, AUTO_ACCEPT_MS);
-      }
-    });
-  };
-
-  /**
-   * Central gate for a write/command/external action. Resolves the policy for
-   * the current mode and either runs immediately, shows a countdown preview, or
-   * blocks for manual approval. Returns true if the action may proceed.
-   */
-  const gateAction = (
-    toolCallId: string,
-    label: string,
-    kind: 'write' | 'command' | 'external',
-    before: string,
-    after: string,
-    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace' | 'github' | 'command',
-    opts?: { dangerous?: boolean; dangerReason?: string }
-  ): Promise<boolean> => {
-    const decision = decideApproval(approvalModeRef.current, kind, { dangerous: opts?.dangerous });
-    if (decision === 'allow') return Promise.resolve(true);
-    return requestApproval(toolCallId, label, action, before, after, {
-      countdown: decision === 'auto',
-      dangerReason: opts?.dangerReason,
-    });
-  };
-
-  const handleApprove = () => {
-    if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
-    pendingApproval?.resolve(true);
-    setPendingApproval(null);
-  };
-
-  const handleReject = () => {
-    if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
-    pendingApproval?.resolve(false);
-    setPendingApproval(null);
-  };
-
-  // Memoized tool context: injects all host capabilities the executor needs.
-  const toolCtx: ToolContext = {
-    rootPath,
-    resolvePath,
-    gateAction,
-    writeFileTracked,
-    getGitHubContext,
-  };
-
-  const executeSingleTool = (tc: ToolCall): Promise<string> => executeSingleTool_impl(tc, toolCtx);
-
-  const handleAbort = () => {
-    window.api.ai.abort();
-    setIsStreaming(false);
-  };
 
   /** Create a new isolated worktree session */
   const handleNewWorktreeSession = async () => {
