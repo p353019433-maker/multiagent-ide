@@ -16,9 +16,10 @@ interface AIContextValue {
   deleteProvider: (id: string) => Promise<void>;
   testProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
 
-  newConversation: () => string;
+  newConversation: (providerId?: string, model?: string) => string;
   setActiveConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
+  addConversation: (conv: Conversation) => void;
   addMessage: (conversationId: string, message: ChatMessage) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
 }
@@ -122,21 +123,34 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     return window.api.ai.testConnection(id);
   }, []);
 
-  const newConversation = useCallback((): string => {
-    const id = uuid();
-    const conv: Conversation = {
-      id,
-      title: 'New chat',
-      messages: [],
-      providerId: activeProviderId || '',
-      model: activeModel || '',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setConversations((prev) => [conv, ...prev]);
-    setActiveConversationId(id);
-    return id;
-  }, [activeProviderId, activeModel]);
+  const newConversation = useCallback(
+    (providerId?: string, model?: string): string => {
+      const id = uuid();
+      const pid = providerId || activeProviderId || '';
+      const mdl = model || activeModel || '';
+      const conv: Conversation = {
+        id,
+        title: '新对话',
+        messages: [],
+        providerId: pid,
+        model: mdl,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setConversations((prev) => [conv, ...prev]);
+      setActiveConversationId(id);
+      return id;
+    },
+    [activeProviderId, activeModel]
+  );
+
+  const addConversation = useCallback((conv: Conversation) => {
+    setConversations((prev) => {
+      if (prev.find((c) => c.id === conv.id)) return prev;
+      return [conv, ...prev];
+    });
+    setActiveConversationId(conv.id);
+  }, []);
 
   const setActiveConversation = useCallback((id: string) => {
     setActiveConversationId(id);
@@ -202,6 +216,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
         newConversation,
         setActiveConversation,
         deleteConversation,
+        addConversation,
         addMessage,
         updateMessage,
       }}

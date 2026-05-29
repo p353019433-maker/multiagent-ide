@@ -16,6 +16,8 @@ export default function ChatPanel() {
     conversations,
     activeConversationId,
     newConversation,
+    setActiveConversation,
+    deleteConversation,
     addMessage,
   } = useAI();
   const { rootPath } = useWorkspace();
@@ -624,18 +626,29 @@ export default function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full bg-editor-sidebar border-l border-editor-border">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          AI 对话
-        </span>
-        <button
-          onClick={() => newConversation()}
-          className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-          title="新建对话"
-        >
-          ＋
-        </button>
-      </div>
+      {/* Multi-session tab bar */}
+      {conversations.length > 1 ? (
+        <SessionTabs
+          conversations={conversations}
+          activeId={activeConversationId}
+          onSelect={setActiveConversation}
+          onDelete={deleteConversation}
+          onNew={newConversation}
+        />
+      ) : (
+        <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            AI 对话
+          </span>
+          <button
+            onClick={() => newConversation()}
+            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+            title="新建对话"
+          >
+            ＋
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 selectable">
         {messages.map((msg) => (
@@ -749,6 +762,86 @@ export default function ChatPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Compact multi-session tab bar inside ChatPanel */
+function SessionTabs({
+  conversations,
+  activeId,
+  onSelect,
+  onDelete,
+  onNew,
+}: {
+  conversations: any[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onNew: () => string;
+}) {
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState('');
+
+  return (
+    <div className="flex items-center border-b border-editor-border flex-shrink-0 overflow-x-auto hide-scrollbar">
+      {conversations.map((conv) => (
+        <div
+          key={conv.id}
+          onClick={() => onSelect(conv.id)}
+          className={`group flex items-center gap-1 px-3 py-1.5 cursor-pointer border-r border-editor-border min-w-0 max-w-[150px] ${
+            conv.id === activeId
+              ? 'bg-editor-bg text-white border-t-2 border-t-editor-accent'
+              : 'text-gray-400 hover:bg-editor-hover'
+          }`}
+        >
+          {editingId === conv.id ? (
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => {
+                if (draft.trim()) {
+                  window.api.store.get('conversations').then((s: any) => {
+                    if (s?.length) {
+                      window.api.store.set('conversations', s.map((c: any) =>
+                        c.id === conv.id ? { ...c, title: draft.trim() } : c
+                      ));
+                    }
+                  });
+                }
+                setEditingId(null);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingId(null); }}
+              onClick={(e) => e.stopPropagation()}
+              autoFocus
+              spellCheck={false}
+              className="w-full text-[11px] bg-editor-bg border border-editor-accent rounded px-1 py-0 text-white outline-none"
+            />
+          ) : (
+            <span
+              className="text-[11px] font-mono truncate select-none"
+              onDoubleClick={() => { setEditingId(conv.id); setDraft(conv.title); }}
+            >
+              {conv.title || '新对话'}
+            </span>
+          )}
+          {conversations.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+              className="text-[10px] text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        onClick={() => onNew()}
+        className="flex-shrink-0 px-2 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-editor-hover"
+        title="新建会话"
+      >
+        +
+      </button>
     </div>
   );
 }
