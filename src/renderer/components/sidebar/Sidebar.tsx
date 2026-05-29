@@ -1,11 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
 import FileTree from './FileTree';
+import GitPanel from './GitPanel';
+import ProblemsPanel from './ProblemsPanel';
+
+type SidebarTab = 'explorer' | 'git' | 'problems';
 
 export default function Sidebar() {
   const { rootPath, rootName, fileTree, openFolder, refreshTree } = useWorkspace();
   const { openFile } = useEditor();
+  const [activeTab, setActiveTab] = useState<SidebarTab>('explorer');
 
   const handleNewFile = async () => {
     if (!rootPath) return;
@@ -16,7 +21,7 @@ export default function Sidebar() {
       await window.api.fs.createFile(filePath);
       await refreshTree();
       openFile(filePath);
-    } catch (err: any) {
+    } catch {
       // silently fail
     }
   };
@@ -29,59 +34,109 @@ export default function Sidebar() {
     try {
       await window.api.fs.createDirectory(dirPath);
       await refreshTree();
-    } catch (err: any) {
+    } catch {
       // silently fail
     }
   };
 
+  const tabs: { id: SidebarTab; label: string; icon: string }[] = [
+    { id: 'explorer', label: '资源管理器', icon: '📁' },
+    { id: 'git', label: 'Git', icon: '⑂' },
+    { id: 'problems', label: '问题', icon: '⚠' },
+  ];
+
   return (
     <div className="h-full flex flex-col bg-editor-sidebar">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          {rootName || '资源管理器'}
-        </span>
-        <div className="flex items-center gap-0.5">
-          {rootPath && (
-            <>
+      {/* Header with tab switcher */}
+      <div className="px-3 pt-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            {tabs.find((t) => t.id === activeTab)?.label || '侧边栏'}
+          </span>
+          <div className="flex items-center gap-0.5">
+            {activeTab === 'explorer' && rootPath && (
+              <>
+                <button
+                  onClick={handleNewFile}
+                  className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+                  title="新建文件"
+                >
+                  📄
+                </button>
+                <button
+                  onClick={handleNewFolder}
+                  className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+                  title="新建文件夹"
+                >
+                  📁
+                </button>
+              </>
+            )}
+            {activeTab === 'explorer' && (
               <button
-                onClick={handleNewFile}
-                className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors"
-                title="新建文件"
+                onClick={openFolder}
+                className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+                title="打开文件夹"
               >
-                📄
+                📂
               </button>
-              <button
-                onClick={handleNewFolder}
-                className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors"
-                title="新建文件夹"
-              >
-                📁
-              </button>
-            </>
-          )}
-          <button
-            onClick={openFolder}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors"
-            title="打开文件夹"
-          >
-            📂
-          </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-1">
-        {rootPath ? (
-          <FileTree nodes={fileTree} depth={0} />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <p className="text-sm text-gray-500 mb-3">未打开文件夹</p>
-            <button
-              onClick={openFolder}
-              className="text-xs px-3 py-1.5 bg-editor-accent text-white rounded hover:opacity-90 transition-opacity"
-            >
-              打开文件夹
-            </button>
-          </div>
+      {/* Tab bar */}
+      <div className="flex border-b border-editor-border mt-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3 py-1.5 text-[11px] transition-colors border-b-2 ${
+              activeTab === tab.id
+                ? 'text-white border-editor-accent'
+                : 'text-gray-500 border-transparent hover:text-gray-300'
+            }`}
+            title={tab.label}
+          >
+            {tab.icon}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'explorer' && (
+          rootPath ? (
+            <div className="py-1">
+              <FileTree nodes={fileTree} depth={0} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <p className="text-sm text-gray-500 mb-3">未打开文件夹</p>
+              <button
+                onClick={openFolder}
+                className="text-xs px-3 py-1.5 bg-editor-accent text-white rounded hover:opacity-90"
+              >
+                打开文件夹
+              </button>
+            </div>
+          )
+        )}
+
+        {activeTab === 'git' && (
+          rootPath ? <GitPanel /> : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-gray-500">需要先打开项目文件夹</p>
+            </div>
+          )
+        )}
+
+        {activeTab === 'problems' && (
+          rootPath ? <ProblemsPanel /> : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-gray-500">需要先打开项目文件夹</p>
+            </div>
+          )
         )}
       </div>
     </div>
