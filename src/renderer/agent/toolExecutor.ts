@@ -8,6 +8,7 @@
 
 import { classifyCommand } from '@shared/command-policy';
 import type { ToolCall } from '@shared/types';
+import { applyEdit } from './applyEdit';
 
 /** Action kinds for the approval gate (mirrors ChatPanel's pendingApproval). */
 export type GateAction =
@@ -80,19 +81,21 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const oldStr = args.old_str as string;
       const newStr = args.new_str as string;
       const replaceAll = args.replace_all as boolean;
-      const occurrences = content.split(oldStr).length - 1;
-      if (occurrences === 0) {
-        throw new Error('文件中未找到 old_str');
+      const exact = content.split(oldStr).length - 1;
+      if (!replaceAll && exact > 1) {
+        throw new Error(`old_str 在文件中出现 ${exact} 次，不唯一。请添加更多上下文或设置 replace_all: true。`);
       }
-      if (!replaceAll && occurrences > 1) {
-        throw new Error(`old_str 在文件中出现 ${occurrences} 次，不唯一。请添加更多上下文或设置 replace_all: true。`);
+      // Apply through the tolerant cascade (exact → whitespace → anchor) so
+      // small indentation/whitespace mismatches don't fail the edit.
+      const applied = applyEdit(content, oldStr, newStr, replaceAll);
+      if (!applied.ok) {
+        throw new Error('文件中未找到 old_str（已尝试精确、忽略空白、首尾锚点三种匹配）');
       }
-      const updated = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
-      const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
+      const approved = await gateAction(tc.id, filePath, 'write', content, applied.result, 'edit');
       if (!approved) return '文件编辑被用户拒绝';
-      await writeFileTracked(filePath, updated);
-      const count = replaceAll ? occurrences : 1;
-      return `已在 ${args.path} 中替换 ${count} 处匹配`;
+      await writeFileTracked(filePath, applied.result);
+      const note = applied.strategy === 'exact' ? '' : `（容差匹配：${applied.strategy}）`;
+      return `已在 ${args.path} 中替换 ${applied.count} 处匹配${note}`;
     }
     case 'list_directory': {
       const dirPath = resolvePath(args.path as string);
@@ -454,13 +457,13 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const content = await window.api.fs.readFile(filePath);
       const oldStr = args.oldString as string;
       const newStr = args.newString as string;
-      const occurrences = content.split(oldStr).length - 1;
-      if (occurrences === 0) throw new Error('文件中未找到 oldString');
-      if (occurrences > 1) throw new Error(`oldString 在文件中出现 ${occurrences} 次，不唯一。`);
-      const updated = content.replace(oldStr, newStr);
-      const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
+      const exact = content.split(oldStr).length - 1;
+      if (exact > 1) throw new Error(`oldString 在文件中出现 ${exact} 次，不唯一。`);
+      const applied = applyEdit(content, oldStr, newStr, false);
+      if (!applied.ok) throw new Error('文件中未找到 oldString');
+      const approved = await gateAction(tc.id, filePath, 'write', content, applied.result, 'edit');
       if (!approved) return '文件编辑被用户拒绝';
-      await writeFileTracked(filePath, updated);
+      await writeFileTracked(filePath, applied.result);
       return `已编辑文件：${args.path}`;
     }
 
