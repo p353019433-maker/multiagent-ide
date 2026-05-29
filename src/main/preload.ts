@@ -161,6 +161,12 @@ const api = {
       ipcRenderer.invoke('github:getRepo', token, owner, repo),
     parseRemote: (remoteUrl: string) =>
       ipcRenderer.invoke('github:parseRemote', remoteUrl),
+    createReview: (token: string, owner: string, repo: string, number: number, event: string, body?: string, comments?: any[]) =>
+      ipcRenderer.invoke('github:createReview', token, owner, repo, number, event, body, comments),
+    mergePR: (token: string, owner: string, repo: string, number: number, method?: string) =>
+      ipcRenderer.invoke('github:mergePR', token, owner, repo, number, method),
+    createRelease: (token: string, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) =>
+      ipcRenderer.invoke('github:createRelease', token, owner, repo, tag, name, body, draft),
   },
 };
 
