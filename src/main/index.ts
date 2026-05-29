@@ -226,6 +226,46 @@ function setupIPC() {
     return gitService.log(cwd, count);
   });
 
+  ipcMain.handle('git:stage', async (_, cwd: string, files: string[]) => {
+    return gitService.stage(cwd, files);
+  });
+
+  ipcMain.handle('git:unstage', async (_, cwd: string, files: string[]) => {
+    return gitService.unstage(cwd, files);
+  });
+
+  ipcMain.handle('git:stageAll', async (_, cwd: string) => {
+    return gitService.stageAll(cwd);
+  });
+
+  ipcMain.handle('git:commit', async (_, cwd: string, message: string) => {
+    return gitService.commit(cwd, message);
+  });
+
+  ipcMain.handle('git:push', async (_, cwd: string, remote?: string, branch?: string) => {
+    return gitService.push(cwd, remote, branch);
+  });
+
+  ipcMain.handle('git:pull', async (_, cwd: string, remote?: string, branch?: string) => {
+    return gitService.pull(cwd, remote, branch);
+  });
+
+  ipcMain.handle('git:branchList', async (_, cwd: string) => {
+    return gitService.branchList(cwd);
+  });
+
+  ipcMain.handle('git:branchSwitch', async (_, cwd: string, name: string) => {
+    return gitService.branchSwitch(cwd, name);
+  });
+
+  ipcMain.handle('git:branchCreate', async (_, cwd: string, name: string) => {
+    return gitService.branchCreate(cwd, name);
+  });
+
+  ipcMain.handle('git:currentBranch', async (_, cwd: string) => {
+    return gitService.currentBranch(cwd);
+  });
+
   // ==================== Web ====================
 
   ipcMain.handle('web:search', async (_, query: string, count?: number) => {
