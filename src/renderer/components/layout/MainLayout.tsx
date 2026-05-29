@@ -4,6 +4,7 @@ import EditorArea from '../editor/EditorArea';
 import ChatPanel from '../chat/ChatPanel';
 import TerminalPanel from '../terminal/TerminalPanel';
 import SearchPanel from '../search/SearchPanel';
+import BrowserPreview from '../editor/BrowserPreview';
 import TitleBar from './TitleBar';
 import { useWorkspace } from '../../context/WorkspaceContext';
 
@@ -19,6 +20,8 @@ export default function MainLayout({ onOpenSettings }: Props) {
   const [showChat, setShowChat] = useState(true);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState('');
   const dragging = useRef<'sidebar' | 'chat' | 'search' | 'terminal' | null>(null);
   const { rootPath } = useWorkspace();
 
@@ -72,12 +75,14 @@ export default function MainLayout({ onOpenSettings }: Props) {
     <div className="flex flex-col h-full">
       <TitleBar
         onOpenSettings={onOpenSettings}
-        onToggleChat={() => setShowChat(!showChat)}
+        onToggleChat={() => { setShowChat(!showChat); setShowBrowser(false); }}
         onToggleTerminal={() => setShowTerminal(!showTerminal)}
         onToggleSearch={() => setShowSearch(!showSearch)}
+        onToggleBrowser={() => { setShowBrowser(!showBrowser); setShowChat(false); }}
         showChat={showChat}
         showTerminal={showTerminal}
         showSearch={showSearch}
+        showBrowser={showBrowser}
       />
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Main area: sidebar + editor + panels */}
@@ -126,15 +131,23 @@ export default function MainLayout({ onOpenSettings }: Props) {
             </>
           )}
 
-          {/* Chat panel */}
-          {showChat && (
+          {/* Chat or Browser panel */}
+          {(showChat || showBrowser) && (
             <>
               <div
                 className="resize-handle w-[3px] h-full"
                 onMouseDown={() => handleMouseDown('chat')}
               />
               <div style={{ width: chatWidth }} className="flex-shrink-0 h-full">
-                <ChatPanel />
+                {showBrowser ? (
+                  <BrowserPreview
+                    visible={showBrowser}
+                    onClose={() => setShowBrowser(false)}
+                    initialUrl={browserUrl}
+                  />
+                ) : (
+                  <ChatPanel />
+                )}
               </div>
             </>
           )}

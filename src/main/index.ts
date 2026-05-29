@@ -276,6 +276,62 @@ function setupIPC() {
     return webService.fetchUrl(url, extractMode);
   });
 
+  // ==================== GitHub ====================
+
+  const githubService = new (require('./services/github-service').GitHubService)();
+
+  ipcMain.handle('github:listIssues', async (_, token: string, owner: string, repo: string, state?: string) => {
+    return githubService.listIssues(token, owner, repo, state as any);
+  });
+
+  ipcMain.handle('github:getIssue', async (_, token: string, owner: string, repo: string, number: number) => {
+    return githubService.getIssue(token, owner, repo, number);
+  });
+
+  ipcMain.handle('github:createIssue', async (_, token: string, owner: string, repo: string, title: string, body?: string, labels?: string[]) => {
+    return githubService.createIssue(token, owner, repo, title, body || '', labels || []);
+  });
+
+  ipcMain.handle('github:listIssueComments', async (_, token: string, owner: string, repo: string, number: number) => {
+    return githubService.listIssueComments(token, owner, repo, number);
+  });
+
+  ipcMain.handle('github:addIssueComment', async (_, token: string, owner: string, repo: string, number: number, body: string) => {
+    return githubService.addIssueComment(token, owner, repo, number, body);
+  });
+
+  ipcMain.handle('github:listPRs', async (_, token: string, owner: string, repo: string, state?: string) => {
+    return githubService.listPRs(token, owner, repo, state as any);
+  });
+
+  ipcMain.handle('github:getPR', async (_, token: string, owner: string, repo: string, number: number) => {
+    return githubService.getPR(token, owner, repo, number);
+  });
+
+  ipcMain.handle('github:getPRDiff', async (_, token: string, owner: string, repo: string, number: number) => {
+    return githubService.getPRDiff(token, owner, repo, number);
+  });
+
+  ipcMain.handle('github:createPR', async (_, token: string, owner: string, repo: string, title: string, head: string, base: string, body?: string) => {
+    return githubService.createPR(token, owner, repo, title, head, base, body || '');
+  });
+
+  ipcMain.handle('github:listWorkflowRuns', async (_, token: string, owner: string, repo: string, branch?: string) => {
+    return githubService.listWorkflowRuns(token, owner, repo, branch);
+  });
+
+  ipcMain.handle('github:searchCode', async (_, token: string, query: string, owner?: string, repo?: string) => {
+    return githubService.searchCode(token, query, owner, repo);
+  });
+
+  ipcMain.handle('github:getRepo', async (_, token: string, owner: string, repo: string) => {
+    return githubService.getRepo(token, owner, repo);
+  });
+
+  ipcMain.handle('github:parseRemote', async (_, remoteUrl: string) => {
+    return githubService.parseRemoteUrl(remoteUrl);
+  });
+
   // ==================== Lint ====================
 
   ipcMain.handle('lint:run', async (_, cwd: string, filePath?: string) => {

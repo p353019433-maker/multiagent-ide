@@ -392,9 +392,8 @@ export default function ChatPanel() {
       }
       case 'preview_url': {
         const url = args.url as string;
-        // Open in system browser for now (can later embed in a view)
-        window.open(url, '_blank');
-        return `已在浏览器中打开 ${url}`;
+        window.dispatchEvent(new CustomEvent('preview-url', { detail: { url } }));
+        return `已在内置浏览器中打开 ${url}`;
       }
 
       // ── Multi-file ──

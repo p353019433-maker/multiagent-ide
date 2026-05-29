@@ -132,6 +132,36 @@ const api = {
       ipcRenderer.invoke('context:save', key, content, merge),
     load: (key: string) => ipcRenderer.invoke('context:load', key),
   },
+
+  // GitHub
+  github: {
+    listIssues: (token: string, owner: string, repo: string, state?: string) =>
+      ipcRenderer.invoke('github:listIssues', token, owner, repo, state),
+    getIssue: (token: string, owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:getIssue', token, owner, repo, number),
+    createIssue: (token: string, owner: string, repo: string, title: string, body?: string, labels?: string[]) =>
+      ipcRenderer.invoke('github:createIssue', token, owner, repo, title, body, labels),
+    listIssueComments: (token: string, owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:listIssueComments', token, owner, repo, number),
+    addIssueComment: (token: string, owner: string, repo: string, number: number, body: string) =>
+      ipcRenderer.invoke('github:addIssueComment', token, owner, repo, number, body),
+    listPRs: (token: string, owner: string, repo: string, state?: string) =>
+      ipcRenderer.invoke('github:listPRs', token, owner, repo, state),
+    getPR: (token: string, owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:getPR', token, owner, repo, number),
+    getPRDiff: (token: string, owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:getPRDiff', token, owner, repo, number),
+    createPR: (token: string, owner: string, repo: string, title: string, head: string, base: string, body?: string) =>
+      ipcRenderer.invoke('github:createPR', token, owner, repo, title, head, base, body),
+    listWorkflowRuns: (token: string, owner: string, repo: string, branch?: string) =>
+      ipcRenderer.invoke('github:listWorkflowRuns', token, owner, repo, branch),
+    searchCode: (token: string, query: string, owner?: string, repo?: string) =>
+      ipcRenderer.invoke('github:searchCode', token, query, owner, repo),
+    getRepo: (token: string, owner: string, repo: string) =>
+      ipcRenderer.invoke('github:getRepo', token, owner, repo),
+    parseRemote: (remoteUrl: string) =>
+      ipcRenderer.invoke('github:parseRemote', remoteUrl),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);
