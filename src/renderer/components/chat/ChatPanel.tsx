@@ -203,10 +203,13 @@ export default function ChatPanel() {
     return rootPath + '/' + resolved.join('/');
   };
 
+  // ── Auto-approve mode: destructive writes auto-accept after a short preview, user can reject ──
+  const autoApproveTimeout = useRef<NodeJS.Timeout | null>(null);
+
   const [pendingApproval, setPendingApproval] = useState<{
     toolCallId: string;
     filePath: string;
-    action: 'write' | 'edit' | 'search_and_replace' | 'replace_in_file';
+    action: 'write' | 'edit' | 'replace_in_file' | 'search_and_replace';
     before: string;
     after: string;
     resolve: (approved: boolean) => void;
@@ -221,15 +224,27 @@ export default function ChatPanel() {
   ): Promise<boolean> => {
     return new Promise((resolve) => {
       setPendingApproval({ toolCallId, filePath, action, before, after, resolve });
+      // Auto-accept after 3 seconds — user can reject before that
+      autoApproveTimeout.current = setTimeout(() => {
+        setPendingApproval((prev) => {
+          if (prev?.toolCallId === toolCallId) {
+            prev.resolve(true);
+            return null;
+          }
+          return prev;
+        });
+      }, 3000);
     });
   };
 
   const handleApprove = () => {
+    if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
     pendingApproval?.resolve(true);
     setPendingApproval(null);
   };
 
   const handleReject = () => {
+    if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
     pendingApproval?.resolve(false);
     setPendingApproval(null);
   };
@@ -511,7 +526,18 @@ export default function ChatPanel() {
       </div>
 
       {pendingApproval && (
-        <div className="h-[250px] border-t border-editor-border flex-shrink-0">
+        <div className="h-[250px] border-t border-editor-border flex-shrink-0 relative">
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-editor-sidebar/90 rounded px-2 py-1 shadow">
+            <span className="text-[11px] text-yellow-400 animate-pulse">
+              3 秒后自动接受
+            </span>
+            <button
+              onClick={handleReject}
+              className="px-1.5 py-0.5 text-[11px] bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              ✕ 拒绝
+            </button>
+          </div>
           <DiffPreview
             original={pendingApproval.before}
             modified={pendingApproval.after}
