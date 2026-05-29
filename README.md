@@ -85,10 +85,18 @@ Agent 模式下 AI 可以调用以下工具：
 | `replace_in_file` | 局部编辑文件 |
 | `list_directory` | 列出目录内容 |
 | `search_files` | 全项目文本搜索 |
-| `codebase_search` | 语义/概念检索（符号索引 + 相关度打分，回退全文） |
+| `codebase_search` | 向量语义检索（配置 embedding 后），回退符号/全文 |
 | `run_command` | 执行 shell 命令 |
 
 > 完整工具集共 40+ 个，涵盖文件、代码分析、Git、Worktree、命令、Web、GitHub 等。
+
+## 代码语义检索（Embedding）
+
+在「设置 → 代码索引」配置 embedding 模型后，`codebase_search` 工具使用**真正的向量语义检索**——理解概念而非仅匹配关键词（例如问"哪里处理了超时重试"，即使代码里没有这些字眼也能命中）。
+
+- **OpenAI 兼容**：支持 DeepSeek (`deepseek-embedding-v2`)、OpenAI (`text-embedding-3-small`)、本地 Ollama (`nomic-embed-text` / `bge-m3`) 等任意兼容端点
+- **增量缓存**：代码切块后按内容 hash 缓存向量到本地，仅在文件变化时重算，重启不丢
+- **优雅降级**：未配置 embedding 时自动回退到符号索引 + 全文检索，零影响
 
 ## 上下文与性能
 
@@ -108,6 +116,22 @@ Agent 模式下 AI 可以调用以下工具：
   - **本地模型**（Ollama/vLLM）：Qwen-Coder、DeepSeek-Coder、StarCoder2、CodeLlama、CodeGemma 等 → 按各自 sentinel token 格式
 - **聊天模型自动回退** — Claude / GPT / Gemini 无 FIM 接口，回退到聊天式补全（原逻辑）
 - FIM 模型补全又快又省，debounce/cooldown 自动调低（150ms / 300ms），聊天模型保持保守节流（300ms / 2s）
+- **编辑感知预测**：记录最近的编辑作为上下文，补全会预测"下一处自然修改"（类 Cursor Tab，如批量重命名/应用同一模式）
+
+## 代码导航与编辑
+
+- **find_definition / find_references**：Agent 工具，基于符号表的跳转定义 + 按词边界的全工作区引用查找，用于评估改动影响面
+- **Apply Model（容差编辑应用）**：`replace_in_file` 编辑通过三级级联应用——精确 → 忽略空白/缩进 → 首尾锚点，模型引用片段有空白差异也能成功落地
+- **可验证交付物（Artifacts）**：每轮 Agent 改完代码自动产出交付报告（改动文件 + ESLint/tsc 验证结果 + diff 统计），存到 `.ide/artifacts/`，面板可查看
+
+## 测试
+
+```bash
+npm test          # 运行测试（vitest）
+npm run test:watch
+```
+
+纯逻辑模块（Apply Model、命令策略、FIM 探测、agent 工具）已有单元测试覆盖。
 
 ## 项目规则
 
