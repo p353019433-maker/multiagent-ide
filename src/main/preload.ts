@@ -67,6 +67,9 @@ const api = {
     abort: () => ipcRenderer.invoke('ai:abort'),
     testConnection: (providerId: string) =>
       ipcRenderer.invoke('ai:testConnection', providerId),
+    fimComplete: (req: unknown) => ipcRenderer.invoke('ai:fimComplete', req),
+    supportsFim: (providerId: string, model: string) =>
+      ipcRenderer.invoke('ai:supportsFim', providerId, model),
     onStreamToken: (callback: (token: string) => void) => {
       const handler = (_: unknown, token: string) => callback(token);
       ipcRenderer.on('ai:stream-token', handler);

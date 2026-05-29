@@ -62,6 +62,14 @@ declare global {
         testConnection: (
           providerId: string
         ) => Promise<{ ok: boolean; error?: string }>;
+        fimComplete: (req: {
+          providerId: string;
+          model: string;
+          prefix: string;
+          suffix: string;
+          maxTokens?: number;
+        }) => Promise<string | null>;
+        supportsFim: (providerId: string, model: string) => Promise<boolean>;
         onStreamToken: (callback: (token: string) => void) => () => void;
         onStreamToolCall: (callback: (toolCall: any) => void) => () => void;
         onStreamComplete: (callback: (result: any) => void) => () => void;

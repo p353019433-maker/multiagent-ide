@@ -66,15 +66,45 @@ export default function ChatPanel() {
 
   // ── AI Inline Completion setup ──
   useEffect(() => {
-    updateInlineCompletionConfig({
-      providerId: activeProviderId,
-      model: activeModel,
-    });
+    if (!activeProviderId) {
+      updateInlineCompletionConfig({ providerId: activeProviderId, model: activeModel });
+      return;
+    }
 
-    if (!activeProviderId) return;
+    // Detect FIM support so the provider can tune debounce/cooldown.
+    window.api.ai
+      .supportsFim(activeProviderId, activeModel || 'default')
+      .then((fim) =>
+        updateInlineCompletionConfig({ providerId: activeProviderId, model: activeModel, fim })
+      )
+      .catch(() =>
+        updateInlineCompletionConfig({ providerId: activeProviderId, model: activeModel })
+      );
 
     setAiCompleteFn(async ({ prefix, suffix, language }) => {
-      const provider = window.api.ai; // use preload API
+      // Prefer a real FIM transport when the active model is a dedicated code
+      // model (DeepSeek V3/V4, Codestral, Qwen-Coder, etc.). FIM uses both
+      // prefix and suffix natively, giving faster and more accurate inline
+      // suggestions. Chat-only models (Claude/GPT/Gemini) fall back below.
+      try {
+        const fim = await window.api.ai.fimComplete({
+          providerId: activeProviderId,
+          model: activeModel || 'default',
+          // FIM models handle large context; give them a generous window.
+          prefix: prefix.slice(-4000),
+          suffix: suffix.slice(0, 2000),
+          maxTokens: 256,
+        });
+        if (fim !== null) {
+          // FIM returns raw middle text; trim a trailing newline burst but keep
+          // intentional whitespace.
+          return fim.replace(/\n{3,}$/g, '\n') || null;
+        }
+        // fim === null means the model has no FIM transport — fall through.
+      } catch {
+        // fall through to chat-based completion
+      }
+
       const prompt = `Complete the code at the cursor. Return ONLY the code to insert — no explanations, no markdown, no code fences. The completion should follow naturally from the prefix and suffix.
 
 Language: ${language}

@@ -98,6 +98,17 @@ Agent 模式下 AI 可以调用以下工具：
 - **持久化记忆** — `save_context` / `load_context` 落盘到本地存储，重启不丢失。
 - **Agent 鲁棒性** — 工具失败按错误类型自动重试（指数退避），并检测无进展的重复调用自动停止。
 
+## 内联补全（FIM）
+
+内联补全会自动探测当前模型能力：
+
+- **专用代码模型走 FIM（Fill-In-the-Middle）** — 同时利用光标前后文，补全更快更准：
+  - **DeepSeek** V3/V4（`deepseek-v4-pro` / `deepseek-v4-flash` / `deepseek-chat`）→ `/beta` completions + `suffix`
+  - **Mistral Codestral** → 专用 `/v1/fim/completions` 端点
+  - **本地模型**（Ollama/vLLM）：Qwen-Coder、DeepSeek-Coder、StarCoder2、CodeLlama、CodeGemma 等 → 按各自 sentinel token 格式
+- **聊天模型自动回退** — Claude / GPT / Gemini 无 FIM 接口，回退到聊天式补全（原逻辑）
+- FIM 模型补全又快又省，debounce/cooldown 自动调低（150ms / 300ms），聊天模型保持保守节流（300ms / 2s）
+
 ## 安全审批
 
 三档审批模式（对话面板顶部切换，默认「自动」）：

@@ -98,6 +98,14 @@ export interface StreamCallbacks {
   onError: (error: string) => void;
 }
 
+export interface FimRequest {
+  providerId: string;
+  model: string;
+  prefix: string;
+  suffix: string;
+  maxTokens?: number;
+}
+
 // ============================================================
 // File Tree
 // ============================================================

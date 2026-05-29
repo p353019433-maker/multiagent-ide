@@ -213,6 +213,14 @@ function setupIPC() {
     return aiService.testConnection(providerId);
   });
 
+  ipcMain.handle('ai:fimComplete', async (_, req: unknown) => {
+    return aiService.fimComplete(req as any);
+  });
+
+  ipcMain.handle('ai:supportsFim', async (_, providerId: string, model: string) => {
+    return aiService.supportsFim(providerId, model);
+  });
+
   // ==================== Git ====================
 
   ipcMain.handle('git:status', async (_, cwd: string) => {

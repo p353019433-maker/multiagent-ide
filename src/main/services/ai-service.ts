@@ -8,7 +8,9 @@ import type {
   StreamCallbacks,
   ToolCall,
   AIProvider,
+  FimRequest,
 } from '../../shared/types';
+import { getFimCapability, fimBaseURL } from '../../shared/fim';
 
 export class AIService {
   private store: StoreService;
@@ -66,6 +68,85 @@ export class AIService {
     } catch (e: any) {
       return { ok: false, error: e?.message || String(e) };
     }
+  }
+
+  /**
+   * Fill-In-the-Middle completion for inline editor suggestions.
+   *
+   * Returns the middle text to insert, or null if the model is chat-only (the
+   * renderer then falls back to chat-based completion). Errors resolve to null
+   * so a flaky completion never interrupts typing.
+   */
+  async fimComplete(req: FimRequest): Promise<string | null> {
+    const providers = this.getProviders();
+    const provider = providers.find((p) => p.id === req.providerId);
+    if (!provider) return null;
+
+    const cap = getFimCapability(provider.type, req.model);
+    if (!cap) return null; // chat-only model — caller falls back
+
+    const apiKey = await this.getApiKey(provider);
+    const maxTokens = req.maxTokens ?? 256;
+
+    try {
+      if (cap.transport === 'mistral-fim') {
+        // Mistral dedicated FIM endpoint.
+        const base = (provider.baseURL || 'https://api.mistral.ai').replace(/\/+$/, '');
+        const res = await fetch(`${base}/v1/fim/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: req.model,
+            prompt: req.prefix,
+            suffix: req.suffix,
+            max_tokens: maxTokens,
+            temperature: 0.1,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) return null;
+        const data: any = await res.json();
+        return data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || null;
+      }
+
+      if (cap.transport === 'completions-suffix') {
+        // OpenAI-compatible /completions with prompt + suffix (DeepSeek beta).
+        const baseURL = fimBaseURL(cap.transport, provider.baseURL);
+        const client = new OpenAI({ apiKey, baseURL });
+        const resp = await client.completions.create({
+          model: req.model,
+          prompt: req.prefix,
+          suffix: req.suffix,
+          max_tokens: maxTokens,
+          temperature: 0.1,
+        });
+        return resp.choices?.[0]?.text || null;
+      }
+
+      // sentinel transport: wrap in FIM tokens, send as a plain completion.
+      const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+      const prompt = cap.format!(req.prefix, req.suffix);
+      const resp = await client.completions.create({
+        model: req.model,
+        prompt,
+        max_tokens: maxTokens,
+        temperature: 0.1,
+        stop: cap.stop,
+      });
+      return resp.choices?.[0]?.text || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Whether the given provider/model supports a real FIM transport. */
+  supportsFim(providerId: string, model: string): boolean {
+    const provider = this.getProviders().find((p) => p.id === providerId);
+    if (!provider) return false;
+    return getFimCapability(provider.type, model) !== null;
   }
 
   async chat(

@@ -9,6 +9,9 @@ import * as monaco from 'monaco-editor';
 type ProviderConfig = {
   providerId: string | null;
   model: string | null;
+  /** When true the active model has a real FIM transport — completions are fast
+   * and cheap, so we can debounce/cooldown more aggressively. */
+  fim?: boolean;
 };
 
 type AiCompleteFn = (params: {
@@ -21,8 +24,11 @@ type AiCompleteFn = (params: {
 let _aiCompleteFn: AiCompleteFn | null = null;
 let _pendingId = 0;
 let _lastRequestTime = 0;
-const DEBOUNCE_MS = 300;
-const COOLDOWN_MS = 2000;
+// FIM models are fast & cheap, so we can fire much more often than chat models.
+const DEBOUNCE_FIM_MS = 150;
+const DEBOUNCE_CHAT_MS = 300;
+const COOLDOWN_FIM_MS = 300;
+const COOLDOWN_CHAT_MS = 2000;
 
 export function setAiCompleteFn(fn: AiCompleteFn) {
   _aiCompleteFn = fn;
@@ -44,13 +50,16 @@ export function registerAiInlineCompletion() {
     ): Promise<monaco.languages.InlineCompletions> => {
       if (!_aiCompleteFn || !_config.providerId) return { items: [] };
 
-      // Cooldown: don't fire more than once per COOLDOWN_MS
+      const cooldown = _config.fim ? COOLDOWN_FIM_MS : COOLDOWN_CHAT_MS;
+      const debounce = _config.fim ? DEBOUNCE_FIM_MS : DEBOUNCE_CHAT_MS;
+
+      // Cooldown: don't fire more than once per window
       const now = Date.now();
-      if (now - _lastRequestTime < COOLDOWN_MS) return { items: [] };
+      if (now - _lastRequestTime < cooldown) return { items: [] };
 
       // Debounce: assign an ID and wait
       const thisId = ++_pendingId;
-      await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
+      await new Promise((resolve) => setTimeout(resolve, debounce));
 
       // If another request came in during debounce, skip this one
       if (thisId !== _pendingId || _token.isCancellationRequested) return { items: [] };
