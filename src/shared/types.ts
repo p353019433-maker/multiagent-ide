@@ -39,7 +39,22 @@ export interface ChatMessage {
   content: string;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
+  /** Base64 data URLs (data:image/png;base64,...) attached to a user message. */
+  images?: string[];
   timestamp: number;
+}
+
+/**
+ * A snapshot of file contents taken before an agent turn modifies them, so the
+ * user can revert all changes from that turn in one click.
+ */
+export interface Checkpoint {
+  id: string;
+  /** The user message that started the turn this checkpoint protects. */
+  label: string;
+  createdAt: number;
+  /** path -> content before the turn (null means the file did not exist). */
+  files: { path: string; before: string | null }[];
 }
 
 export interface Conversation {
@@ -69,6 +84,12 @@ export interface ChatOptions {
   tools?: ToolDefinition[];
   systemPrompt?: string;
   workspaceRoot?: string;
+}
+
+/** Per-message multimodal input passed alongside the text content. */
+export interface MessageImage {
+  /** data URL, e.g. "data:image/png;base64,iVBOR..." */
+  dataUrl: string;
 }
 
 export interface ToolDefinition {
