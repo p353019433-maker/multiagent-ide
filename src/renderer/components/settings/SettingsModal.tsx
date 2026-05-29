@@ -36,12 +36,18 @@ const PRESET_PROVIDERS: { name: string; type: ProviderType; baseURL: string; mod
     models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
   },
   {
-    name: 'Ollama (Local)',
+    name: 'Ollama（本地）',
     type: 'openai',
     baseURL: 'http://localhost:11434/v1',
     models: ['llama3', 'codellama', 'mistral', 'deepseek-coder-v2'],
   },
 ];
+
+const THEME_DISPLAY_NAME: Record<ThemeName, string> = {
+  dark: '暗色',
+  light: '亮色',
+  'high-contrast': '高对比度',
+};
 
 export default function SettingsModal({ onClose }: Props) {
   const { providers, saveProvider, deleteProvider, testProvider } = useAI();
@@ -70,7 +76,7 @@ export default function SettingsModal({ onClose }: Props) {
   const handleAddCustom = () => {
     const provider: AIProvider = {
       id: uuid(),
-      name: 'Custom Provider',
+      name: '自定义服务',
       type: 'custom',
       baseURL: '',
       apiKeyRef: `apikey_${uuid()}`,
@@ -93,7 +99,6 @@ export default function SettingsModal({ onClose }: Props) {
   const handleTest = async () => {
     if (!editing) return;
     setTesting(true);
-    // Save first so the main process can access it
     await saveProvider(editing, apiKey);
     const result = await testProvider(editing.id);
     setTestResult(result);
@@ -103,38 +108,34 @@ export default function SettingsModal({ onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-editor-sidebar border border-editor-border rounded-lg w-[640px] max-h-[80vh] flex flex-col shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-editor-border">
-          <h2 className="text-sm font-semibold text-white">Settings</h2>
+          <h2 className="text-sm font-semibold text-white">设置</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-lg">
             ✕
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-editor-border">
           <button
             className={`px-4 py-2 text-xs ${tab === 'providers' ? 'text-white border-b-2 border-editor-accent' : 'text-gray-400'}`}
             onClick={() => setTab('providers')}
           >
-            AI Providers
+            AI 服务
           </button>
           <button
             className={`px-4 py-2 text-xs ${tab === 'editor' ? 'text-white border-b-2 border-editor-accent' : 'text-gray-400'}`}
             onClick={() => setTab('editor')}
           >
-            Editor
+            编辑器
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
           {tab === 'providers' && !editing && (
             <div className="space-y-4">
-              {/* Existing providers */}
               {providers.length > 0 && (
                 <div>
-                  <h3 className="text-xs font-semibold text-gray-400 mb-2">Configured Providers</h3>
+                  <h3 className="text-xs font-semibold text-gray-400 mb-2">已配置的服务</h3>
                   <div className="space-y-2">
                     {providers.map((p) => (
                       <div
@@ -150,13 +151,13 @@ export default function SettingsModal({ onClose }: Props) {
                             onClick={() => { setEditing(p); setApiKey(''); setTestResult(null); }}
                             className="text-xs text-editor-accent hover:underline"
                           >
-                            Edit
+                            编辑
                           </button>
                           <button
                             onClick={() => deleteProvider(p.id)}
                             className="text-xs text-red-400 hover:underline"
                           >
-                            Delete
+                            删除
                           </button>
                         </div>
                       </div>
@@ -165,9 +166,8 @@ export default function SettingsModal({ onClose }: Props) {
                 </div>
               )}
 
-              {/* Add preset */}
               <div>
-                <h3 className="text-xs font-semibold text-gray-400 mb-2">Add Provider</h3>
+                <h3 className="text-xs font-semibold text-gray-400 mb-2">添加服务</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {PRESET_PROVIDERS.map((preset) => (
                     <button
@@ -183,8 +183,8 @@ export default function SettingsModal({ onClose }: Props) {
                     onClick={handleAddCustom}
                     className="text-left bg-editor-bg border border-dashed border-editor-border rounded px-3 py-2 hover:border-editor-accent transition-colors"
                   >
-                    <span className="text-sm text-white">Custom Endpoint</span>
-                    <p className="text-[11px] text-gray-500 mt-0.5">Any OpenAI-compatible API</p>
+                    <span className="text-sm text-white">自定义接口</span>
+                    <p className="text-[11px] text-gray-500 mt-0.5">任何 OpenAI 兼容 API</p>
                   </button>
                 </div>
               </div>
@@ -197,11 +197,11 @@ export default function SettingsModal({ onClose }: Props) {
                 onClick={() => { setEditing(null); setTestResult(null); }}
                 className="text-xs text-gray-400 hover:text-white"
               >
-                ← Back
+                ← 返回
               </button>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Name</label>
+                <label className="text-xs text-gray-400 block mb-1">名称</label>
                 <input
                   value={editing.name}
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
@@ -210,7 +210,7 @@ export default function SettingsModal({ onClose }: Props) {
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Base URL</label>
+                <label className="text-xs text-gray-400 block mb-1">接口地址</label>
                 <input
                   value={editing.baseURL}
                   onChange={(e) => setEditing({ ...editing, baseURL: e.target.value })}
@@ -220,7 +220,7 @@ export default function SettingsModal({ onClose }: Props) {
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1">API Key</label>
+                <label className="text-xs text-gray-400 block mb-1">API 密钥</label>
                 <input
                   type="password"
                   value={apiKey}
@@ -228,12 +228,12 @@ export default function SettingsModal({ onClose }: Props) {
                   placeholder="sk-..."
                   className="w-full bg-editor-bg border border-editor-border rounded px-3 py-1.5 text-sm text-white outline-none focus:border-editor-accent"
                 />
-                <p className="text-[11px] text-gray-600 mt-1">Stored encrypted on your machine</p>
+                <p className="text-[11px] text-gray-600 mt-1">加密存储在本机上</p>
               </div>
 
               <div>
                 <label className="text-xs text-gray-400 block mb-1">
-                  Models (comma-separated)
+                  模型列表（逗号分隔）
                 </label>
                 <input
                   value={editing.models.join(', ')}
@@ -248,7 +248,7 @@ export default function SettingsModal({ onClose }: Props) {
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Default Model</label>
+                <label className="text-xs text-gray-400 block mb-1">默认模型</label>
                 <select
                   value={editing.defaultModel}
                   onChange={(e) => setEditing({ ...editing, defaultModel: e.target.value })}
@@ -261,39 +261,37 @@ export default function SettingsModal({ onClose }: Props) {
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Provider Type</label>
+                <label className="text-xs text-gray-400 block mb-1">服务类型</label>
                 <select
                   value={editing.type}
                   onChange={(e) => setEditing({ ...editing, type: e.target.value as ProviderType })}
                   className="w-full bg-editor-bg border border-editor-border rounded px-3 py-1.5 text-sm text-white outline-none focus:border-editor-accent"
                 >
-                  <option value="openai">OpenAI Compatible</option>
+                  <option value="openai">OpenAI 兼容</option>
                   <option value="anthropic">Anthropic</option>
-                  <option value="custom">Custom</option>
+                  <option value="custom">自定义</option>
                 </select>
               </div>
 
-              {/* Test result */}
               {testResult && (
                 <div className={`text-xs px-3 py-2 rounded ${testResult.ok ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
-                  {testResult.ok ? '✅ Connection successful!' : `❌ ${testResult.error}`}
+                  {testResult.ok ? '✅ 连接成功！' : `❌ ${testResult.error}`}
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleTest}
                   disabled={testing}
                   className="px-3 py-1.5 text-xs border border-editor-border rounded text-gray-300 hover:bg-editor-active disabled:opacity-40"
                 >
-                  {testing ? 'Testing...' : 'Test Connection'}
+                  {testing ? '测试中...' : '测试连接'}
                 </button>
                 <button
                   onClick={handleSave}
                   className="px-3 py-1.5 text-xs bg-editor-accent text-white rounded hover:opacity-90"
                 >
-                  Save
+                  保存
                 </button>
               </div>
             </div>
@@ -302,11 +300,10 @@ export default function SettingsModal({ onClose }: Props) {
           {tab === 'editor' && (
             <div className="space-y-4">
               <div className="space-y-4">
-                {/* Theme selector */}
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">Theme</label>
+                  <label className="text-xs text-gray-400 block mb-1">主题</label>
                   <div className="flex gap-2">
-                    {Object.values(THEMES).map((t) => (
+                    {Object.entries(THEMES).map(([key, t]) => (
                       <button
                         key={t.name}
                         onClick={() => setThemeName(t.name)}
@@ -320,7 +317,7 @@ export default function SettingsModal({ onClose }: Props) {
                           className="w-4 h-4 rounded-full inline-block mr-1.5 align-middle"
                           style={{ background: t.colors.accent }}
                         />
-                        {t.display}
+                        {THEME_DISPLAY_NAME[t.name] || t.display}
                       </button>
                     ))}
                   </div>
@@ -328,17 +325,17 @@ export default function SettingsModal({ onClose }: Props) {
 
                 <div className="border-t border-editor-border pt-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300">Font Size</span>
+                    <span className="text-sm text-gray-300">字号</span>
                     <span className="text-sm text-gray-500">14px</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-300">Tab Size</span>
+                  <span className="text-sm text-gray-300">缩进宽度</span>
                   <span className="text-sm text-gray-500">2</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-300">Word Wrap</span>
-                  <span className="text-sm text-gray-500">On</span>
+                  <span className="text-sm text-gray-300">自动换行</span>
+                  <span className="text-sm text-gray-500">开启</span>
                 </div>
               </div>
             </div>

@@ -9,7 +9,7 @@ export default function Sidebar() {
 
   const handleNewFile = async () => {
     if (!rootPath) return;
-    const name = prompt('File name:');
+    const name = prompt('文件名：');
     if (!name) return;
     const filePath = rootPath + '/' + name;
     try {
@@ -23,7 +23,7 @@ export default function Sidebar() {
 
   const handleNewFolder = async () => {
     if (!rootPath) return;
-    const name = prompt('Folder name:');
+    const name = prompt('文件夹名：');
     if (!name) return;
     const dirPath = rootPath + '/' + name;
     try {
@@ -36,10 +36,9 @@ export default function Sidebar() {
 
   return (
     <div className="h-full flex flex-col bg-editor-sidebar">
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          {rootName || 'Explorer'}
+          {rootName || '资源管理器'}
         </span>
         <div className="flex items-center gap-0.5">
           {rootPath && (
@@ -47,14 +46,14 @@ export default function Sidebar() {
               <button
                 onClick={handleNewFile}
                 className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors"
-                title="New File"
+                title="新建文件"
               >
                 📄
               </button>
               <button
                 onClick={handleNewFolder}
                 className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors"
-                title="New Folder"
+                title="新建文件夹"
               >
                 📁
               </button>
@@ -63,25 +62,24 @@ export default function Sidebar() {
           <button
             onClick={openFolder}
             className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors"
-            title="Open Folder"
+            title="打开文件夹"
           >
             📂
           </button>
         </div>
       </div>
 
-      {/* File tree */}
       <div className="flex-1 overflow-y-auto py-1">
         {rootPath ? (
           <FileTree nodes={fileTree} depth={0} />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <p className="text-sm text-gray-500 mb-3">No folder open</p>
+            <p className="text-sm text-gray-500 mb-3">未打开文件夹</p>
             <button
               onClick={openFolder}
               className="text-xs px-3 py-1.5 bg-editor-accent text-white rounded hover:opacity-90 transition-opacity"
             >
-              Open Folder
+              打开文件夹
             </button>
           </div>
         )}

@@ -44,10 +44,8 @@ export default function SearchPanel() {
 
   const handleResultClick = (result: SearchResult) => {
     openFile(result.path);
-    // TODO: scroll to line in editor
   };
 
-  // Group results by file
   const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {
     if (!acc[r.path]) acc[r.path] = [];
     acc[r.path].push(r);
@@ -63,15 +61,14 @@ export default function SearchPanel() {
 
   return (
     <div className="h-full flex flex-col bg-editor-sidebar border-l border-editor-border">
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          Search
+          搜索
         </span>
         <button
           onClick={() => setVisible(!visible)}
           className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-          title={visible ? 'Collapse' : 'Expand'}
+          title={visible ? '收起' : '展开'}
         >
           {visible ? '▼' : '▲'}
         </button>
@@ -79,33 +76,25 @@ export default function SearchPanel() {
 
       {visible && (
         <>
-          {/* Search input */}
           <div className="px-3 py-2">
             <div className="flex gap-1">
               <input
                 ref={inputRef}
                 className="flex-1 bg-editor-bg border border-editor-border rounded px-2 py-1 text-xs text-editor-text outline-none focus:border-editor-accent"
-                placeholder="Search in workspace..."
+                placeholder="搜索工作区..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
               />
-              <button
-                onClick={() => handleSearch(query)}
-                className="px-2 py-1 bg-editor-accent text-white text-xs rounded hover:opacity-90"
-              >
-                {searching ? '...' : 'Go'}
-              </button>
             </div>
           </div>
 
-          {/* Results */}
           <div className="flex-1 overflow-y-auto selectable">
             {results.length === 0 && query && !searching && (
-              <p className="text-xs text-gray-500 text-center mt-4">No results</p>
+              <p className="text-xs text-gray-500 text-center mt-4">无结果</p>
             )}
             {results.length === 0 && !query && (
-              <p className="text-xs text-gray-500 text-center mt-4">Enter a search term</p>
+              <p className="text-xs text-gray-500 text-center mt-4">输入搜索关键词</p>
             )}
 
             {Object.entries(grouped).map(([filePath, matches]) => (

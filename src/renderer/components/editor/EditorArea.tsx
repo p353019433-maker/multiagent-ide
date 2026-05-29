@@ -1,22 +1,20 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { useEditor } from '../../context/EditorContext';
 import * as monaco from 'monaco-editor';
 
 export default function EditorArea() {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
     useEditor();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const modelsRef = useRef<Map<string, monaco.editor.ITextModel>>(new Map());
-  const listenedModelsRef = useRef<Set<string>>(new Set());
-  // Keep a ref to saveActiveFile so the keybinding always calls the latest version
-  const saveRef = useRef(saveActiveFile);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const modelsRef = React.useRef<Map<string, monaco.editor.ITextModel>>(new Map());
+  const listenedModelsRef = React.useRef<Set<string>>(new Set());
+  const saveRef = React.useRef(saveActiveFile);
   saveRef.current = saveActiveFile;
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
-  // Initialize editor once (container is always rendered, just hidden when empty)
-  useEffect(() => {
+  React.useEffect(() => {
     if (!containerRef.current || editorRef.current) return;
 
     const editor = monaco.editor.create(containerRef.current, {
@@ -38,7 +36,6 @@ export default function EditorArea() {
 
     editorRef.current = editor;
 
-    // Cmd+S / Ctrl+S to save
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       saveRef.current();
     });
@@ -52,11 +49,9 @@ export default function EditorArea() {
     };
   }, []);
 
-  // Switch model when active file changes
-  useEffect(() => {
+  React.useEffect(() => {
     const editor = editorRef.current;
     if (!editor || !activeFile) {
-      // No active file: detach model
       if (editor && editor.getModel()) {
         editor.setModel(null);
       }
@@ -70,7 +65,6 @@ export default function EditorArea() {
       modelsRef.current.set(activeFile.path, model);
     }
 
-    // Bind content-change listener only once per model
     if (!listenedModelsRef.current.has(activeFile.path)) {
       listenedModelsRef.current.add(activeFile.path);
       const filePath = activeFile.path;
@@ -85,12 +79,10 @@ export default function EditorArea() {
     }
   }, [activeFile?.path, updateFileContent]);
 
-  // Update model content if file reloaded externally (e.g. after save or agent edit)
-  useEffect(() => {
+  React.useEffect(() => {
     if (!activeFile) return;
     const model = modelsRef.current.get(activeFile.path);
     if (model && model.getValue() !== activeFile.content) {
-      // Preserve cursor position
       const editor = editorRef.current;
       const position = editor?.getPosition();
       model.setValue(activeFile.content);
@@ -100,8 +92,7 @@ export default function EditorArea() {
     }
   }, [activeFile?.originalContent]);
 
-  // Cleanup models for closed files
-  useEffect(() => {
+  React.useEffect(() => {
     const openPaths = new Set(openFiles.map((f) => f.path));
     for (const [filePath, model] of modelsRef.current) {
       if (!openPaths.has(filePath)) {
@@ -114,7 +105,6 @@ export default function EditorArea() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tabs */}
       {openFiles.length > 0 && (
         <div className="flex items-center bg-editor-sidebar border-b border-editor-border overflow-x-auto flex-shrink-0">
           {openFiles.map((file) => {
@@ -147,7 +137,6 @@ export default function EditorArea() {
         </div>
       )}
 
-      {/* Editor container (always rendered) */}
       <div className="flex-1 relative">
         <div
           ref={containerRef}
@@ -158,9 +147,9 @@ export default function EditorArea() {
           <div className="flex items-center justify-center h-full text-gray-500">
             <div className="text-center">
               <p className="text-4xl mb-4">🚀</p>
-              <p className="text-sm">Open a file to start editing</p>
+              <p className="text-sm">打开文件开始编辑</p>
               <p className="text-xs text-gray-600 mt-1">
-                Use the sidebar to browse your project
+                使用侧边栏浏览项目文件
               </p>
             </div>
           </div>

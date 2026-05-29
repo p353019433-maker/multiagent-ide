@@ -53,22 +53,19 @@ export default function TerminalPanel({ cwd }: Props) {
     termRef.current = term;
     fitRef.current = fitAddon;
 
-    // Create PTY session
     const id = await window.api.terminal.create(cwd);
     if (!id) {
-      term.writeln('\r\n⚠️  Terminal unavailable (node-pty not loaded)');
+      term.writeln('\r\n⚠️  终端不可用（node-pty 未加载）');
       return;
     }
     sessionIdRef.current = id;
 
-    // Forward user input → PTY
     term.onData((data) => {
       if (sessionIdRef.current) {
         window.api.terminal.write(sessionIdRef.current, data);
       }
     });
 
-    // PTY output → terminal
     const unsubData = window.api.terminal.onData((sid, data) => {
       if (sid === sessionIdRef.current) {
         term.write(data);
@@ -77,12 +74,11 @@ export default function TerminalPanel({ cwd }: Props) {
 
     const unsubExit = window.api.terminal.onExit((sid, code) => {
       if (sid === sessionIdRef.current) {
-        term.writeln(`\r\n[Process exited with code ${code}]`);
+        term.writeln(`\r\n[进程已退出，退出码 ${code}]`);
         sessionIdRef.current = null;
       }
     });
 
-    // Resize handler
     const handleResize = () => {
       if (!fitRef.current) return;
       fitRef.current.fit();
@@ -119,10 +115,9 @@ export default function TerminalPanel({ cwd }: Props) {
 
   return (
     <div className="flex flex-col h-full bg-editor-bg border-t border-editor-border">
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-1 bg-editor-sidebar border-b border-editor-border">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          Terminal
+          终端
         </span>
         <div className="flex items-center gap-1">
           <button
@@ -134,21 +129,20 @@ export default function TerminalPanel({ cwd }: Props) {
               }
             }}
             className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-            title="Clear terminal"
+            title="清屏"
           >
             🗑
           </button>
           <button
             onClick={() => setVisible(!visible)}
             className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-            title={visible ? 'Hide terminal' : 'Show terminal'}
+            title={visible ? '收起终端' : '展开终端'}
           >
             {visible ? '▼' : '▲'}
           </button>
         </div>
       </div>
 
-      {/* Terminal body */}
       {visible && (
         <div ref={containerRef} className="flex-1 p-1 overflow-hidden" />
       )}

@@ -30,12 +30,10 @@ export default function ChatPanel() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages || [];
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamContent, toolExecutions]);
 
-  // Handle send
   const handleSend = useCallback(async () => {
     if (!input.trim() || !activeProviderId || !activeModel) return;
     if (isStreaming) return;
@@ -45,12 +43,11 @@ export default function ChatPanel() {
       convId = newConversation();
     }
 
-    // Build context from active file
     let contextPrefix = '';
     if (activeFilePath) {
       const file = openFiles.find((f) => f.path === activeFilePath);
       if (file) {
-        contextPrefix = `[Current file: ${activeFilePath}]\n\`\`\`${file.language}\n${file.content.slice(0, 3000)}\n\`\`\`\n\n`;
+        contextPrefix = `[当前文件: ${activeFilePath}]\n\`\`\`${file.language}\n${file.content.slice(0, 3000)}\n\`\`\`\n\n`;
       }
     }
 
@@ -66,7 +63,6 @@ export default function ChatPanel() {
     setStreamContent('');
     setToolExecutions([]);
 
-    // Prepare messages for API
     const apiMessages: ChatMessageType[] = [
       ...messages,
       { ...userMsg, content: contextPrefix + userMsg.content },
@@ -75,7 +71,6 @@ export default function ChatPanel() {
     await runAgentLoop(convId, apiMessages);
   }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles]);
 
-  // Agent loop: send → get response → if tool_calls, execute tools → send results → repeat
   const runAgentLoop = async (convId: string, apiMessages: ChatMessageType[]) => {
     let loopMessages = [...apiMessages];
     let iterations = 0;
@@ -120,7 +115,6 @@ export default function ChatPanel() {
           });
         });
 
-        // Add assistant message
         const assistantMsg: ChatMessageType = {
           id: uuid(),
           role: 'assistant',
@@ -131,15 +125,12 @@ export default function ChatPanel() {
         addMessage(convId, assistantMsg);
         setStreamContent('');
 
-        // If no tool calls, we're done
         if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
           break;
         }
 
-        // Execute tools
         const toolResults = await executeTools(result.toolCalls);
 
-        // Add tool results message
         const toolMsg: ChatMessageType = {
           id: uuid(),
           role: 'tool',
@@ -149,13 +140,12 @@ export default function ChatPanel() {
         };
         addMessage(convId, toolMsg);
 
-        // Continue loop
         loopMessages = [...loopMessages, assistantMsg, toolMsg];
       } catch (err: any) {
         const errorMsg: ChatMessageType = {
           id: uuid(),
           role: 'assistant',
-          content: `❌ Error: ${err.message}`,
+          content: `❌ 错误：${err.message}`,
           timestamp: Date.now(),
         };
         addMessage(convId, errorMsg);
@@ -166,7 +156,6 @@ export default function ChatPanel() {
     setIsStreaming(false);
   };
 
-  // Execute agent tools
   const executeTools = async (toolCalls: ToolCall[]) => {
     const results: { toolCallId: string; content: string; isError?: boolean }[] = [];
 
@@ -189,27 +178,22 @@ export default function ChatPanel() {
         setToolExecutions((prev) =>
           prev.map((e) => (e.id === tc.id ? { ...e, status: 'error', error: err.message } : e))
         );
-        results.push({ toolCallId: tc.id, content: `Error: ${err.message}`, isError: true });
+        results.push({ toolCallId: tc.id, content: `错误：${err.message}`, isError: true });
       }
     }
 
     return results;
   };
 
-  /** Resolve a path relative to workspace root. Prevents path traversal. */
   const resolvePath = (p: string): string => {
-    if (!rootPath) throw new Error('No workspace open');
-    // If already absolute and within workspace, allow it
+    if (!rootPath) throw new Error('未打开工作区');
     if (p.startsWith(rootPath + '/') || p === rootPath) return p;
-    // If absolute but outside workspace, reject
-    if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) throw new Error('Access denied: path outside workspace');
-    // Relative path: join with rootPath
-    // Normalize: remove ../ segments that would escape
+    if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) throw new Error('拒绝访问：路径超出工作区');
     const segments = p.split(/[/\\]/);
     const resolved: string[] = [];
     for (const seg of segments) {
       if (seg === '..') {
-        if (resolved.length === 0) throw new Error('Access denied: path traversal detected');
+        if (resolved.length === 0) throw new Error('拒绝访问：检测到路径越界');
         resolved.pop();
       } else if (seg !== '.' && seg !== '') {
         resolved.push(seg);
@@ -218,7 +202,6 @@ export default function ChatPanel() {
     return rootPath + '/' + resolved.join('/');
   };
 
-  /** State for pending file approvals */
   const [pendingApproval, setPendingApproval] = useState<{
     toolCallId: string;
     filePath: string;
@@ -228,7 +211,6 @@ export default function ChatPanel() {
     resolve: (approved: boolean) => void;
   } | null>(null);
 
-  /** Request user approval for file modifications */
   const requestApproval = (
     toolCallId: string,
     filePath: string,
@@ -258,43 +240,39 @@ export default function ChatPanel() {
       case 'read_file': {
         const filePath = resolvePath(args.path as string);
         const content = await window.api.fs.readFile(filePath);
-        return content.slice(0, 10000); // cap output
+        return content.slice(0, 10000);
       }
       case 'write_file': {
         const filePath = resolvePath(args.path as string);
         const newContent = args.content as string;
-        // Get existing content for diff (empty if new file)
         let existingContent = '';
         try {
           existingContent = await window.api.fs.readFile(filePath);
         } catch {
-          // File doesn't exist yet, that's fine
+          // File doesn't exist yet
         }
-        // Request approval
         const approved = await requestApproval(tc.id, filePath, 'write', existingContent, newContent);
-        if (!approved) return 'File write rejected by user';
+        if (!approved) return '文件写入被用户拒绝';
         await window.api.fs.writeFile(filePath, newContent);
-        return `File written: ${args.path}`;
+        return `已写入文件：${args.path}`;
       }
       case 'edit_file': {
         const filePath = resolvePath(args.path as string);
         const content = await window.api.fs.readFile(filePath);
         const oldStr = args.oldString as string;
         const newStr = args.newString as string;
-        // Validate: oldString must appear exactly once
         const occurrences = content.split(oldStr).length - 1;
         if (occurrences === 0) {
-          throw new Error('oldString not found in file');
+          throw new Error('文件中未找到 oldString');
         }
         if (occurrences > 1) {
-          throw new Error(`oldString found ${occurrences} times — must be unique. Add more context to disambiguate.`);
+          throw new Error(`oldString 在文件中出现 ${occurrences} 次，不唯一。请添加更多上下文以消除歧义。`);
         }
         const updated = content.replace(oldStr, newStr);
-        // Request approval
         const approved = await requestApproval(tc.id, filePath, 'edit', content, updated);
-        if (!approved) return 'File edit rejected by user';
+        if (!approved) return '文件编辑被用户拒绝';
         await window.api.fs.writeFile(filePath, updated);
-        return `File edited: ${args.path}`;
+        return `已编辑文件：${args.path}`;
       }
       case 'list_directory': {
         const dirPath = resolvePath(args.path as string);
@@ -302,7 +280,7 @@ export default function ChatPanel() {
         return nodes.map((n: any) => `${n.isDirectory ? '📁' : '📄'} ${n.name}`).join('\n');
       }
       case 'search_files': {
-        if (!rootPath) throw new Error('No workspace open');
+        if (!rootPath) throw new Error('未打开工作区');
         const results = await window.api.fs.searchFiles(rootPath, args.query as string);
         return results
           .slice(0, 20)
@@ -313,10 +291,10 @@ export default function ChatPanel() {
         const cwd = rootPath || '/';
         const result = await window.api.terminal.runCommand(cwd, args.command as string);
         const output = (result.stdout + result.stderr).slice(0, 5000);
-        return `Exit code: ${result.exitCode}\n${output}`;
+        return `退出码：${result.exitCode}\n${output}`;
       }
       default:
-        throw new Error(`Unknown tool: ${tc.name}`);
+        throw new Error(`未知工具：${tc.name}`);
     }
   };
 
@@ -334,27 +312,24 @@ export default function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full bg-editor-sidebar border-l border-editor-border">
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          Agent Chat
+          AI 对话
         </span>
         <button
           onClick={() => newConversation()}
           className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-          title="New conversation"
+          title="新建对话"
         >
           ＋
         </button>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 selectable">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
 
-        {/* Tool executions */}
         {toolExecutions.length > 0 && (
           <div className="space-y-1">
             {toolExecutions.map((exec) => (
@@ -363,7 +338,6 @@ export default function ChatPanel() {
           </div>
         )}
 
-        {/* Streaming content */}
         {isStreaming && streamContent && (
           <div className="text-sm text-editor-text whitespace-pre-wrap streaming-cursor">
             {streamContent}
@@ -373,20 +347,19 @@ export default function ChatPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Approval dialog */}
       {pendingApproval && (
         <div className="px-3 py-2 border-t border-editor-border bg-yellow-900/20">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-yellow-400">
-              ⚠️ {pendingApproval.action === 'write' ? 'Write' : 'Edit'} file: {pendingApproval.filePath.split('/').pop()}
+              ⚠️ {pendingApproval.action === 'write' ? '写入' : '编辑'}文件：{pendingApproval.filePath.split('/').pop()}
             </span>
           </div>
           <div className="bg-black/30 rounded p-2 mb-2 max-h-32 overflow-y-auto">
             <pre className="text-[11px] text-gray-300 whitespace-pre-wrap">
               {pendingApproval.action === 'edit'
-                ? `--- Before\n+++ After\n\n${pendingApproval.after.slice(0, 500)}`
+                ? `--- 修改前\n+++ 修改后\n\n${pendingApproval.after.slice(0, 500)}`
                 : pendingApproval.after.slice(0, 500)}
-              {pendingApproval.after.length > 500 && '\n... (truncated)'}
+              {pendingApproval.after.length > 500 && '\n... （已截断）'}
             </pre>
           </div>
           <div className="flex gap-2">
@@ -394,23 +367,22 @@ export default function ChatPanel() {
               onClick={handleApprove}
               className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
             >
-              ✓ Approve
+              ✓ 批准
             </button>
             <button
               onClick={handleReject}
               className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
             >
-              ✕ Reject
+              ✕ 拒绝
             </button>
           </div>
         </div>
       )}
 
-      {/* Input */}
       <div className="p-3 border-t border-editor-border">
         {!activeProviderId ? (
           <p className="text-xs text-gray-500 text-center">
-            Configure an AI provider in Settings to start chatting
+            在设置中配置 AI 服务以开始对话
           </p>
         ) : (
           <div className="flex gap-2">
@@ -419,7 +391,7 @@ export default function ChatPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask the AI agent..."
+              placeholder="跟 AI 说点什么..."
               className="flex-1 bg-editor-bg border border-editor-border rounded px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent transition-colors"
               rows={2}
               disabled={isStreaming}
@@ -430,7 +402,7 @@ export default function ChatPanel() {
                   onClick={handleAbort}
                   className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
                 >
-                  Stop
+                  停止
                 </button>
               ) : (
                 <button
@@ -438,7 +410,7 @@ export default function ChatPanel() {
                   disabled={!input.trim()}
                   className="px-3 py-1 bg-editor-accent text-white text-xs rounded hover:opacity-90 transition-opacity disabled:opacity-40"
                 >
-                  Send
+                  发送
                 </button>
               )}
             </div>
