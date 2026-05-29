@@ -82,10 +82,44 @@ Agent 模式下 AI 可以调用以下工具：
 |------|------|
 | `read_file` | 读取文件内容 |
 | `write_file` | 创建/覆盖文件 |
-| `edit_file` | 局部编辑文件 |
+| `replace_in_file` | 局部编辑文件 |
 | `list_directory` | 列出目录内容 |
 | `search_files` | 全项目文本搜索 |
+| `codebase_search` | 语义/概念检索（符号索引 + 相关度打分，回退全文） |
 | `run_command` | 执行 shell 命令 |
+
+> 完整工具集共 40+ 个，涵盖文件、代码分析、Git、Worktree、命令、Web、GitHub 等。
+
+## 上下文与性能
+
+- **Prompt Caching** — Anthropic 请求自动对 system prompt、工具定义和历史前缀打 `cache_control` 缓存断点，Agent 多轮循环显著降低 token 成本。
+- **上下文压缩** — 长会话超过阈值时自动将早期对话压缩为摘要，避免上下文无限增长。
+- **`@` 文件引用** — 在对话中输入 `@path/to/file` 即可把该文件完整内容注入上下文。
+- **持久化记忆** — `save_context` / `load_context` 落盘到本地存储，重启不丢失。
+- **Agent 鲁棒性** — 工具失败按错误类型自动重试（指数退避），并检测无进展的重复调用自动停止。
+
+## 内联补全（FIM）
+
+内联补全会自动探测当前模型能力：
+
+- **专用代码模型走 FIM（Fill-In-the-Middle）** — 同时利用光标前后文，补全更快更准：
+  - **DeepSeek** V3/V4（`deepseek-v4-pro` / `deepseek-v4-flash` / `deepseek-chat`）→ `/beta` completions + `suffix`
+  - **Mistral Codestral** → 专用 `/v1/fim/completions` 端点
+  - **本地模型**（Ollama/vLLM）：Qwen-Coder、DeepSeek-Coder、StarCoder2、CodeLlama、CodeGemma 等 → 按各自 sentinel token 格式
+- **聊天模型自动回退** — Claude / GPT / Gemini 无 FIM 接口，回退到聊天式补全（原逻辑）
+- FIM 模型补全又快又省，debounce/cooldown 自动调低（150ms / 300ms），聊天模型保持保守节流（300ms / 2s）
+
+## 安全审批
+
+三档审批模式（对话面板顶部切换，默认「自动」）：
+
+| 档位 | 读 | 工作区写入 | shell 命令 | 危险命令 |
+|------|----|-----------|-----------|---------|
+| 🔒 只读 | 放行 | 手动批准 | 手动批准 | 手动批准 |
+| ⚖️ 自动（默认） | 放行 | 预览后 5 秒自动接受（可拒绝） | 直接执行 | **强制手动批准** |
+| ⚡ 完全 | 放行 | 全自动 | 全自动 | 全自动 |
+
+危险命令（`rm -rf`、`git push --force`、`git reset --hard`、`curl … \| sh`、`sudo`、`chmod 777`、`mkfs`、`dd`、fork bomb 等）无论何种档位都会强制弹出审批并标红提示。
 
 ## 支持的 AI 供应商
 

@@ -146,6 +146,25 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: ['path'],
     },
   },
+  {
+    name: 'codebase_search',
+    description:
+      '按概念/语义在整个工作区检索最相关的代码位置。先在符号索引（函数/类/接口/类型名）中按相关度打分匹配，再回退到全文搜索。比 search_files 更适合“在哪里实现了 X”“处理 Y 的代码在哪”这类问题——无需事先知道确切关键词。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '自然语言或关键词描述，如 "用户登录校验" 或 "parse git remote"。',
+        },
+        limit: {
+          type: 'number',
+          description: '返回结果数量，默认 10。',
+        },
+      },
+      required: ['query'],
+    },
+  },
 
   // ── Git Integration ──
   {
@@ -269,7 +288,6 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
         head: { type: 'string', description: '比较的分支，默认当前分支。' },
       },
       required: ['base'],
-      required: [],
     },
   },
 
@@ -661,6 +679,7 @@ You have access to many tools that let you interact with the user's workspace:
 **Code Analysis:**
 - read_lints: Run ESLint/TypeScript diagnostics
 - extract_symbols: Extract functions, classes, exports, interfaces from TS/JS files
+- codebase_search: Semantic/concept search across the workspace — use this first when you don't know the exact keyword ("where is X handled?"). Falls back to full-text search.
 
 **Git:**
 - git_status: See what's changed, current branch
@@ -694,12 +713,16 @@ You have access to many tools that let you interact with the user's workspace:
 - github_get_repo: Get repo metadata
 
 ## Guidelines
-1. Gather context first: read relevant files, understand the codebase structure.
+1. Gather context first: use codebase_search to locate relevant code, then read those files.
 2. Make precise, minimal edits. Prefer replace_in_file over write_file when modifying existing files.
 3. Explain your plan briefly before executing tools.
 4. After making changes, summarize what you did.
 5. If a task is unclear, ask before taking destructive actions.
 6. Always read a file before editing it — never guess its contents.
 7. For multi-step tasks, plan ahead and execute tools in logical order.
+8. If a tool fails, read the error, adjust your approach, and retry — do not repeat the exact same failing call.
+
+## Approval & Safety
+The user controls an approval mode. Writes, shell commands, and external (GitHub) actions may require the user's approval before they run; destructive shell commands (rm -rf, git push --force, curl | sh, sudo, etc.) always require explicit approval. If an action is rejected, do not retry it — explain and propose an alternative. Prefer the least destructive command that accomplishes the task.
 
 Be direct and concise. Focus on getting the task done.`;
