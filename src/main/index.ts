@@ -537,20 +537,20 @@ function setupIPC() {
   // A faster, scoped diagnostic check that returns a structured result the agent
   // loop can act on. Used to auto-feed errors back after the agent edits files.
   ipcMain.handle('lint:check', async (_, cwd: string, files?: string[]) => {
-    const target =
-      files && files.length
-        ? files.map((f) => `"${f}"`).join(' ')
-        : '.';
-    const ext = '--ext .ts,.tsx,.js,.jsx';
+    // Filenames originate from the agent — execute via arg arrays (no shell)
+    // and additionally drop any path containing shell metacharacters as
+    // defense-in-depth. NEVER interpolate these into a shell string.
+    const safe = (f: string) => !/[;&|`$<>(){}\[\]!*?"'\\\n\r]/.test(f);
+    const targetFiles = (files || []).filter(safe);
+    const ext = ['--ext', '.ts,.tsx,.js,.jsx'];
     let output = '';
     let hasErrors = false;
 
     try {
-      const eslintCmd =
-        files && files.length
-          ? `npx eslint --format compact ${target} 2>&1 || true`
-          : `npx eslint --format compact . ${ext} 2>&1 || true`;
-      const out = await terminalService.runCommand(cwd, eslintCmd, 30_000);
+      const eslintArgs = targetFiles.length
+        ? ['eslint', '--format', 'compact', ...targetFiles]
+        : ['eslint', '--format', 'compact', '.', ...ext];
+      const out = await terminalService.runFile(cwd, 'npx', eslintArgs, 30_000);
       const text = (out.stdout + out.stderr).trim();
       if (text && /error/i.test(text)) {
         hasErrors = true;
@@ -561,12 +561,13 @@ function setupIPC() {
     }
 
     try {
-      const out = await terminalService.runCommand(
+      const out = await terminalService.runFile(
         cwd,
-        'npx tsc --noEmit --pretty false 2>&1 || true',
+        'npx',
+        ['tsc', '--noEmit', '--pretty', 'false'],
         45_000
       );
-      const text = out.stdout.trim();
+      const text = (out.stdout + out.stderr).trim();
       if (text && /error TS\d+/i.test(text)) {
         hasErrors = true;
         // If specific files were edited, only surface diagnostics for them to
