@@ -594,23 +594,25 @@ function setupIPC() {
 
 async function runLint(cwd: string, filePath?: string) {
   const results: string[] = [];
+  // Filenames may originate from the agent — run via arg arrays (no shell) and
+  // reject any path with shell metacharacters as defense-in-depth.
+  const safe = (f: string) => !/[;&|`$<>(){}\[\]!*?"'\\\n\r]/.test(f);
   try {
-    // Try npx eslint
-    const cmd = filePath
-      ? `npx eslint --format compact "${filePath}" 2>&1 || true`
-      : `npx eslint --format compact . --ext .ts,.tsx,.js,.jsx 2>&1 || true`;
-    const { TerminalService } = await import('./services/terminal-service');
-    const tmpTs = new TerminalService();
-    const out = await tmpTs.runCommand(cwd, cmd, 30_000);
-    if (out.stdout.trim()) results.push(out.stdout.trim());
+    const eslintArgs =
+      filePath && safe(filePath)
+        ? ['eslint', '--format', 'compact', filePath]
+        : ['eslint', '--format', 'compact', '.', '--ext', '.ts,.tsx,.js,.jsx'];
+    const out = await terminalService.runFile(cwd, 'npx', eslintArgs, 30_000);
+    const text = (out.stdout + out.stderr).trim();
+    if (text) results.push(text);
   } catch {
     results.push('ESLint 不可用或未配置');
   }
 
   try {
-    // Try npx tsc --noEmit
-    const out = await terminalService.runCommand(cwd, 'npx tsc --noEmit --pretty false 2>&1 || true', 30_000);
-    if (out.stdout.trim()) results.push(out.stdout.trim());
+    const out = await terminalService.runFile(cwd, 'npx', ['tsc', '--noEmit', '--pretty', 'false'], 30_000);
+    const text = (out.stdout + out.stderr).trim();
+    if (text) results.push(text);
   } catch {
     // TypeScript not available
   }
