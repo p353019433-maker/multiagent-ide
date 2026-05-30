@@ -111,8 +111,9 @@ export class GitService {
     branchName: string,
     baseBranch?: string
   ): Promise<{ success: boolean; message: string; path?: string }> {
-    const args = ['worktree', 'add', worktreePath, '-b', branchName];
-    if (baseBranch) args.splice(2, 0, baseBranch); // git worktree add <path> <base> -b <name>
+    // git worktree add -b <branch> <path> [<base-commit>]
+    const args = ['worktree', 'add', '-b', branchName, worktreePath];
+    if (baseBranch) args.push(baseBranch);
     const { stdout, stderr, exitCode } = await this.git(cwd, args);
     if (exitCode !== 0) return { success: false, message: stderr };
     return { success: true, message: stdout || `已创建 worktree ${branchName}`, path: worktreePath };

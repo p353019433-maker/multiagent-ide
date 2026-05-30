@@ -191,20 +191,36 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     }
     case 'git_create_branch': {
       const cwd = rootPath || '/';
-      return await window.api.git.branchCreate(cwd, args.name as string);
+      const name = args.name as string;
+      const ok = await gateAction(tc.id, `创建并切换分支 ${name}`, 'command', '', `git checkout -b ${name}`, 'command');
+      if (!ok) return '操作被用户拒绝';
+      return await window.api.git.branchCreate(cwd, name);
     }
     case 'git_switch_branch': {
       const cwd = rootPath || '/';
-      return await window.api.git.branchSwitch(cwd, args.name as string);
+      const name = args.name as string;
+      const ok = await gateAction(tc.id, `切换分支 ${name}`, 'command', '', `git switch ${name}`, 'command');
+      if (!ok) return '操作被用户拒绝';
+      return await window.api.git.branchSwitch(cwd, name);
     }
     case 'git_commit': {
       const cwd = rootPath || '/';
+      const message = args.message as string;
+      const ok = await gateAction(tc.id, '暂存全部并提交', 'command', '', `git add -A && git commit -m "${message}"`, 'command');
+      if (!ok) return '操作被用户拒绝';
       await window.api.git.stageAll(cwd);
-      return await window.api.git.commit(cwd, args.message as string);
+      return await window.api.git.commit(cwd, message);
     }
     case 'git_push': {
       const cwd = rootPath || '/';
-      return await window.api.git.push(cwd, (args.remote as string) || 'origin');
+      const remote = (args.remote as string) || 'origin';
+      // Pushing to a remote is irreversible-ish — always gated (dangerous).
+      const ok = await gateAction(tc.id, `推送到 ${remote}`, 'command', '', `git push ${remote}`, 'command', {
+        dangerous: true,
+        dangerReason: '推送到远端',
+      });
+      if (!ok) return '操作被用户拒绝';
+      return await window.api.git.push(cwd, remote);
     }
     case 'git_worktree_list': {
       const cwd = rootPath || '/';
@@ -218,6 +234,8 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const wtPath = args.path as string | undefined;
       const parentDir = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
       const path = wtPath || `${parentDir}_wt/${branch}`;
+      const ok = await gateAction(tc.id, `创建 worktree 分支 ${branch}`, 'command', '', `git worktree add -b ${branch} ${path}`, 'command');
+      if (!ok) return '操作被用户拒绝';
       const res = await window.api.git.worktreeAdd(cwd, path, branch, base);
       if (!res.success) throw new Error(res.message);
       return `已创建隔离 worktree: ${res.path}\n分支: ${branch}`;
@@ -226,6 +244,12 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const cwd = rootPath || '/';
       const source = args.source as string;
       const method = (args.method as string) || 'merge';
+      // Merging rewrites branch history — always gated (dangerous).
+      const ok = await gateAction(tc.id, `合并分支 ${source}（${method}）`, 'command', '', `git merge ${source}`, 'command', {
+        dangerous: true,
+        dangerReason: '合并分支',
+      });
+      if (!ok) return '操作被用户拒绝';
       const res = await window.api.git.worktreeMerge(cwd, source, method as any);
       if (!res.success) throw new Error(res.message);
       return res.message;
@@ -299,39 +323,49 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     }
     case 'search_and_replace': {
       if (!rootPath) throw new Error('未打开工作区');
+      // Literal (non-regex) text replacement of `pattern` -> `replacement`.
       const pattern = args.pattern as string;
       const replacement = args.replacement as string;
       const dryRun = args.dry_run as boolean;
-      // Search first
-      const results = await window.api.fs.searchFiles(rootPath, pattern);
-      if (results.length === 0) return '未找到匹配项';
+      if (!pattern) throw new Error('pattern 不能为空');
+
+      // Use full-text search only to find candidate files, then replace the
+      // exact literal pattern in each file's real content.
+      const candidates = await window.api.fs.searchFiles(rootPath, pattern);
+      const files = Array.from(new Set(candidates.map((r: any) => r.path as string)));
+      if (files.length === 0) return '未找到匹配项';
+
+      // Count exact literal occurrences per file.
+      const perFile: { filePath: string; content: string; occ: number }[] = [];
+      let totalOcc = 0;
+      for (const filePath of files) {
+        const content = await window.api.fs.readFile(filePath);
+        const occ = content.split(pattern).length - 1;
+        if (occ > 0) {
+          perFile.push({ filePath, content, occ });
+          totalOcc += occ;
+        }
+      }
+      if (totalOcc === 0) {
+        return `候选文件存在，但未找到精确字面匹配 "${pattern}"（注意：本工具按字面文本而非正则匹配，区分大小写）`;
+      }
       if (dryRun) {
         return (
-          `找到 ${results.length} 处匹配（预览模式，未修改文件）：\n` +
-          results.map((r: any) => `${r.path}:${r.line} ${r.preview}`).join('\n')
+          `将替换 ${totalOcc} 处字面匹配（预览模式，未修改文件）：\n` +
+          perFile.map((f) => `${f.filePath}：${f.occ} 处`).join('\n')
         );
       }
-      // Group by file
-      const byFile = new Map<string, { line: number; preview: string }[]>();
-      for (const r of results) {
-        if (!byFile.has(r.path)) byFile.set(r.path, []);
-        byFile.get(r.path)!.push({ line: r.line, preview: r.preview });
-      }
+
       let changed = 0;
-      for (const [filePath, matches] of byFile) {
-        const content = await window.api.fs.readFile(filePath);
-        let updated = content;
-        // Replace all matches per file (case-insensitive, simple string replace)
-        for (const m of matches) {
-          updated = updated.split(m.preview).join(replacement);
-        }
+      for (const { filePath, content, occ } of perFile) {
+        const updated = content.split(pattern).join(replacement);
         const approved = await gateAction(tc.id, filePath, 'write', content, updated, 'edit');
         if (approved) {
           await writeFileTracked(filePath, updated);
-          changed += matches.length;
+          changed += occ;
         }
       }
-      return `已替换 ${changed} 处匹配（共 ${results.length} 处发现）`;
+      return `已替换 ${changed} 处字面匹配（共发现 ${totalOcc} 处）`;
     }
 
     // ── Context ──
@@ -438,6 +472,17 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const body = (args.body as string) || '';
       const event = (args.event as string) || 'COMMENT';
       const comments = args.comments as any[] | undefined;
+      const ok = await gateAction(
+        tc.id,
+        `提交 PR #${number} 审查（${event}）`,
+        'external',
+        '',
+        `${event}\n${body}`,
+        'github',
+        // Approving/requesting changes acts on the remote PR — flag APPROVE/REQUEST_CHANGES.
+        event === 'COMMENT' ? undefined : { dangerous: true, dangerReason: `审查动作 ${event}` }
+      );
+      if (!ok) return 'GitHub 操作被用户拒绝';
       await window.api.github.createReview(token, info.owner, info.repo, number, event, body, comments);
       return event === 'APPROVE' ? `已批准 PR #${number}` : `已在 PR #${number} 上提交审查`;
     }
