@@ -427,11 +427,11 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     name: 'search_and_replace',
     description:
-      '在整个工作区中搜索并替换文本。会先列出所有匹配项让用户确认。这是批量重构的有力工具。需要用户批准。',
+      '在整个工作区中按【字面文本】搜索并替换（区分大小写，非正则）。每个文件的改动都会走审批。这是批量重构的有力工具。',
     parameters: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: '要搜索的文本或正则。' },
+        pattern: { type: 'string', description: '要查找的字面文本（精确、区分大小写，不是正则）。' },
         replacement: { type: 'string', description: '替换内容。' },
         file_pattern: {
           type: 'string',
