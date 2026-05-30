@@ -118,6 +118,45 @@ export class TerminalService {
     });
   }
 
+  /**
+   * Shell-free execution: runs `file` with an argument array directly (no shell
+   * interpretation). Use this whenever any argument is untrusted (e.g. file
+   * names coming from the agent) to avoid command injection.
+   */
+  runFile(
+    cwd: string,
+    file: string,
+    args: string[],
+    timeoutMs: number = 60000
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    return new Promise((resolve) => {
+      // On Windows, npx/npm are .cmd shims which require shell resolution.
+      const isWin = os.platform() === 'win32';
+      const proc = spawn(file, args, { cwd, shell: isWin });
+      let stdout = '';
+      let stderr = '';
+
+      let timeout: NodeJS.Timeout | null = null;
+      if (timeoutMs > 0) {
+        timeout = setTimeout(() => {
+          proc.kill();
+          resolve({ stdout, stderr: stderr + '\n[命令超时]', exitCode: -1 });
+        }, timeoutMs);
+      }
+
+      proc.stdout?.on('data', (data) => (stdout += data.toString()));
+      proc.stderr?.on('data', (data) => (stderr += data.toString()));
+      proc.on('close', (code) => {
+        if (timeout) clearTimeout(timeout);
+        resolve({ stdout, stderr, exitCode: code ?? 0 });
+      });
+      proc.on('error', (err) => {
+        if (timeout) clearTimeout(timeout);
+        resolve({ stdout, stderr: err.message, exitCode: -1 });
+      });
+    });
+  }
+
   // ── Background Commands ──
 
   startBackgroundCommand(cwd: string, command: string): string {
