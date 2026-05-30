@@ -92,7 +92,13 @@ export function decideApproval(
   if (mode === 'readonly') return 'manual';
 
   // auto mode
-  if (kind === 'command' || kind === 'external') {
+  if (kind === 'external') {
+    // Remote/irreversible writes (GitHub PR/merge/release, etc.) always require
+    // explicit confirmation, even in auto mode.
+    return 'manual';
+  }
+  if (kind === 'command') {
+    // Safe local shell commands auto-run; dangerous ones are gated.
     return opts?.dangerous ? 'manual' : 'allow';
   }
   // workspace write in auto mode: preview + countdown

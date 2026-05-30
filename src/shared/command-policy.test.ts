@@ -29,6 +29,10 @@ describe('decideApproval', () => {
     expect(decideApproval('auto', 'command', { dangerous: false })).toBe('allow');
     expect(decideApproval('auto', 'command', { dangerous: true })).toBe('manual');
   });
+  it('auto: remote/external writes always require manual confirmation', () => {
+    expect(decideApproval('auto', 'external', { dangerous: false })).toBe('manual');
+    expect(decideApproval('auto', 'external', { dangerous: true })).toBe('manual');
+  });
   it('full runs everything', () => {
     expect(decideApproval('full', 'write')).toBe('allow');
     expect(decideApproval('full', 'command', { dangerous: true })).toBe('allow');

@@ -192,21 +192,30 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'git_create_branch': {
       const cwd = rootPath || '/';
       const name = args.name as string;
-      const ok = await gateAction(tc.id, `创建并切换分支 ${name}`, 'command', '', `git checkout -b ${name}`, 'command');
+      const ok = await gateAction(tc.id, `创建并切换分支 ${name}`, 'command', '', `git checkout -b ${name}`, 'command', {
+        dangerous: true,
+        dangerReason: '切换工作区分支',
+      });
       if (!ok) return '操作被用户拒绝';
       return await window.api.git.branchCreate(cwd, name);
     }
     case 'git_switch_branch': {
       const cwd = rootPath || '/';
       const name = args.name as string;
-      const ok = await gateAction(tc.id, `切换分支 ${name}`, 'command', '', `git switch ${name}`, 'command');
+      const ok = await gateAction(tc.id, `切换分支 ${name}`, 'command', '', `git switch ${name}`, 'command', {
+        dangerous: true,
+        dangerReason: '切换工作区分支',
+      });
       if (!ok) return '操作被用户拒绝';
       return await window.api.git.branchSwitch(cwd, name);
     }
     case 'git_commit': {
       const cwd = rootPath || '/';
       const message = args.message as string;
-      const ok = await gateAction(tc.id, '暂存全部并提交', 'command', '', `git add -A && git commit -m "${message}"`, 'command');
+      const ok = await gateAction(tc.id, '暂存全部并提交', 'command', '', `git add -A && git commit -m "${message}"`, 'command', {
+        dangerous: true,
+        dangerReason: 'stageAll 会暂存全部改动（含用户未授权改动）并提交',
+      });
       if (!ok) return '操作被用户拒绝';
       await window.api.git.stageAll(cwd);
       return await window.api.git.commit(cwd, message);
