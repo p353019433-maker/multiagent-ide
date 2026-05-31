@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import * as monaco from 'monaco-editor';
+
+type MonacoModule = typeof import('monaco-editor');
 
 interface Props {
   original: string;
@@ -18,57 +19,73 @@ interface Props {
  */
 export default function DiffPreview({ original, modified, filePath, language, visible, onAccept, onReject }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const diffEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+  const diffEditorRef = useRef<import('monaco-editor').editor.IStandaloneDiffEditor | null>(null);
+  const acceptRef = useRef(onAccept);
+  const rejectRef = useRef(onReject);
+
+  useEffect(() => {
+    acceptRef.current = onAccept;
+    rejectRef.current = onReject;
+  }, [onAccept, onReject]);
 
   useEffect(() => {
     if (!containerRef.current || !visible) return;
 
-    const lang = language || guessLanguage(filePath);
+    let disposed = false;
+    let diffEditor: import('monaco-editor').editor.IStandaloneDiffEditor | null = null;
+    let originalModel: import('monaco-editor').editor.ITextModel | null = null;
+    let modifiedModel: import('monaco-editor').editor.ITextModel | null = null;
 
-    const originalModel = monaco.editor.createModel(original, lang);
-    const modifiedModel = monaco.editor.createModel(modified, lang);
+    void import('monaco-editor').then((monaco: MonacoModule) => {
+      if (disposed || !containerRef.current) return;
 
-    const diffEditor = monaco.editor.createDiffEditor(containerRef.current, {
-      theme: 'vs-dark',
-      fontSize: 12,
-      fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-      readOnly: true,
-      automaticLayout: true,
-      renderSideBySide: true,
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      lineNumbers: 'on',
-      renderOverviewRuler: false,
-      diffWordWrap: 'on',
-      ignoreTrimWhitespace: false,
-      // Monaco 0.52+ uses renderOptions
-      originalEditable: false,
-    });
+      const lang = language || guessLanguage(filePath);
+      originalModel = monaco.editor.createModel(original, lang);
+      modifiedModel = monaco.editor.createModel(modified, lang);
 
-    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
-    diffEditorRef.current = diffEditor;
+      diffEditor = monaco.editor.createDiffEditor(containerRef.current, {
+        theme: 'vs-dark',
+        fontSize: 12,
+        fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+        readOnly: true,
+        automaticLayout: true,
+        renderSideBySide: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        lineNumbers: 'on',
+        renderOverviewRuler: false,
+        diffWordWrap: 'on',
+        ignoreTrimWhitespace: false,
+        // Monaco 0.52+ uses renderOptions
+        originalEditable: false,
+      });
 
-    // Keyboard shortcuts
-    diffEditor.addAction({
-      id: 'accept-diff',
-      label: 'Accept',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: onAccept,
-    });
-    diffEditor.addAction({
-      id: 'reject-diff',
-      label: 'Reject',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Escape],
-      run: onReject,
+      diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+      diffEditorRef.current = diffEditor;
+
+      // Keyboard shortcuts
+      diffEditor.addAction({
+        id: 'accept-diff',
+        label: 'Accept',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => acceptRef.current(),
+      });
+      diffEditor.addAction({
+        id: 'reject-diff',
+        label: 'Reject',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Escape],
+        run: () => rejectRef.current(),
+      });
     });
 
     return () => {
-      diffEditor.dispose();
-      originalModel.dispose();
-      modifiedModel.dispose();
+      disposed = true;
+      diffEditor?.dispose();
+      originalModel?.dispose();
+      modifiedModel?.dispose();
       diffEditorRef.current = null;
     };
-  }, [visible, filePath]); // Re-create only when visible or file changes
+  }, [visible, filePath, original, modified, language]);
 
   if (!visible) return null;
 

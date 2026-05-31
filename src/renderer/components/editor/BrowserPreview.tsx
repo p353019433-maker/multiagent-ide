@@ -58,6 +58,34 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
     return () => window.removeEventListener('preview-url', handler as EventListener);
   }, [navigate]);
 
+  React.useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview) return;
+
+    const handleLoadStart = () => setLoading(true);
+    const handleLoadStop = () => setLoading(false);
+    const handlePageTitleUpdated = (e: { title?: string }) => {
+      if (e.title) setTitle(e.title);
+    };
+    const handleDidNavigate = (e: { url?: string }) => {
+      if (!e.url) return;
+      setUrl(e.url);
+      setInputUrl(e.url);
+    };
+
+    webview.addEventListener('did-start-loading', handleLoadStart);
+    webview.addEventListener('did-stop-loading', handleLoadStop);
+    webview.addEventListener('page-title-updated', handlePageTitleUpdated);
+    webview.addEventListener('did-navigate', handleDidNavigate);
+
+    return () => {
+      webview.removeEventListener('did-start-loading', handleLoadStart);
+      webview.removeEventListener('did-stop-loading', handleLoadStop);
+      webview.removeEventListener('page-title-updated', handlePageTitleUpdated);
+      webview.removeEventListener('did-navigate', handleDidNavigate);
+    };
+  }, [url]);
+
   if (!visible) return null;
 
   return (
@@ -117,14 +145,6 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
           // @ts-ignore — webview is an Electron-specific tag
           webpreferences="contextIsolation=yes"
           style={{ flex: 1, background: '#fff' }}
-          onLoadStart={() => setLoading(true)}
-          onLoadStop={() => setLoading(false)}
-          onPageTitleUpdated={(e: any) => setTitle(e.title)}
-          onDidNavigate={(e: any) => {
-            const newUrl = e.url;
-            setUrl(newUrl);
-            setInputUrl(newUrl);
-          }}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">
