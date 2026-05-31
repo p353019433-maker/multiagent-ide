@@ -19,6 +19,16 @@ import {
   type FileEntry,
   type RawChunk,
 } from './index-scan';
+import { Bm25Index } from './bm25';
+
+/** A single searchable unit (a symbol or a bare file) with its lexical tokens. */
+interface SearchDoc {
+  file: string;
+  line: number;
+  kind: string;
+  name: string;
+  tokens: string[];
+}
 
 export interface CodebaseSearchHit {
   file: string;
@@ -30,7 +40,8 @@ export interface CodebaseSearchHit {
 
 export class IndexService {
   private symbols: SymbolEntry[] = [];
-  private files: FileEntry[] = [];
+  private docs: SearchDoc[] = [];
+  private bm25: Bm25Index | null = null;
   private indexedRoot: string | null = null;
   private indexedAt = 0;
   private buildingSymbols = new Map<string, Promise<void>>();
@@ -57,7 +68,23 @@ export class IndexService {
       () => scanSymbols(root)
     );
     this.symbols = symbols;
-    this.files = files;
+
+    // Build a unified lexical doc set: every symbol, plus each file (so files
+    // with no extracted symbols are still findable by path). The BM25 index over
+    // these docs is the lexical half of hybrid search.
+    const docs: SearchDoc[] = symbols.map((s) => ({
+      file: s.file,
+      line: s.line,
+      kind: s.kind,
+      name: s.name,
+      tokens: [...s.tokens, ...tokenize(s.file)],
+    }));
+    for (const f of files) {
+      docs.push({ file: f.file, line: 1, kind: 'file', name: path.basename(f.file), tokens: f.pathTokens });
+    }
+    this.docs = docs;
+    this.bm25 = new Bm25Index(docs.map((d, i) => ({ id: i, tokens: d.tokens })));
+
     this.indexedRoot = root;
     this.indexedAt = Date.now();
   }
@@ -96,55 +123,27 @@ export class IndexService {
   }
 
   /**
-   * Rank symbols + files by relevance to the query. Scoring favors exact and
-   * prefix matches on symbol names, then partial token overlap, then path hits.
+   * Lexical search: BM25 over the symbol/file doc set, then a heuristic rerank
+   * that lifts exact / substring name matches above pure token-frequency hits.
    */
   search(query: string, limit = 10): CodebaseSearchHit[] {
     const qTokens = tokenize(query);
-    if (qTokens.length === 0) return [];
+    if (qTokens.length === 0 || !this.bm25) return [];
     const qLower = query.toLowerCase();
 
-    const hits: CodebaseSearchHit[] = [];
-
-    for (const sym of this.symbols) {
-      const nameLower = sym.name.toLowerCase();
-      let score = 0;
-
-      // Strong signals on the symbol name itself.
-      if (nameLower === qLower) score += 100;
-      else if (qLower.includes(nameLower) || nameLower.includes(qLower)) score += 40;
-
-      // Token overlap between query and symbol name.
-      let overlap = 0;
-      for (const qt of qTokens) {
-        if (sym.tokens.includes(qt)) overlap += 1;
-        else if (sym.tokens.some((t) => t.startsWith(qt) || qt.startsWith(t))) overlap += 0.5;
-      }
-      score += (overlap / qTokens.length) * 50;
-
-      // Mild boost when the file path also matches the query intent.
-      const pathTokens = tokenize(sym.file);
-      const pathOverlap = qTokens.filter((qt) => pathTokens.includes(qt)).length;
-      score += pathOverlap * 5;
-
-      if (score > 0) {
-        hits.push({ file: sym.file, line: sym.line, kind: sym.kind, name: sym.name, score });
-      }
-    }
-
-    // File-path level matches (covers files with no extracted symbols).
-    for (const f of this.files) {
-      const overlap = qTokens.filter((qt) => f.pathTokens.includes(qt)).length;
-      if (overlap > 0) {
-        hits.push({
-          file: f.file,
-          line: 1,
-          kind: 'file',
-          name: path.basename(f.file),
-          score: overlap * 8,
-        });
-      }
-    }
+    // Pull a generous BM25 candidate pool, then rerank within it.
+    const candidates = this.bm25.search(qTokens, Math.max(limit * 5, 50));
+    const hits: CodebaseSearchHit[] = candidates.map(({ id, score }) => {
+      const doc = this.docs[id];
+      const nameLower = doc.name.toLowerCase();
+      let boost = 0;
+      // Exact and substring name agreement are strong navigational signals.
+      if (nameLower === qLower) boost += 1000;
+      else if (nameLower.includes(qLower) || qLower.includes(nameLower)) boost += 100;
+      // A concrete symbol is usually more useful than a bare file hit.
+      if (doc.kind !== 'file' && doc.kind !== 'text') boost += 5;
+      return { file: doc.file, line: doc.line, kind: doc.kind, name: doc.name, score: score + boost };
+    });
 
     hits.sort((a, b) => b.score - a.score);
 
