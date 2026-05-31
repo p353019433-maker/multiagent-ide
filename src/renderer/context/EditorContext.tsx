@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 import type { OpenFile } from '@shared/types';
 
 function getLanguageFromPath(filePath: string): string {
@@ -16,9 +16,14 @@ function getLanguageFromPath(filePath: string): string {
   return map[ext] || 'plaintext';
 }
 
-interface EditorContextValue {
+// ── Split contexts: state (changes often) vs actions (stable refs) ──
+
+interface EditorStateValue {
   openFiles: OpenFile[];
   activeFilePath: string | null;
+}
+
+interface EditorActionsValue {
   openFile: (path: string) => Promise<void>;
   closeFile: (path: string) => void;
   setActiveFile: (path: string) => void;
@@ -28,7 +33,8 @@ interface EditorContextValue {
   reloadFileFromDisk: (path: string, content?: string) => Promise<void>;
 }
 
-const EditorContext = createContext<EditorContextValue | null>(null);
+const EditorStateContext = createContext<EditorStateValue | null>(null);
+const EditorActionsContext = createContext<EditorActionsValue | null>(null);
 
 export function EditorProvider({ children }: { children: React.ReactNode }) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
@@ -36,6 +42,8 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
   // Use ref to avoid stale closure issues in callbacks
   const openFilesRef = useRef<OpenFile[]>([]);
   openFilesRef.current = openFiles;
+  const activeFilePathRef = useRef<string | null>(null);
+  activeFilePathRef.current = activeFilePath;
 
   const openFile = useCallback(async (filePath: string) => {
     // Check if already open
@@ -95,8 +103,9 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const saveActiveFile = useCallback(async () => {
-    if (activeFilePath) await saveFile(activeFilePath);
-  }, [activeFilePath, saveFile]);
+    const current = activeFilePathRef.current;
+    if (current) await saveFile(current);
+  }, [saveFile]);
 
   const reloadFileFromDisk = useCallback(async (filePath: string, content?: string) => {
     const diskContent = content ?? await window.api.fs.readFile(filePath).catch(() => null);
@@ -115,27 +124,38 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const stateValue: EditorStateValue = { openFiles, activeFilePath };
+
+  // Actions are memoized so the actions context never triggers re-renders.
+  const actionsValue = useMemo<EditorActionsValue>(
+    () => ({ openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveActiveFile, reloadFileFromDisk }),
+    [openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveActiveFile, reloadFileFromDisk]
+  );
+
   return (
-    <EditorContext.Provider
-      value={{
-        openFiles,
-        activeFilePath,
-        openFile,
-        closeFile,
-        setActiveFile,
-        updateFileContent,
-        saveFile,
-        saveActiveFile,
-        reloadFileFromDisk,
-      }}
-    >
-      {children}
-    </EditorContext.Provider>
+    <EditorStateContext.Provider value={stateValue}>
+      <EditorActionsContext.Provider value={actionsValue}>
+        {children}
+      </EditorActionsContext.Provider>
+    </EditorStateContext.Provider>
   );
 }
 
-export function useEditor() {
-  const ctx = useContext(EditorContext);
-  if (!ctx) throw new Error('useEditor must be used within EditorProvider');
+/** Read editor state (openFiles, activeFilePath). Triggers re-render on state changes. */
+export function useEditorState() {
+  const ctx = useContext(EditorStateContext);
+  if (!ctx) throw new Error('useEditorState must be used within EditorProvider');
   return ctx;
+}
+
+/** Read editor actions only. Does NOT re-render when files/active path change. */
+export function useEditorActions() {
+  const ctx = useContext(EditorActionsContext);
+  if (!ctx) throw new Error('useEditorActions must be used within EditorProvider');
+  return ctx;
+}
+
+/** Combined hook (backward-compatible). Components needing both will still re-render on state changes. */
+export function useEditor() {
+  return { ...useEditorState(), ...useEditorActions() };
 }

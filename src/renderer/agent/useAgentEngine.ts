@@ -5,7 +5,7 @@
  * deps so this hook stays focused on orchestration.
  */
 
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import type {
   ChatMessage as ChatMessageType,
@@ -39,6 +39,19 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+
+  // Guard against state updates after unmount (e.g. when the component is
+  // torn down while a long-running agent turn is still in flight).
+  const mountedRef = useRef(true);
+  React.useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const safeSetIsStreaming: typeof setIsStreaming = (v) => { if (mountedRef.current) setIsStreaming(v); };
+  const safeSetStreamContent: typeof setStreamContent = (v) => { if (mountedRef.current) setStreamContent(v); };
+  const safeSetToolExecutions: typeof setToolExecutions = (v) => { if (mountedRef.current) setToolExecutions(v); };
+  const safeSetCheckpoints: typeof setCheckpoints = (v) => { if (mountedRef.current) setCheckpoints(v); };
+  const safeSetArtifacts: typeof setArtifacts = (v) => { if (mountedRef.current) setArtifacts(v); };
 
   // Snapshots of files captured before the current turn modifies them, so a
   // checkpoint can be created when the turn finishes. Keyed by path.
@@ -122,17 +135,17 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         arguments: tc.arguments,
         status: 'running',
       };
-      setToolExecutions((prev) => [...prev, execution]);
+      safeSetToolExecutions((prev) => [...prev, execution]);
 
       try {
         const result = await executeToolWithRetry(tc);
-        setToolExecutions((prev) =>
+        safeSetToolExecutions((prev) =>
           prev.map((e) => (e.id === tc.id ? { ...e, status: 'success', result } : e))
         );
         results.push({ toolCallId: tc.id, content: result });
       } catch (err) {
         const { message, retriable } = classifyToolError(err);
-        setToolExecutions((prev) =>
+        safeSetToolExecutions((prev) =>
           prev.map((e) => (e.id === tc.id ? { ...e, status: 'error', error: message } : e))
         );
         // Give the model a structured, actionable error rather than a raw string.
@@ -152,9 +165,9 @@ export function useAgentEngine(deps: AgentEngineDeps) {
    * detection, auto-lint self-heal, and end-of-turn checkpoint creation.
    */
   const runTurn = async (convId: string, apiMessages: ChatMessageType[], turnLabel = '') => {
-    setIsStreaming(true);
-    setStreamContent('');
-    setToolExecutions([]);
+    safeSetIsStreaming(true);
+    safeSetStreamContent('');
+    safeSetToolExecutions([]);
     // Begin a new turn: reset checkpoint/edit trackers.
     turnSnapshots.current = new Map();
     turnEditedFiles.current = new Set();
@@ -169,7 +182,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
-      setStreamContent('');
+      safeSetStreamContent('');
       loopMessages = compactMessages(loopMessages);
 
       try {
@@ -179,7 +192,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
           const unsubToken = window.api.ai.onStreamToken((token) => {
             content += token;
-            setStreamContent(content);
+            safeSetStreamContent(content);
           });
           const unsubTool = window.api.ai.onStreamToolCall((tc) => {
             toolCalls.push(tc);
@@ -215,7 +228,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
           timestamp: Date.now(),
         };
         addMessage(convId, assistantMsg);
-        setStreamContent('');
+        safeSetStreamContent('');
 
         if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
           // The agent thinks it's done. Before stopping, run a self-heal lint
@@ -308,13 +321,13 @@ export function useAgentEngine(deps: AgentEngineDeps) {
           before,
         })),
       };
-      setCheckpoints((prev) => [cp, ...prev].slice(0, 20));
+      safeSetCheckpoints((prev) => [cp, ...prev].slice(0, 20));
 
       // Produce a verifiable artifact: what changed + verification result.
       await generateArtifact(turnLabel || '未命名改动', Array.from(turnSnapshots.current.keys()));
     }
 
-    setIsStreaming(false);
+    safeSetIsStreaming(false);
   };
 
   /**
@@ -377,12 +390,12 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       }
     }
 
-    setArtifacts((prev) => [artifact, ...prev].slice(0, 20));
+    safeSetArtifacts((prev) => [artifact, ...prev].slice(0, 20));
   };
 
   const abort = () => {
     window.api.ai.abort();
-    setIsStreaming(false);
+    safeSetIsStreaming(false);
   };
 
   /** Revert all file changes captured in a checkpoint. */
@@ -401,7 +414,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         // best-effort; continue reverting the rest
       }
     }
-    setCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
+    safeSetCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
     window.dispatchEvent(new CustomEvent('files-reverted'));
     alert(`已回滚 ${cp.files.length} 个文件`);
   };

@@ -33,11 +33,24 @@ interface BackgroundSession {
   output: string;
   running: boolean;
   exitCode: number | null;
+  startedAt: number;
 }
 
 export class TerminalService {
   private sessions = new Map<string, PtySession>();
   private bgSessions = new Map<string, BackgroundSession>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Whether the interactive terminal (node-pty) is available. */
+  isPtyAvailable(): boolean {
+    return pty !== null;
+  }
+
+  constructor() {
+    // Periodically clean up stale background sessions (every 5 minutes).
+    this.cleanupTimer = setInterval(() => this.pruneStaleBackgroundSessions(), 5 * 60_000);
+  }
+
 
   create(cwd: string, win: BrowserWindow): string | null {
     if (!pty) return null;
@@ -84,6 +97,7 @@ export class TerminalService {
   }
 
   closeAll(): void {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     for (const session of this.sessions.values()) {
       session.proc.kill();
     }
@@ -175,7 +189,7 @@ export class TerminalService {
 
     const id = uuid();
     const proc = spawn(shell, args, { cwd, env: safeEnv() });
-    const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null };
+    const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null, startedAt: Date.now() };
 
     proc.stdout?.on('data', (data: Buffer) => {
       session.output += data.toString();
@@ -219,5 +233,19 @@ export class TerminalService {
     session.running = false;
     this.bgSessions.delete(id);
     return true;
+  }
+
+  private pruneStaleBackgroundSessions(): void {
+    const MAX_AGE_MS = 30 * 60_000; // 30 minutes
+    const now = Date.now();
+    for (const [id, session] of this.bgSessions) {
+      if (session.running && now - session.startedAt > MAX_AGE_MS) {
+        session.proc.kill();
+        session.output += '\n[后台任务超时自动终止（30分钟）]';
+        session.running = false;
+        session.exitCode = -1;
+        this.bgSessions.delete(id);
+      }
+    }
   }
 }

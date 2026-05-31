@@ -278,17 +278,31 @@ export class IndexService {
       if (liveHashes.has(v.hash)) next.push(v);
     }
 
-    // Embed new chunks in batches.
-    const BATCH = 64;
+    // Embed new chunks in batches with backoff to avoid rate limits.
+    const BATCH = 32;
+    const BASE_DELAY_MS = 200;
     for (let i = 0; i < pending.length; i += BATCH) {
       const batch = pending.slice(i, i + BATCH);
-      let vecs: number[][];
-      try {
-        vecs = await embed(batch.map((c) => c.text));
-      } catch {
-        // Embedding failed (no provider / network) — abort, keep what we have.
-        break;
+      let vecs: number[][] | undefined;
+      let attempt = 0;
+      const MAX_RETRIES = 3;
+      while (attempt < MAX_RETRIES) {
+        try {
+          vecs = await embed(batch.map((c) => c.text));
+          break;
+        } catch (err: any) {
+          attempt++;
+          const isRateLimit = /rate.?limit|429|too many/i.test(err?.message || '');
+          if (!isRateLimit || attempt >= MAX_RETRIES) {
+            // Non-rate-limit error or exhausted retries — abort gracefully.
+            vecs = undefined as any;
+            break;
+          }
+          // Exponential backoff: 1s, 2s, 4s
+          await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+        }
       }
+      if (!vecs) break;
       for (let j = 0; j < batch.length; j++) {
         if (!vecs[j]) continue;
         next.push({
@@ -298,6 +312,10 @@ export class IndexService {
           hash: batch[j].hash,
           vector: vecs[j],
         });
+      }
+      // Small delay between batches to stay under API rate limits.
+      if (i + BATCH < pending.length) {
+        await new Promise((r) => setTimeout(r, BASE_DELAY_MS));
       }
     }
 
