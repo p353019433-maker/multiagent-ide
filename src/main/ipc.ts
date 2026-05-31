@@ -216,11 +216,14 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
 }
 
 function registerAIIpc({ aiService }: IpcDeps): void {
-  ipcMain.handle('ai:chat', (_, providerId: string, messages: unknown[], options: unknown) =>
-    aiService.chat(providerId, messages as any, options as any)
-  );
+  ipcMain.handle('ai:chat', (event, providerId: string, messages: unknown[], options: unknown) => {
+    assertAppOrigin(event);
+    return aiService.chat(providerId, messages as any, options as any);
+  });
   ipcMain.handle('ai:chatStream', async (event, providerId: string, messages: unknown[], options: unknown) => {
+    assertAppOrigin(event);
     const sender = event.sender;
+    const senderId = sender.id;
     const safeSend = (channel: string, ...args: unknown[]) => {
       try {
         if (!sender.isDestroyed()) sender.send(channel, ...args);
@@ -228,19 +231,29 @@ function registerAIIpc({ aiService }: IpcDeps): void {
         // Window was closed during streaming, ignore
       }
     };
-    await aiService.chatStream(providerId, messages as any, options as any, {
+    await aiService.chatStream(senderId, providerId, messages as any, options as any, {
       onToken: (token: string) => safeSend('ai:stream-token', token),
       onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', toolCall),
       onComplete: (result: unknown) => safeSend('ai:stream-complete', result),
       onError: (error: string) => safeSend('ai:stream-error', error),
     });
   });
-  ipcMain.handle('ai:abort', () => aiService.abort());
-  ipcMain.handle('ai:testConnection', (_, providerId: string) => aiService.testConnection(providerId));
-  ipcMain.handle('ai:fimComplete', (_, req: unknown) => aiService.fimComplete(req as any));
-  ipcMain.handle('ai:supportsFim', (_, providerId: string, model: string) =>
-    aiService.supportsFim(providerId, model)
-  );
+  ipcMain.handle('ai:abort', (event) => {
+    assertAppOrigin(event);
+    aiService.abort(event.sender.id);
+  });
+  ipcMain.handle('ai:testConnection', (event, providerId: string) => {
+    assertAppOrigin(event);
+    return aiService.testConnection(providerId);
+  });
+  ipcMain.handle('ai:fimComplete', (event, req: unknown) => {
+    assertAppOrigin(event);
+    return aiService.fimComplete(req as any);
+  });
+  ipcMain.handle('ai:supportsFim', (event, providerId: string, model: string) => {
+    assertAppOrigin(event);
+    return aiService.supportsFim(providerId, model);
+  });
 }
 
 function registerGitIpc({ gitService }: IpcDeps): void {
@@ -304,68 +317,95 @@ function registerGitIpc({ gitService }: IpcDeps): void {
 }
 
 function registerWebIpc({ webService }: IpcDeps): void {
-  ipcMain.handle('web:search', (_, query: string, count?: number) => webService.search(query, count));
-  ipcMain.handle('web:fetch', (_, url: string, extractMode?: 'markdown' | 'text') =>
-    webService.fetchUrl(url, extractMode)
-  );
+  ipcMain.handle('web:search', (event, query: string, count?: number) => {
+    assertAppOrigin(event);
+    return webService.search(query, count);
+  });
+  ipcMain.handle('web:fetch', (event, url: string, extractMode?: 'markdown' | 'text') => {
+    assertAppOrigin(event);
+    return webService.fetchUrl(url, extractMode);
+  });
 }
 
 function registerGitHubIpc({ githubService }: IpcDeps): void {
-  ipcMain.handle('github:listIssues', (_, token: string, owner: string, repo: string, state?: string) =>
-    githubService.listIssues(token, owner, repo, state as any)
-  );
-  ipcMain.handle('github:getIssue', (_, token: string, owner: string, repo: string, number: number) =>
-    githubService.getIssue(token, owner, repo, number)
-  );
+  ipcMain.handle('github:listIssues', (event, token: string, owner: string, repo: string, state?: string) => {
+    assertAppOrigin(event);
+    return githubService.listIssues(token, owner, repo, state as any);
+  });
+  ipcMain.handle('github:getIssue', (event, token: string, owner: string, repo: string, number: number) => {
+    assertAppOrigin(event);
+    return githubService.getIssue(token, owner, repo, number);
+  });
   ipcMain.handle(
     'github:createIssue',
-    (_, token: string, owner: string, repo: string, title: string, body?: string, labels?: string[]) =>
-      githubService.createIssue(token, owner, repo, title, body || '', labels || [])
+    (event, token: string, owner: string, repo: string, title: string, body?: string, labels?: string[]) => {
+      assertAppOrigin(event);
+      return githubService.createIssue(token, owner, repo, title, body || '', labels || []);
+    }
   );
-  ipcMain.handle('github:listIssueComments', (_, token: string, owner: string, repo: string, number: number) =>
-    githubService.listIssueComments(token, owner, repo, number)
-  );
+  ipcMain.handle('github:listIssueComments', (event, token: string, owner: string, repo: string, number: number) => {
+    assertAppOrigin(event);
+    return githubService.listIssueComments(token, owner, repo, number);
+  });
   ipcMain.handle(
     'github:addIssueComment',
-    (_, token: string, owner: string, repo: string, number: number, body: string) =>
-      githubService.addIssueComment(token, owner, repo, number, body)
+    (event, token: string, owner: string, repo: string, number: number, body: string) => {
+      assertAppOrigin(event);
+      return githubService.addIssueComment(token, owner, repo, number, body);
+    }
   );
-  ipcMain.handle('github:listPRs', (_, token: string, owner: string, repo: string, state?: string) =>
-    githubService.listPRs(token, owner, repo, state as any)
-  );
-  ipcMain.handle('github:getPR', (_, token: string, owner: string, repo: string, number: number) =>
-    githubService.getPR(token, owner, repo, number)
-  );
-  ipcMain.handle('github:getPRDiff', (_, token: string, owner: string, repo: string, number: number) =>
-    githubService.getPRDiff(token, owner, repo, number)
-  );
+  ipcMain.handle('github:listPRs', (event, token: string, owner: string, repo: string, state?: string) => {
+    assertAppOrigin(event);
+    return githubService.listPRs(token, owner, repo, state as any);
+  });
+  ipcMain.handle('github:getPR', (event, token: string, owner: string, repo: string, number: number) => {
+    assertAppOrigin(event);
+    return githubService.getPR(token, owner, repo, number);
+  });
+  ipcMain.handle('github:getPRDiff', (event, token: string, owner: string, repo: string, number: number) => {
+    assertAppOrigin(event);
+    return githubService.getPRDiff(token, owner, repo, number);
+  });
   ipcMain.handle(
     'github:createPR',
-    (_, token: string, owner: string, repo: string, title: string, head: string, base: string, body?: string) =>
-      githubService.createPR(token, owner, repo, title, head, base, body || '')
+    (event, token: string, owner: string, repo: string, title: string, head: string, base: string, body?: string) => {
+      assertAppOrigin(event);
+      return githubService.createPR(token, owner, repo, title, head, base, body || '');
+    }
   );
-  ipcMain.handle('github:listWorkflowRuns', (_, token: string, owner: string, repo: string, branch?: string) =>
-    githubService.listWorkflowRuns(token, owner, repo, branch)
-  );
-  ipcMain.handle('github:searchCode', (_, token: string, query: string, owner?: string, repo?: string) =>
-    githubService.searchCode(token, query, owner, repo)
-  );
-  ipcMain.handle('github:getRepo', (_, token: string, owner: string, repo: string) =>
-    githubService.getRepo(token, owner, repo)
-  );
-  ipcMain.handle('github:parseRemote', (_, remoteUrl: string) => githubService.parseRemoteUrl(remoteUrl));
+  ipcMain.handle('github:listWorkflowRuns', (event, token: string, owner: string, repo: string, branch?: string) => {
+    assertAppOrigin(event);
+    return githubService.listWorkflowRuns(token, owner, repo, branch);
+  });
+  ipcMain.handle('github:searchCode', (event, token: string, query: string, owner?: string, repo?: string) => {
+    assertAppOrigin(event);
+    return githubService.searchCode(token, query, owner, repo);
+  });
+  ipcMain.handle('github:getRepo', (event, token: string, owner: string, repo: string) => {
+    assertAppOrigin(event);
+    return githubService.getRepo(token, owner, repo);
+  });
+  ipcMain.handle('github:parseRemote', (event, remoteUrl: string) => {
+    assertAppOrigin(event);
+    return githubService.parseRemoteUrl(remoteUrl);
+  });
   ipcMain.handle(
     'github:createReview',
-    (_, token: string, owner: string, repo: string, number: number, event: string, body?: string, comments?: any[]) =>
-      githubService.createReview(token, owner, repo, number, event, body || '', comments)
+    (event, token: string, owner: string, repo: string, number: number, eventName: string, body?: string, comments?: any[]) => {
+      assertAppOrigin(event);
+      return githubService.createReview(token, owner, repo, number, eventName, body || '', comments);
+    }
   );
-  ipcMain.handle('github:mergePR', (_, token: string, owner: string, repo: string, number: number, method?: string) =>
-    githubService.mergePR(token, owner, repo, number, method)
-  );
+  ipcMain.handle('github:mergePR', (event, token: string, owner: string, repo: string, number: number, method?: string) => {
+    assertAppOrigin(event);
+    return githubService.mergePR(token, owner, repo, number, method);
+  });
   ipcMain.handle(
     'github:createRelease',
-    (_, token: string, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) =>
-      githubService.createRelease(token, owner, repo, tag, name || tag, body || '', draft || false)
+    (event, token: string, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) => {
+      assertAppOrigin(event);
+      return githubService.createRelease(token, owner, repo, tag, name || tag, body || '', draft || false);
+    }
   );
 }
 

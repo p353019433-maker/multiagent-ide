@@ -81,17 +81,19 @@ export class IndexService {
   private files: FileEntry[] = [];
   private indexedRoot: string | null = null;
   private indexedAt = 0;
-  private building: Promise<void> | null = null;
+  private buildingSymbols = new Map<string, Promise<void>>();
 
   /** Build (or rebuild) the index for a workspace root. Cached for 60s. */
   async ensureIndex(root: string): Promise<void> {
     const fresh = this.indexedRoot === root && Date.now() - this.indexedAt < 60_000;
     if (fresh) return;
-    if (this.building) return this.building;
-    this.building = this.build(root).finally(() => {
-      this.building = null;
+    let promise = this.buildingSymbols.get(root);
+    if (promise) return promise;
+    promise = this.build(root).finally(() => {
+      this.buildingSymbols.delete(root);
     });
-    return this.building;
+    this.buildingSymbols.set(root, promise);
+    return promise;
   }
 
   private async build(root: string): Promise<void> {
@@ -230,7 +232,7 @@ export class IndexService {
 
   private vectors: ChunkVector[] = [];
   private embeddedRoot: string | null = null;
-  private buildingEmbed: Promise<void> | null = null;
+  private buildingEmbeds = new Map<string, Promise<void>>();
 
   /**
    * Build (or incrementally update) the embedding index for a workspace.
@@ -246,11 +248,13 @@ export class IndexService {
     embed: (texts: string[]) => Promise<number[][]>,
     cacheFile: string
   ): Promise<void> {
-    if (this.buildingEmbed) return this.buildingEmbed;
-    this.buildingEmbed = this.buildEmbeddings(root, embed, cacheFile).finally(() => {
-      this.buildingEmbed = null;
+    let promise = this.buildingEmbeds.get(root);
+    if (promise) return promise;
+    promise = this.buildEmbeddings(root, embed, cacheFile).finally(() => {
+      this.buildingEmbeds.delete(root);
     });
-    return this.buildingEmbed;
+    this.buildingEmbeds.set(root, promise);
+    return promise;
   }
 
   private async buildEmbeddings(

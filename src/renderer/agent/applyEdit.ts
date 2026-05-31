@@ -24,7 +24,11 @@ function normalizeLine(s: string): string {
 }
 
 function isWeakAnchor(s: string): boolean {
-  return s.length < 4 || s.endsWith('{') || /^[{});,]+$/.test(s);
+  const clean = s.replace(/\{$/, '').trim();
+  if (clean.length < 4 || /^[{});,]*$/.test(clean)) return true;
+  const common = ['else', 'try', 'catch', 'finally', 'do'];
+  if (common.includes(clean.toLowerCase())) return true;
+  return false;
 }
 
 /**
@@ -91,6 +95,9 @@ export function applyEdit(
   if (oldCore.length >= 2) {
     const first = oldCore[0];
     const last = oldCore[oldCore.length - 1];
+    if (isWeakAnchor(first) || isWeakAnchor(last)) {
+      return { ok: false, result: content, strategy: 'none', count: 0 };
+    }
     const firstIdxs: number[] = [];
     for (let i = 0; i < contentLines.length; i++) {
       if (normalizeLine(contentLines[i]) === first) firstIdxs.push(i);
