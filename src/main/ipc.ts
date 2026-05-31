@@ -304,7 +304,7 @@ function registerGitIpc({ gitService }: IpcDeps): void {
     return authorized;
   });
   ipcMain.handle('git:worktreeList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreeList(await assertAllowedRoot(cwd)); });
-  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p)); });
+  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string, deleteBranch?: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p), deleteBranch); });
   ipcMain.handle('git:worktreePrune', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreePrune(await assertAllowedRoot(cwd)); });
   ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string, targetBranch?: string) => {
     assertAppOrigin(event);

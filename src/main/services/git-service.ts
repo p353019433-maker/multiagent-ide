@@ -1,4 +1,6 @@
 import { execFile } from 'child_process';
+import { promises as fs } from 'fs';
+import * as path from 'path';
 
 export class GitService {
   /** Run `git` in the given cwd and collect stdout. */
@@ -116,7 +118,28 @@ export class GitService {
     if (baseBranch) args.push(baseBranch);
     const { stdout, stderr, exitCode } = await this.git(cwd, args);
     if (exitCode !== 0) return { success: false, message: stderr };
+    // Worktrees don't carry the (gitignored) node_modules, so any compile/test
+    // command inside one crashes on missing dependencies. Symlink the parent
+    // repo's node_modules so the worktree shares them at near-zero disk cost.
+    await this.linkNodeModules(cwd, worktreePath);
     return { success: true, message: stdout || `已创建 worktree ${branchName}`, path: worktreePath };
+  }
+
+  /** Best-effort symlink of <mainRepo>/node_modules into a fresh worktree. */
+  private async linkNodeModules(mainRepo: string, worktreePath: string): Promise<void> {
+    try {
+      const src = path.join(mainRepo, 'node_modules');
+      const dest = path.join(worktreePath, 'node_modules');
+      const srcStat = await fs.stat(src).catch(() => null);
+      if (!srcStat?.isDirectory()) return; // nothing to share
+      const destExists = await fs.lstat(dest).then(() => true).catch(() => false);
+      if (destExists) return; // worktree already has its own (don't clobber)
+      // 'junction' on Windows avoids the admin-privilege requirement of dir symlinks.
+      const type = process.platform === 'win32' ? 'junction' : 'dir';
+      await fs.symlink(src, dest, type);
+    } catch {
+      // Non-fatal: the worktree is still usable, deps just won't be shared.
+    }
   }
 
   /** List all worktrees for the repo. */
@@ -146,10 +169,23 @@ export class GitService {
     return entries;
   }
 
-  /** Remove a worktree and delete its directory. */
-  async worktreeRemove(cwd: string, worktreePath: string): Promise<{ success: boolean; message: string }> {
+  /**
+   * Remove a worktree and delete its directory. If `deleteBranch` is given, the
+   * now-detached branch is force-deleted too and stale metadata pruned, so a
+   * finished session leaves nothing behind (no orphan branch, no dangling dir).
+   */
+  async worktreeRemove(
+    cwd: string,
+    worktreePath: string,
+    deleteBranch?: string
+  ): Promise<{ success: boolean; message: string }> {
     const { stdout, stderr, exitCode } = await this.git(cwd, ['worktree', 'remove', worktreePath, '--force']);
     if (exitCode !== 0) return { success: false, message: stderr };
+    if (deleteBranch) {
+      // Best-effort: the branch may carry unmerged work or already be gone.
+      await this.git(cwd, ['branch', '-D', deleteBranch]);
+      await this.git(cwd, ['worktree', 'prune']);
+    }
     return { success: true, message: stdout || `已删除 worktree ${worktreePath}` };
   }
 
