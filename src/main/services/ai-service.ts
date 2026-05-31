@@ -14,15 +14,18 @@ import { getFimCapability, fimBaseURL } from '../../shared/fim';
 
 export class AIService {
   private store: StoreService;
-  private abortController: AbortController | null = null;
+  private abortControllers = new Map<number, AbortController>();
 
   constructor(store: StoreService) {
     this.store = store;
   }
 
-  abort() {
-    this.abortController?.abort();
-    this.abortController = null;
+  abort(senderId: number) {
+    const controller = this.abortControllers.get(senderId);
+    if (controller) {
+      controller.abort();
+      this.abortControllers.delete(senderId);
+    }
   }
 
   private getProviders(): AIProvider[] {
@@ -189,6 +192,7 @@ export class AIService {
   }
 
   async chatStream(
+    senderId: number,
     providerId: string,
     messages: ChatMessage[],
     options: ChatOptions,
@@ -202,13 +206,14 @@ export class AIService {
     }
 
     const apiKey = await this.getApiKey(provider);
-    this.abortController = new AbortController();
+    const controller = new AbortController();
+    this.abortControllers.set(senderId, controller);
 
     try {
       if (provider.type === 'anthropic') {
-        await this.streamAnthropic(apiKey, provider, messages, options, callbacks);
+        await this.streamAnthropic(apiKey, provider, messages, options, callbacks, controller.signal);
       } else {
-        await this.streamOpenAI(apiKey, provider, messages, options, callbacks);
+        await this.streamOpenAI(apiKey, provider, messages, options, callbacks, controller.signal);
       }
     } catch (e: any) {
       if (e?.name === 'AbortError') {
@@ -217,7 +222,7 @@ export class AIService {
         callbacks.onError(e?.message || String(e));
       }
     } finally {
-      this.abortController = null;
+      this.abortControllers.delete(senderId);
     }
   }
 
@@ -333,7 +338,8 @@ export class AIService {
     provider: AIProvider,
     messages: ChatMessage[],
     options: ChatOptions,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    signal?: AbortSignal
   ): Promise<void> {
     const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
     const oaiMessages = this.buildOpenAIMessages(messages, options.systemPrompt);
@@ -350,7 +356,7 @@ export class AIService {
         stream: true,
         stream_options: { include_usage: true },
       },
-      { signal: this.abortController?.signal }
+      { signal }
     );
 
     let content = '';
@@ -578,7 +584,8 @@ export class AIService {
     provider: AIProvider,
     messages: ChatMessage[],
     options: ChatOptions,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    signal?: AbortSignal
   ): Promise<void> {
     const client = new Anthropic({ apiKey, baseURL: provider.baseURL || undefined });
     const anthropicMessages = this.buildAnthropicMessages(messages);
@@ -592,7 +599,7 @@ export class AIService {
         messages: anthropicMessages,
         tools,
       },
-      { signal: this.abortController?.signal }
+      { signal }
     );
 
     let content = '';
