@@ -163,8 +163,22 @@ export class GitService {
   async worktreeMerge(
     cwd: string,
     sourceBranch: string,
-    method: 'merge' | 'squash' | 'rebase' = 'merge'
+    method: 'merge' | 'squash' | 'rebase' = 'merge',
+    targetBranch?: string
   ): Promise<{ success: boolean; message: string }> {
+    if (targetBranch) {
+      const current = await this.git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
+      if (current.exitCode !== 0) {
+        return { success: false, message: current.stderr || current.stdout || '无法读取当前分支' };
+      }
+      if (current.stdout.trim() !== targetBranch) {
+        const switched = await this.git(cwd, ['switch', targetBranch]);
+        if (switched.exitCode !== 0) {
+          return { success: false, message: switched.stderr || switched.stdout || `无法切换到 ${targetBranch}` };
+        }
+      }
+    }
+
     let args: string[];
     switch (method) {
       case 'squash':
