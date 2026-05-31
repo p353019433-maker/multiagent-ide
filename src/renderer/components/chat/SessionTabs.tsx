@@ -11,6 +11,7 @@ export default function SessionTabs({
   onNew,
   onNewWorktree,
   onRename,
+  workspaceRoot,
 }: {
   conversations: any[];
   activeId: string | null;
@@ -19,6 +20,7 @@ export default function SessionTabs({
   onNew: () => string;
   onNewWorktree: () => void;
   onRename: (id: string, title: string) => void;
+  workspaceRoot: string | null;
 }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState('');
@@ -30,23 +32,31 @@ export default function SessionTabs({
   const [, forceRerender] = React.useState(0);
 
   const handleMerge = (conv: any) => {
+    if (!workspaceRoot) {
+      setMergeError('未打开工作区，无法合并 worktree');
+      return;
+    }
     setMergeTarget(conv);
     setMergeDiff('');
     setMergeError('');
     setMergeLoading(true);
-    window.api.git.worktreeMergeDiff('', conv.worktree.baseBranch, conv.worktree.branch)
+    window.api.git.worktreeMergeDiff(workspaceRoot, conv.worktree.baseBranch, conv.worktree.branch)
       .then((diff: string) => { setMergeDiff(diff); setMergeLoading(false); })
       .catch((e: any) => { setMergeError(e.message); setMergeLoading(false); });
   };
 
   const handleMergeConfirm = async (method: string) => {
     if (!mergeTarget) return;
+    if (!workspaceRoot) {
+      setMergeError('未打开工作区，无法合并 worktree');
+      return;
+    }
     setMergeLoading(true);
     try {
-      const res = await window.api.git.worktreeMerge('', mergeTarget.worktree.branch, method);
+      const res = await window.api.git.worktreeMerge(workspaceRoot, mergeTarget.worktree.branch, method);
       if (!res.success) throw new Error(res.message);
       // Push after merge
-      await window.api.git.push('', 'origin');
+      await window.api.git.push(workspaceRoot, 'origin');
       alert(`合并成功：${res.message}\n已推送到 origin`);
       setMergeTarget(null);
       // Optionally clean up worktree
@@ -57,9 +67,13 @@ export default function SessionTabs({
   };
 
   const handleWorktreeCleanup = async (conv: any) => {
+    if (!workspaceRoot) {
+      alert('未打开工作区，无法清理 worktree');
+      return;
+    }
     if (!confirm(`删除 ${conv.worktree.branch} 的 worktree 和分支？`)) return;
     try {
-      await window.api.git.worktreeRemove('', conv.worktree.path);
+      await window.api.git.worktreeRemove(workspaceRoot, conv.worktree.path);
       alert('Worktree 已清理');
       onDelete(conv.id);
     } catch (e: any) {

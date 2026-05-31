@@ -243,7 +243,10 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const wtPath = args.path as string | undefined;
       const parentDir = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
       const path = wtPath || `${parentDir}_wt/${branch}`;
-      const ok = await gateAction(tc.id, `创建 worktree 分支 ${branch}`, 'command', '', `git worktree add -b ${branch} ${path}`, 'command');
+      const ok = await gateAction(tc.id, `创建 worktree 分支 ${branch}`, 'command', '', `git worktree add -b ${branch} ${path}`, 'command', {
+        dangerous: true,
+        dangerReason: '创建新分支和 worktree 目录',
+      });
       if (!ok) return '操作被用户拒绝';
       const res = await window.api.git.worktreeAdd(cwd, path, branch, base);
       if (!res.success) throw new Error(res.message);

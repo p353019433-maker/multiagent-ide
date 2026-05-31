@@ -105,6 +105,14 @@ export function applyEdit(
         }
       }
       if (end > start) {
+        // Safety: if the matched span is much larger than the snippet, the
+        // anchors likely matched unrelated lines — reject to prevent
+        // accidentally deleting large swaths of code.
+        const matchedSpan = end - start + 1;
+        if (matchedSpan > oldCore.length * 2) {
+          // Span too large — anchors probably hit unrelated lines.
+          return { ok: false, result: content, strategy: 'none', count: 0 };
+        }
         const lines = [
           ...contentLines.slice(0, start),
           ...newStr.split('\n'),
