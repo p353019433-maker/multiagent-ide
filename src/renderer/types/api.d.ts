@@ -96,13 +96,15 @@ declare global {
           name: string,
           base?: string
         ) => Promise<{ success: boolean; path: string; message: string }>;
+        authorizeWorktrees: (cwd: string) => Promise<string[]>;
         worktreeList: (cwd: string) => Promise<any[]>;
         worktreeRemove: (cwd: string, path: string) => Promise<void>;
         worktreePrune: (cwd: string) => Promise<void>;
         worktreeMerge: (
           cwd: string,
           sourceBranch: string,
-          method: string
+          method: string,
+          targetBranch?: string
         ) => Promise<{ success: boolean; message: string }>;
         worktreeMergeDiff: (cwd: string, baseBranch: string, headBranch: string) => Promise<string>;
       };

@@ -112,11 +112,12 @@ const api = {
     currentBranch: (cwd: string) => ipcRenderer.invoke('git:currentBranch', cwd),
     worktreeAdd: (cwd: string, path: string, name: string, base?: string) =>
       ipcRenderer.invoke('git:worktreeAdd', cwd, path, name, base),
+    authorizeWorktrees: (cwd: string) => ipcRenderer.invoke('git:authorizeWorktrees', cwd),
     worktreeList: (cwd: string) => ipcRenderer.invoke('git:worktreeList', cwd),
     worktreeRemove: (cwd: string, path: string) => ipcRenderer.invoke('git:worktreeRemove', cwd, path),
     worktreePrune: (cwd: string) => ipcRenderer.invoke('git:worktreePrune', cwd),
-    worktreeMerge: (cwd: string, sourceBranch: string, method: string) =>
-      ipcRenderer.invoke('git:worktreeMerge', cwd, sourceBranch, method),
+    worktreeMerge: (cwd: string, sourceBranch: string, method: string, targetBranch?: string) =>
+      ipcRenderer.invoke('git:worktreeMerge', cwd, sourceBranch, method, targetBranch),
     worktreeMergeDiff: (cwd: string, baseBranch: string, headBranch: string) =>
       ipcRenderer.invoke('git:worktreeMergeDiff', cwd, baseBranch, headBranch),
   },

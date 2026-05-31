@@ -33,6 +33,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const folderPath = await window.api.openFolder();
     if (folderPath) {
       setRootPath(folderPath);
+      await window.api.git.authorizeWorktrees(folderPath).catch(() => []);
       const tree = await window.api.fs.readDirectory(folderPath);
       setFileTree(tree);
     }

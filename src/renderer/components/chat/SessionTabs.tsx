@@ -31,35 +31,53 @@ export default function SessionTabs({
   const [mergeError, setMergeError] = React.useState('');
   const [, forceRerender] = React.useState(0);
 
-  const handleMerge = (conv: any) => {
+  const normalizePath = (p: string) => p.replace(/[\\/]+$/, '');
+
+  const ensureKnownWorktree = async (conv: any) => {
     if (!workspaceRoot) {
-      setMergeError('未打开工作区，无法合并 worktree');
-      return;
+      throw new Error('未打开工作区，无法操作 worktree');
     }
+    const trees = await window.api.git.worktreeList(workspaceRoot);
+    const expectedPath = normalizePath(conv.worktree.path);
+    const known = trees.some((tree: any) => {
+      return normalizePath(tree.path || '') === expectedPath && tree.branch === conv.worktree.branch;
+    });
+    if (!known) {
+      throw new Error('当前工作区未登记该 worktree，请先打开对应的基础仓库');
+    }
+  };
+
+  const handleMerge = async (conv: any) => {
     setMergeTarget(conv);
     setMergeDiff('');
     setMergeError('');
     setMergeLoading(true);
-    window.api.git.worktreeMergeDiff(workspaceRoot, conv.worktree.baseBranch, conv.worktree.branch)
-      .then((diff: string) => { setMergeDiff(diff); setMergeLoading(false); })
-      .catch((e: any) => { setMergeError(e.message); setMergeLoading(false); });
+    try {
+      await ensureKnownWorktree(conv);
+      const diff = await window.api.git.worktreeMergeDiff(workspaceRoot!, conv.worktree.baseBranch, conv.worktree.branch);
+      setMergeDiff(diff);
+    } catch (e: any) {
+      setMergeError(e.message || String(e));
+    } finally {
+      setMergeLoading(false);
+    }
   };
 
   const handleMergeConfirm = async (method: string) => {
     if (!mergeTarget) return;
-    if (!workspaceRoot) {
-      setMergeError('未打开工作区，无法合并 worktree');
-      return;
-    }
     setMergeLoading(true);
     try {
-      const res = await window.api.git.worktreeMerge(workspaceRoot, mergeTarget.worktree.branch, method);
+      await ensureKnownWorktree(mergeTarget);
+      const res = await window.api.git.worktreeMerge(
+        workspaceRoot!,
+        mergeTarget.worktree.branch,
+        method,
+        mergeTarget.worktree.baseBranch
+      );
       if (!res.success) throw new Error(res.message);
-      // Push after merge
-      await window.api.git.push(workspaceRoot, 'origin');
-      alert(`合并成功：${res.message}\n已推送到 origin`);
+      await window.api.git.push(workspaceRoot!, 'origin', mergeTarget.worktree.baseBranch);
+      alert(`合并成功：${res.message}\n已推送 ${mergeTarget.worktree.baseBranch} 到 origin`);
       setMergeTarget(null);
-      // Optionally clean up worktree
     } catch (e: any) {
       setMergeError(e.message || String(e));
     }
@@ -67,13 +85,10 @@ export default function SessionTabs({
   };
 
   const handleWorktreeCleanup = async (conv: any) => {
-    if (!workspaceRoot) {
-      alert('未打开工作区，无法清理 worktree');
-      return;
-    }
     if (!confirm(`删除 ${conv.worktree.branch} 的 worktree 和分支？`)) return;
     try {
-      await window.api.git.worktreeRemove(workspaceRoot, conv.worktree.path);
+      await ensureKnownWorktree(conv);
+      await window.api.git.worktreeRemove(workspaceRoot!, conv.worktree.path);
       alert('Worktree 已清理');
       onDelete(conv.id);
     } catch (e: any) {

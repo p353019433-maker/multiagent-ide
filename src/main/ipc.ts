@@ -275,12 +275,27 @@ function registerGitIpc({ gitService }: IpcDeps): void {
     if (res.success && res.path) await allowRoot(res.path);
     return res;
   });
+  ipcMain.handle('git:authorizeWorktrees', async (event, cwd: string) => {
+    assertAppOrigin(event);
+    const safeCwd = await assertAllowedRoot(cwd);
+    const trees = await gitService.worktreeList(safeCwd);
+    const authorized: string[] = [];
+    for (const tree of trees) {
+      if (!tree.path) continue;
+      try {
+        authorized.push(await allowRoot(tree.path));
+      } catch {
+        // stale/missing worktree path; ignore and keep authorizing the rest
+      }
+    }
+    return authorized;
+  });
   ipcMain.handle('git:worktreeList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreeList(await assertAllowedRoot(cwd)); });
   ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p)); });
   ipcMain.handle('git:worktreePrune', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreePrune(await assertAllowedRoot(cwd)); });
-  ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string) => {
+  ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string, targetBranch?: string) => {
     assertAppOrigin(event);
-    return gitService.worktreeMerge(await assertAllowedRoot(cwd), sourceBranch, method as any);
+    return gitService.worktreeMerge(await assertAllowedRoot(cwd), sourceBranch, method as any, targetBranch);
   });
   ipcMain.handle('git:worktreeMergeDiff', async (event, cwd: string, baseBranch: string, headBranch: string) => {
     assertAppOrigin(event);
