@@ -3,7 +3,7 @@ import type { FileNode } from '@shared/types';
 interface CodebaseSearchResult {
   hits: { file: string; line: number; kind: string; name: string; score: number }[];
   fellBack: boolean;
-  mode?: 'embedding' | 'symbol' | 'text';
+  mode?: 'hybrid' | 'embedding' | 'symbol' | 'text';
 }
 
 declare global {

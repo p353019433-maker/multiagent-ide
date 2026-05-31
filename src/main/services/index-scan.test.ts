@@ -79,6 +79,58 @@ describe('scanSymbols', () => {
   });
 });
 
+describe('scanSymbols — AST (TS/JS)', () => {
+  it('extracts class methods as Class.method and arrow-const functions', async () => {
+    await write(
+      'svc.ts',
+      [
+        'export class IndexService {',
+        '  async search(q: string) { return q; }',
+        '  build = () => 1;',
+        '}',
+        'export const helper = () => 42;',
+        'function plain() {}',
+      ].join('\n')
+    );
+    const { symbols } = await scanSymbols(dir);
+    const names = symbols.map((s) => s.name);
+    expect(names).toContain('IndexService');
+    expect(names).toContain('IndexService.search');
+    expect(names).toContain('IndexService.build');
+    expect(names).toContain('helper');
+    expect(names).toContain('plain');
+
+    const method = symbols.find((s) => s.name === 'IndexService.search')!;
+    expect(method.kind).toBe('method');
+    // container folded into tokens so "index service search" matches the method
+    expect(method.tokens).toEqual(expect.arrayContaining(['index', 'service', 'search']));
+  });
+
+  it('parses TSX and records interfaces/types/enums', async () => {
+    await write(
+      'comp.tsx',
+      [
+        'interface Props { id: number }',
+        'type Id = string;',
+        'enum Color { Red, Blue }',
+        'export const View = () => <div>hi</div>;',
+      ].join('\n')
+    );
+    const { symbols } = await scanSymbols(dir);
+    const kindOf = (n: string) => symbols.find((s) => s.name === n)?.kind;
+    expect(kindOf('Props')).toBe('interface');
+    expect(kindOf('Id')).toBe('type');
+    expect(kindOf('Color')).toBe('enum');
+    expect(kindOf('View')).toBe('function');
+  });
+
+  it('falls back to regex for non-TS/JS languages', async () => {
+    await write('m.py', 'def py_only():\n  pass');
+    const { symbols } = await scanSymbols(dir);
+    expect(symbols.find((s) => s.name === 'py_only')?.kind).toBe('function');
+  });
+});
+
 describe('scanChunks', () => {
   it('produces path-prefixed overlapping windows', async () => {
     const body = Array.from({ length: 80 }, (_, i) => `const x${i} = ${i};`).join('\n');
