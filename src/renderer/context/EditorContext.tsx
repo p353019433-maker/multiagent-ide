@@ -25,6 +25,7 @@ interface EditorContextValue {
   updateFileContent: (path: string, content: string) => void;
   saveFile: (path: string) => Promise<void>;
   saveActiveFile: () => Promise<void>;
+  reloadFileFromDisk: (path: string, content?: string) => Promise<void>;
 }
 
 const EditorContext = createContext<EditorContextValue | null>(null);
@@ -97,6 +98,23 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     if (activeFilePath) await saveFile(activeFilePath);
   }, [activeFilePath, saveFile]);
 
+  const reloadFileFromDisk = useCallback(async (filePath: string, content?: string) => {
+    const diskContent = content ?? await window.api.fs.readFile(filePath).catch(() => null);
+    if (diskContent === null) {
+      setOpenFiles((prev) => prev.filter((f) => f.path !== filePath));
+      return;
+    }
+    setOpenFiles((prev) =>
+      prev.map((f) => {
+        if (f.path !== filePath) return f;
+        if (f.isDirty && f.content !== diskContent) {
+          return { ...f, originalContent: diskContent, isDirty: true };
+        }
+        return { ...f, content: diskContent, originalContent: diskContent, isDirty: false };
+      })
+    );
+  }, []);
+
   return (
     <EditorContext.Provider
       value={{
@@ -108,6 +126,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
         updateFileContent,
         saveFile,
         saveActiveFile,
+        reloadFileFromDisk,
       }}
     >
       {children}

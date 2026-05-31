@@ -9,6 +9,10 @@ interface Props {
   depth: number;
 }
 
+function isSafeName(name: string): boolean {
+  return !!name && !name.includes('/') && !name.includes('\\') && name !== '.' && name !== '..';
+}
+
 export default function FileTree({ nodes, depth }: Props) {
   return (
     <div>
@@ -76,8 +80,13 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   }, [expanded, node, loadChildren]);
 
   const handleCreateConfirm = useCallback(async () => {
-    if (!newName.trim() || !rootPath) return;
-    const fullPath = node.path + '/' + newName.trim();
+    const cleanName = newName.trim();
+    if (!cleanName || !rootPath) return;
+    if (!isSafeName(cleanName)) {
+      window.alert('名称不能包含路径分隔符或 ..');
+      return;
+    }
+    const fullPath = node.path + '/' + cleanName;
     try {
       if (creating === 'file') {
         await window.api.fs.createFile(fullPath);
@@ -128,8 +137,14 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
       setRenaming(false);
       return;
     }
+    const cleanName = newName.trim();
+    if (!isSafeName(cleanName)) {
+      window.alert('名称不能包含路径分隔符或 ..');
+      setRenaming(false);
+      return;
+    }
     const dir = node.path.substring(0, node.path.lastIndexOf('/'));
-    const newPath = dir + '/' + newName.trim();
+    const newPath = dir + '/' + cleanName;
     try {
       await window.api.fs.rename(node.path, newPath);
       closeFile(node.path);
@@ -219,10 +234,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
                 setNewName('');
               }
             }}
-            onBlur={() => {
-              setCreating(null);
-              setNewName('');
-            }}
+            onBlur={handleCreateConfirm}
             onClick={(e) => e.stopPropagation()}
             autoFocus
           />

@@ -9,6 +9,10 @@ import MultiAgentPanel from './MultiAgentPanel';
 
 type SidebarTab = 'explorer' | 'git' | 'github' | 'problems' | 'multiagent';
 
+function isSafeName(name: string): boolean {
+  return !!name && !name.includes('/') && !name.includes('\\') && name !== '.' && name !== '..';
+}
+
 export default function Sidebar() {
   const { rootPath, rootName, fileTree, openFolder, refreshTree } = useWorkspace();
   const { openFile } = useEditor();
@@ -17,7 +21,10 @@ export default function Sidebar() {
   const handleNewFile = async () => {
     if (!rootPath) return;
     const name = prompt('文件名：');
-    if (!name) return;
+    if (!name || !isSafeName(name)) {
+      alert('文件名不能包含路径分隔符或 ..');
+      return;
+    }
     const filePath = rootPath + '/' + name;
     try {
       await window.api.fs.createFile(filePath);
@@ -31,7 +38,10 @@ export default function Sidebar() {
   const handleNewFolder = async () => {
     if (!rootPath) return;
     const name = prompt('文件夹名：');
-    if (!name) return;
+    if (!name || !isSafeName(name)) {
+      alert('文件夹名不能包含路径分隔符或 ..');
+      return;
+    }
     const dirPath = rootPath + '/' + name;
     try {
       await window.api.fs.createDirectory(dirPath);

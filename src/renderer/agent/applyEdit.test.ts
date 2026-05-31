@@ -25,12 +25,18 @@ describe('applyEdit', () => {
     expect(r.result).toContain('return 2;');
   });
 
-  it('anchor match by unique first/last line', () => {
-    const content = 'a\nMIDDLE LINE THAT MODEL MISQUOTED\nb\nc';
-    const r = applyEdit(content, 'a\n<garbled middle>\nc', 'X\nY');
+  it('anchor match by unique informative first/last line', () => {
+    const content = 'function alpha() {\nMIDDLE LINE THAT MODEL MISQUOTED\nreturn value;\nafter';
+    const r = applyEdit(content, 'function alpha() {\n<garbled middle>\nreturn value;', 'X\nY');
     expect(r.ok).toBe(true);
     expect(r.strategy).toBe('anchor');
-    expect(r.result).toBe('X\nY');
+    expect(r.result).toBe('X\nY\nafter');
+  });
+
+  it('does not anchor on weak common closing lines', () => {
+    const content = 'function alpha() {\n  one();\n}\nfunction beta() {\n  two();\n}';
+    const r = applyEdit(content, 'function alpha() {\n<garbled middle>\n};', 'X');
+    expect(r.ok).toBe(false);
   });
 
   it('returns ok:false when nothing matches', () => {

@@ -17,6 +17,16 @@ interface PtySession {
   proc: any;
 }
 
+function safeEnv(): { [key: string]: string } {
+  const allowed = new Set(['PATH', 'HOME', 'SHELL', 'TERM', 'LANG', 'LC_ALL', 'TMPDIR', 'USER', 'LOGNAME']);
+  const out: { [key: string]: string } = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!value) continue;
+    if (allowed.has(key) || key.startsWith('npm_')) out[key] = value;
+  }
+  return out;
+}
+
 interface BackgroundSession {
   id: string;
   proc: ChildProcess;
@@ -41,7 +51,7 @@ export class TerminalService {
       cols: 100,
       rows: 30,
       cwd,
-      env: process.env as { [key: string]: string },
+      env: safeEnv(),
     });
 
     proc.onData((data: string) => {
@@ -91,7 +101,7 @@ export class TerminalService {
       const shell = os.platform() === 'win32' ? 'powershell.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['-Command', command] : ['-c', command];
 
-      const proc = spawn(shell, args, { cwd });
+      const proc = spawn(shell, args, { cwd, env: safeEnv() });
       let stdout = '';
       let stderr = '';
 
@@ -132,7 +142,7 @@ export class TerminalService {
     return new Promise((resolve) => {
       // On Windows, npx/npm are .cmd shims which require shell resolution.
       const isWin = os.platform() === 'win32';
-      const proc = spawn(file, args, { cwd, shell: isWin });
+      const proc = spawn(file, args, { cwd, shell: isWin, env: safeEnv() });
       let stdout = '';
       let stderr = '';
 
@@ -164,7 +174,7 @@ export class TerminalService {
     const args = os.platform() === 'win32' ? ['-Command', command] : ['-c', command];
 
     const id = uuid();
-    const proc = spawn(shell, args, { cwd });
+    const proc = spawn(shell, args, { cwd, env: safeEnv() });
     const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null };
 
     proc.stdout?.on('data', (data: Buffer) => {

@@ -26,12 +26,13 @@ export interface AgentEngineDeps {
   addMessage: (conversationId: string, message: ChatMessageType) => void;
   buildSystemPrompt: () => string;
   gateAction: GateActionFn;
+  onFileChanged?: (path: string, content?: string) => Promise<void> | void;
 }
 
 const MAX_ITERATIONS = 25;
 
 export function useAgentEngine(deps: AgentEngineDeps) {
-  const { activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction } = deps;
+  const { activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction, onFileChanged } = deps;
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
@@ -63,6 +64,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       turnSnapshots.current.set(filePath, before);
     }
     await window.api.fs.writeFile(filePath, content);
+    await onFileChanged?.(filePath, content);
     turnEditedFiles.current.add(filePath);
   };
 
@@ -390,8 +392,10 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       try {
         if (f.before === null) {
           await window.api.fs.delete(f.path); // file was created in the turn
+          await onFileChanged?.(f.path);
         } else {
           await window.api.fs.writeFile(f.path, f.before);
+          await onFileChanged?.(f.path, f.before);
         }
       } catch {
         // best-effort; continue reverting the rest

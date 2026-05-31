@@ -23,6 +23,10 @@ function normalizeLine(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+function isWeakAnchor(s: string): boolean {
+  return s.length < 4 || s.endsWith('{') || /^[{});,]+$/.test(s);
+}
+
 /**
  * Try to apply an edit. Strategies, in order:
  *  1. exact      — byte-exact substring (fast path, preserves current behavior)

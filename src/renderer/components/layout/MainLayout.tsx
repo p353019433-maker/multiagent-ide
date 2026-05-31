@@ -58,6 +58,18 @@ export default function MainLayout({ onOpenSettings }: Props) {
     document.addEventListener('mouseup', handleMouseUp);
   }, []);
 
+  useEffect(() => {
+    const handlePreviewUrl = (e: Event) => {
+      const url = (e as CustomEvent<{ url?: string }>).detail?.url;
+      if (!url) return;
+      setBrowserUrl(url);
+      setShowBrowser(true);
+      setShowChat(false);
+    };
+    window.addEventListener('preview-url', handlePreviewUrl);
+    return () => window.removeEventListener('preview-url', handlePreviewUrl);
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
