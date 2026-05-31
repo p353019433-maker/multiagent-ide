@@ -4,7 +4,9 @@
  * Does NOT use FIM (fill-in-the-middle) — sends context as chat completion.
  */
 
-import * as monaco from 'monaco-editor';
+import type * as Monaco from 'monaco-editor';
+
+type MonacoModule = typeof Monaco;
 
 type ProviderConfig = {
   providerId: string | null;
@@ -45,20 +47,26 @@ export function setAiCompleteFn(fn: AiCompleteFn) {
   _aiCompleteFn = fn;
 }
 
-let _disposables: monaco.IDisposable[] = [];
+let _monaco: MonacoModule | null = null;
+let _disposables: Monaco.IDisposable[] = [];
 let _config: ProviderConfig = { providerId: null, model: null };
 
-export function registerAiInlineCompletion() {
-  // Unregister old if any
-  unregisterAiInlineCompletion();
+function disposeInlineCompletionProvider() {
+  _disposables.forEach((d) => d.dispose());
+  _disposables = [];
+}
 
-  const provider: monaco.languages.InlineCompletionsProvider = {
+export function registerAiInlineCompletion(monaco: MonacoModule) {
+  _monaco = monaco;
+  disposeInlineCompletionProvider();
+
+  const provider: Monaco.languages.InlineCompletionsProvider = {
     provideInlineCompletions: async (
-      model: monaco.editor.ITextModel,
-      position: monaco.Position,
-      _context: monaco.languages.InlineCompletionContext,
-      _token: monaco.CancellationToken
-    ): Promise<monaco.languages.InlineCompletions> => {
+      model: Monaco.editor.ITextModel,
+      position: Monaco.Position,
+      _context: Monaco.languages.InlineCompletionContext,
+      _token: Monaco.CancellationToken
+    ): Promise<Monaco.languages.InlineCompletions> => {
       if (!_aiCompleteFn || !_config.providerId) return { items: [] };
 
       const cooldown = _config.fim ? COOLDOWN_FIM_MS : COOLDOWN_CHAT_MS;
@@ -137,8 +145,7 @@ export function registerAiInlineCompletion() {
 }
 
 export function unregisterAiInlineCompletion() {
-  _disposables.forEach((d) => d.dispose());
-  _disposables = [];
+  disposeInlineCompletionProvider();
   _config = { providerId: null, model: null };
 }
 
@@ -146,7 +153,7 @@ export function updateInlineCompletionConfig(config: ProviderConfig) {
   _config = config;
   if (!config.providerId) {
     unregisterAiInlineCompletion();
-  } else if (_disposables.length === 0) {
-    registerAiInlineCompletion();
+  } else if (_disposables.length === 0 && _monaco) {
+    registerAiInlineCompletion(_monaco);
   }
 }

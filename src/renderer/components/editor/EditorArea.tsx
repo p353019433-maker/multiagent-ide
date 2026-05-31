@@ -1,20 +1,24 @@
 import React from 'react';
 import { useEditor } from '../../context/EditorContext';
-import * as monaco from 'monaco-editor';
 import {
   registerAiInlineCompletion,
+  unregisterAiInlineCompletion,
   updateInlineCompletionConfig,
   recordEdit,
 } from './aiInlineCompletion';
+
+type MonacoModule = typeof import('monaco-editor');
 
 export default function EditorArea() {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
     useEditor();
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const modelsRef = React.useRef<Map<string, monaco.editor.ITextModel>>(new Map());
+  const monacoRef = React.useRef<MonacoModule | null>(null);
+  const editorRef = React.useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
+  const modelsRef = React.useRef<Map<string, import('monaco-editor').editor.ITextModel>>(new Map());
   const listenedModelsRef = React.useRef<Set<string>>(new Set());
   const saveRef = React.useRef(saveActiveFile);
+  const [isMonacoReady, setIsMonacoReady] = React.useState(false);
   saveRef.current = saveActiveFile;
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
@@ -22,44 +26,55 @@ export default function EditorArea() {
   React.useEffect(() => {
     if (!containerRef.current || editorRef.current) return;
 
-    const editor = monaco.editor.create(containerRef.current, {
-      theme: 'vs-dark',
-      fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-      minimap: { enabled: true },
-      scrollBeyondLastLine: false,
-      automaticLayout: true,
-      tabSize: 2,
-      wordWrap: 'on',
-      lineNumbers: 'on',
-      renderWhitespace: 'selection',
-      bracketPairColorization: { enabled: true },
-      smoothScrolling: true,
-      cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'on',
-    });
+    let disposed = false;
 
-    editorRef.current = editor;
+    void import('monaco-editor').then((monaco) => {
+      if (disposed || !containerRef.current || editorRef.current) return;
 
-    // Register AI inline completion
-    registerAiInlineCompletion();
+      monacoRef.current = monaco;
+      const editor = monaco.editor.create(containerRef.current, {
+        theme: 'vs-dark',
+        fontSize: 14,
+        fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+        minimap: { enabled: true },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        tabSize: 2,
+        wordWrap: 'on',
+        lineNumbers: 'on',
+        renderWhitespace: 'selection',
+        bracketPairColorization: { enabled: true },
+        smoothScrolling: true,
+        cursorBlinking: 'smooth',
+        cursorSmoothCaretAnimation: 'on',
+      });
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      saveRef.current();
+      editorRef.current = editor;
+      registerAiInlineCompletion(monaco);
+
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        saveRef.current();
+      });
+      setIsMonacoReady(true);
     });
 
     return () => {
-      editor.dispose();
+      disposed = true;
+      editorRef.current?.dispose();
       modelsRef.current.forEach((m) => m.dispose());
       modelsRef.current.clear();
       listenedModelsRef.current.clear();
+      unregisterAiInlineCompletion();
+      monacoRef.current = null;
       editorRef.current = null;
+      setIsMonacoReady(false);
     };
   }, []);
 
   React.useEffect(() => {
+    const monaco = monacoRef.current;
     const editor = editorRef.current;
-    if (!editor || !activeFile) {
+    if (!monaco || !editor || !activeFile) {
       if (editor && editor.getModel()) {
         editor.setModel(null);
       }
@@ -89,7 +104,7 @@ export default function EditorArea() {
     if (editor.getModel() !== model) {
       editor.setModel(model);
     }
-  }, [activeFile?.path, updateFileContent]);
+  }, [activeFile?.path, isMonacoReady, updateFileContent]);
 
   React.useEffect(() => {
     if (!activeFile) return;
