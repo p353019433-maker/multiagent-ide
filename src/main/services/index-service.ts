@@ -10,40 +10,15 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-
-const IGNORED_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  '.next',
-  '.cache',
-  'release',
-  '__pycache__',
-  '.svn',
-  'coverage',
-]);
-
-const CODE_EXTS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
-  '.py', '.go', '.rs', '.java', '.rb', '.php', '.c', '.h',
-  '.cpp', '.cc', '.cs', '.swift', '.kt', '.scala', '.vue', '.svelte',
-]);
-
-interface SymbolEntry {
-  name: string;
-  kind: string;
-  file: string;
-  line: number;
-  /** Lower-cased name split into word parts for matching */
-  tokens: string[];
-}
-
-interface FileEntry {
-  file: string;
-  /** Lower-cased path words, for path-based matching */
-  pathTokens: string[];
-}
+import { Worker } from 'worker_threads';
+import {
+  tokenize,
+  scanSymbols,
+  scanChunks,
+  type SymbolEntry,
+  type FileEntry,
+  type RawChunk,
+} from './index-scan';
 
 export interface CodebaseSearchHit {
   file: string;
@@ -51,29 +26,6 @@ export interface CodebaseSearchHit {
   kind: string;
   name: string;
   score: number;
-}
-
-const SYMBOL_PATTERNS: { re: RegExp; kind: string; group: number }[] = [
-  { re: /(?:export\s+)?(?:async\s+)?function\s+(\w+)/, kind: 'function', group: 1 },
-  { re: /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(/, kind: 'function', group: 1 },
-  { re: /(?:export\s+)?class\s+(\w+)/, kind: 'class', group: 1 },
-  { re: /(?:export\s+)?interface\s+(\w+)/, kind: 'interface', group: 1 },
-  { re: /(?:export\s+)?type\s+(\w+)/, kind: 'type', group: 1 },
-  { re: /(?:export\s+)?enum\s+(\w+)/, kind: 'enum', group: 1 },
-  // Python / Go / Rust style
-  { re: /^\s*def\s+(\w+)/, kind: 'function', group: 1 },
-  { re: /^\s*class\s+(\w+)/, kind: 'class', group: 1 },
-  { re: /^\s*func\s+(?:\([^)]*\)\s*)?(\w+)/, kind: 'function', group: 1 },
-  { re: /^\s*(?:pub\s+)?fn\s+(\w+)/, kind: 'function', group: 1 },
-];
-
-/** Split an identifier or phrase into lowercase word tokens (camelCase, snake_case, kebab). */
-function tokenize(s: string): string[] {
-  return s
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .map((t) => t.toLowerCase())
-    .filter((t) => t.length > 1);
 }
 
 export class IndexService {
@@ -97,54 +49,50 @@ export class IndexService {
   }
 
   private async build(root: string): Promise<void> {
-    const symbols: SymbolEntry[] = [];
-    const files: FileEntry[] = [];
-    let fileCount = 0;
-
-    const walk = async (dir: string): Promise<void> => {
-      if (fileCount > 5000) return; // hard cap to stay responsive
-      let entries;
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (CODE_EXTS.has(path.extname(entry.name))) {
-          fileCount++;
-          const rel = path.relative(root, full);
-          files.push({ file: rel, pathTokens: tokenize(rel) });
-          try {
-            const stat = await fs.stat(full);
-            if (stat.size > 512 * 1024) continue; // skip huge files for symbol scan
-            const content = await fs.readFile(full, 'utf-8');
-            const lines = content.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-              for (const { re, kind, group } of SYMBOL_PATTERNS) {
-                const m = lines[i].match(re);
-                if (m && m[group]) {
-                  const name = m[group];
-                  symbols.push({ name, kind, file: rel, line: i + 1, tokens: tokenize(name) });
-                  break;
-                }
-              }
-            }
-          } catch {
-            // skip unreadable files
-          }
-        }
-      }
-    };
-
-    await walk(root);
+    // Run the heavy walk + regex off the main thread; fall back to inline if the
+    // worker can't be spawned (e.g. unit tests, or a packaging mishap).
+    const { symbols, files } = await this.scanOffThread<{ symbols: SymbolEntry[]; files: FileEntry[] }>(
+      'symbols',
+      root,
+      () => scanSymbols(root)
+    );
     this.symbols = symbols;
     this.files = files;
     this.indexedRoot = root;
     this.indexedAt = Date.now();
+  }
+
+  /**
+   * Run a scan in a worker thread, resolving with its plain-data result. If the
+   * worker fails to start or errors, transparently fall back to running the
+   * same scan inline so indexing degrades gracefully instead of breaking.
+   */
+  private async scanOffThread<R>(
+    mode: 'symbols' | 'chunks',
+    root: string,
+    inline: () => Promise<R>
+  ): Promise<R> {
+    try {
+      return await new Promise<R>((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, 'index-worker.js'), {
+          workerData: { root, mode },
+        });
+        worker.once('message', (msg: any) => {
+          void worker.terminate();
+          if (msg?.ok) {
+            resolve((mode === 'symbols' ? { symbols: msg.symbols, files: msg.files } : msg.chunks) as R);
+          } else {
+            reject(new Error(msg?.error || 'index worker failed'));
+          }
+        });
+        worker.once('error', (err) => {
+          void worker.terminate();
+          reject(err);
+        });
+      });
+    } catch {
+      return inline();
+    }
   }
 
   /**
@@ -269,8 +217,8 @@ export class IndexService {
     }
     const cached = new Map(this.vectors.map((v) => [v.hash, v]));
 
-    // Collect chunks across the workspace.
-    const chunks = await this.collectChunks(root);
+    // Collect chunks across the workspace (off-thread, with inline fallback).
+    const chunks = await this.scanOffThread<RawChunk[]>('chunks', root, () => scanChunks(root));
 
     // Figure out which chunks are new (not in cache).
     const pending = chunks.filter((c) => !cached.has(c.hash));
@@ -327,60 +275,6 @@ export class IndexService {
     await this.saveVectorCache(cacheFile, next);
   }
 
-  /** Chunk all code files into overlapping line windows. */
-  private async collectChunks(root: string): Promise<RawChunk[]> {
-    const chunks: RawChunk[] = [];
-    const WINDOW = 60;
-    const OVERLAP = 12;
-    let fileCount = 0;
-
-    const walk = async (dir: string): Promise<void> => {
-      if (fileCount > 4000) return;
-      let entries;
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (CODE_EXTS.has(path.extname(entry.name))) {
-          fileCount++;
-          try {
-            const stat = await fs.stat(full);
-            if (stat.size > 256 * 1024) continue;
-            const content = await fs.readFile(full, 'utf-8');
-            const rel = path.relative(root, full);
-            const lines = content.split('\n');
-            for (let start = 0; start < lines.length; start += WINDOW - OVERLAP) {
-              const slice = lines.slice(start, start + WINDOW);
-              const text = slice.join('\n').trim();
-              if (text.length < 20) continue;
-              // Prefix with the path so the embedding captures file context.
-              const payload = `// ${rel}\n${text}`;
-              chunks.push({
-                file: rel,
-                startLine: start + 1,
-                endLine: Math.min(start + WINDOW, lines.length),
-                text: payload,
-                hash: hashString(rel + ':' + start + ':' + payload),
-              });
-              if (start + WINDOW >= lines.length) break;
-            }
-          } catch {
-            // skip unreadable
-          }
-        }
-      }
-    };
-
-    await walk(root);
-    return chunks;
-  }
-
   /** Cosine-similarity search over the embedding index. */
   semanticSearch(queryVector: number[], limit = 10): CodebaseSearchHit[] {
     if (this.vectors.length === 0) return [];
@@ -423,30 +317,12 @@ export class IndexService {
   }
 }
 
-interface RawChunk {
-  file: string;
-  startLine: number;
-  endLine: number;
-  text: string;
-  hash: string;
-}
-
 interface ChunkVector {
   file: string;
   startLine: number;
   endLine: number;
   hash: string;
   vector: number[];
-}
-
-/** Stable non-crypto hash (FNV-1a) for chunk content keying. */
-function hashString(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16);
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
