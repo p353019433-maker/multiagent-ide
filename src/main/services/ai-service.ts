@@ -596,46 +596,24 @@ export class AIService {
     );
 
     let content = '';
-    const toolCalls: ToolCall[] = [];
-    let currentToolCall: { id: string; name: string; args: string } | null = null;
-
     stream.on('text', (text) => {
       content += text;
       callbacks.onToken(text);
     });
 
-    stream.on('inputJson', (delta) => {
-      if (currentToolCall) currentToolCall.args += delta;
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (stream as any).on('contentBlockStart', (event: any) => {
-      if (event.content_block.type === 'tool_use') {
-        currentToolCall = {
-          id: event.content_block.id,
-          name: event.content_block.name,
-          args: '',
-        };
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (stream as any).on('contentBlockStop', () => {
-      if (currentToolCall) {
+    const final = await stream.finalMessage();
+    const toolCalls: ToolCall[] = [];
+    for (const block of final?.content || []) {
+      if (block.type === 'tool_use') {
         const tc: ToolCall = {
-          id: currentToolCall.id,
-          name: currentToolCall.name,
-          arguments: (() => {
-            try { return JSON.parse(currentToolCall!.args || '{}'); } catch { return {}; }
-          })(),
+          id: block.id,
+          name: block.name,
+          arguments: block.input as Record<string, unknown>,
         };
         toolCalls.push(tc);
         callbacks.onToolCall(tc);
-        currentToolCall = null;
       }
-    });
-
-    const final = await stream.finalMessage();
+    }
 
     callbacks.onComplete({
       content,
