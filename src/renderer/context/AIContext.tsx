@@ -3,6 +3,11 @@ import { v4 as uuid } from 'uuid';
 import type { AIProvider as AIProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
 import { AGENT_SYSTEM_PROMPT } from '@shared/tools';
 import { useWorkspace } from './WorkspaceContext';
+import {
+  loadConversations,
+  createConversationPersister,
+  type StoreBackend,
+} from './conversationStore';
 
 interface AIContextValue {
   providers: AIProviderConfig[];
@@ -26,6 +31,7 @@ interface AIContextValue {
   addConversation: (conv: Conversation) => void;
   addMessage: (conversationId: string, message: ChatMessage) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
+  renameConversation: (conversationId: string, title: string) => void;
 
   /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
   orchestrate: (goal: string, subTasks?: string[]) => Promise<OrchestrationSession>;
@@ -47,12 +53,23 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
 
+  // Debounced, per-conversation persister (see conversationStore). Created once.
+  const persisterRef = useRef<ReturnType<typeof createConversationPersister> | null>(null);
+  if (!persisterRef.current) {
+    const backend: StoreBackend = {
+      get: (k) => window.api.store.get(k),
+      set: (k, v) => window.api.store.set(k, v) as Promise<void>,
+    };
+    persisterRef.current = createConversationPersister(backend);
+  }
+  // Tracks the previous conversations array to diff what actually changed.
+  const prevConvsRef = useRef<Conversation[]>([]);
+
   useEffect(() => {
     (async () => {
       const storedProviders = (await window.api.store.get('providers')) as AIProviderConfig[] | undefined;
       const storedActiveId = (await window.api.store.get('activeProviderId')) as string | undefined;
       const storedActiveModel = (await window.api.store.get('activeModel')) as string | undefined;
-      const storedConvs = (await window.api.store.get('conversations')) as Conversation[] | undefined;
 
       if (storedProviders?.length) {
         setProviders(storedProviders);
@@ -60,17 +77,43 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
         setActiveProviderId(provider.id);
         setActiveModelState(storedActiveModel || provider.defaultModel);
       }
-      if (storedConvs?.length) {
+
+      // Load conversations via the per-conversation store (migrates legacy blob).
+      const storedConvs = await loadConversations({
+        get: (k) => window.api.store.get(k),
+        set: (k, v) => window.api.store.set(k, v) as Promise<void>,
+      });
+      if (storedConvs.length) {
+        prevConvsRef.current = storedConvs;
         setConversations(storedConvs);
         setActiveConversationId(storedConvs[0].id);
       }
     })();
+
+    // Flush any pending writes before the window closes (debounce safety net).
+    const flush = () => persisterRef.current?.flush();
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
   }, []);
 
+  // Persist only the conversations that actually changed (reference diff),
+  // routed through the debounced per-conversation persister.
   useEffect(() => {
-    if (conversations.length > 0) {
-      window.api.store.set('conversations', conversations);
+    const persister = persisterRef.current!;
+    const prev = prevConvsRef.current;
+    prevConvsRef.current = conversations;
+
+    const prevById = new Map(prev.map((c) => [c.id, c]));
+    const currIds = conversations.map((c) => c.id);
+
+    for (const c of conversations) {
+      if (prevById.get(c.id) !== c) persister.save(c); // new or mutated
     }
+    for (const c of prev) {
+      if (!currIds.includes(c.id)) persister.remove(c.id); // deleted
+    }
+    const prevIds = prev.map((c) => c.id);
+    if (prevIds.join() !== currIds.join()) persister.setOrder(currIds);
   }, [conversations]);
 
   const setActiveProvider = useCallback((id: string) => {
@@ -186,11 +229,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteConversation = useCallback((id: string) => {
-    setConversations((prev) => {
-      const next = prev.filter((c) => c.id !== id);
-      window.api.store.set('conversations', next);
-      return next;
-    });
+    setConversations((prev) => prev.filter((c) => c.id !== id));
     setActiveConversationId((current) => {
       if (current !== id) return current;
       const remaining = conversationsRef.current.filter((c) => c.id !== id);
@@ -226,6 +265,12 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
             }
           : c
       )
+    );
+  }, []);
+
+  const renameConversation = useCallback((conversationId: string, title: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conversationId ? { ...c, title, updatedAt: Date.now() } : c))
     );
   }, []);
 
@@ -391,6 +436,7 @@ Response:`;
         addConversation,
         addMessage,
         updateMessage,
+        renameConversation,
         orchestrate,
       }}
     >

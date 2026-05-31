@@ -10,6 +10,7 @@ export default function SessionTabs({
   onDelete,
   onNew,
   onNewWorktree,
+  onRename,
 }: {
   conversations: any[];
   activeId: string | null;
@@ -17,6 +18,7 @@ export default function SessionTabs({
   onDelete: (id: string) => void;
   onNew: () => string;
   onNewWorktree: () => void;
+  onRename: (id: string, title: string) => void;
 }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState('');
@@ -102,15 +104,7 @@ export default function SessionTabs({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => {
-                if (draft.trim()) {
-                  window.api.store.get('conversations').then((s: any) => {
-                    if (s?.length) {
-                      window.api.store.set('conversations', s.map((c: any) =>
-                        c.id === conv.id ? { ...c, title: draft.trim() } : c
-                      ));
-                    }
-                  });
-                }
+                if (draft.trim()) onRename(conv.id, draft.trim());
                 setEditingId(null);
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingId(null); }}

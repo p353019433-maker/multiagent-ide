@@ -303,6 +303,7 @@ ${suffix.slice(0, 500)}${editsCtx}
           onDelete={deleteConversation}
           onNew={newConversation}
           onNewWorktree={handleNewWorktreeSession}
+          onRename={renameConversation}
         />
       ) : (
         <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
