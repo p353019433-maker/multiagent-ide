@@ -26,6 +26,7 @@ export default function ChatPanel() {
     setActiveConversation,
     deleteConversation,
     addMessage,
+    renameConversation,
   } = useAI();
   const { rootPath } = useWorkspace();
   const { activeFilePath, openFiles, openFile, reloadFileFromDisk } = useEditor();
@@ -40,6 +41,13 @@ export default function ChatPanel() {
   // Approval gate (mode + pending-approval state + decision logic).
   const { approvalMode, changeApprovalMode, pendingApproval, gateAction, handleApprove, handleReject } =
     useApproval();
+
+  // Active conversation + its effective workspace root (worktree path when the
+  // session runs in an isolated worktree, else the open folder). Declared before
+  // the agent engine so it can be passed in.
+  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const effectiveRootPath = activeConversation?.worktree?.path ?? rootPath;
+  const messages = activeConversation?.messages || [];
 
   // Load project rules (AGENTS.md / .cursorrules) for the current workspace.
   useEffect(() => {
@@ -84,10 +92,6 @@ export default function ChatPanel() {
   const handleAbort = abort;
 
   const resolvePath = (p: string): string => resolveWorkspacePath(effectiveRootPath, p);
-
-  const activeConversation = conversations.find((c) => c.id === activeConversationId);
-  const effectiveRootPath = activeConversation?.worktree?.path ?? rootPath;
-  const messages = activeConversation?.messages || [];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
