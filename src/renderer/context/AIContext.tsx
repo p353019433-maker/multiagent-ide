@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import type { AIProvider as AIProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
-import { AGENT_SYSTEM_PROMPT } from '@shared/tools';
 import { useWorkspace } from './WorkspaceContext';
+import { runHeadlessAgent } from '../agent/headlessAgent';
 import {
   loadConversations,
   createConversationPersister,
@@ -379,24 +379,23 @@ Response:`;
           const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
           if (!conv) throw new Error('Conversation not found');
 
+          if (!conv.worktree?.path) throw new Error('子任务缺少 worktree');
+
           task.status = 'running';
           // Refresh session to show running state
           setOrchestrationSessions((prev) =>
             prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
           );
 
-          // Send initial message to the agent via main process (non-streaming for orchestration)
-          const result = await window.api.ai.chat(conv.providerId, [
-            { role: 'user', content: task.description }
-          ], {
+          // Drive the sub-task with a real agent loop (tools enabled) inside its
+          // isolated worktree, instead of a single tool-less chat completion.
+          const result = await runHeadlessAgent({
+            providerId: conv.providerId,
             model: conv.model,
-            systemPrompt: AGENT_SYSTEM_PROMPT,
-            workspaceRoot: conv.worktree?.path,
-            tools: [],
+            workspaceRoot: conv.worktree.path,
+            task: task.description,
           });
-          task.result = result?.content || '';
-          task.status = 'completed';
-
+          task.result = result.note ? `${result.content}\n\n⚠️ ${result.note}` : result.content;
           task.status = 'completed';
         } catch (err: any) {
           task.status = 'failed';
@@ -405,6 +404,16 @@ Response:`;
       });
 
     await Promise.allSettled(promises);
+
+    // Garbage-collect worktrees for tasks that failed before doing any work
+    // (worktree creation failed, so no conversation/changes exist) and prune
+    // stale metadata. Worktrees that actually ran — even if the agent later
+    // failed — are KEPT so partial work isn't lost; the user reclaims them via
+    // the session-tab cleanup (which now removes the branch too). The bigger
+    // disk win comes from sharing node_modules via symlink at creation time.
+    if (rootPath) {
+      await window.api.git.worktreePrune(rootPath).catch(() => undefined);
+    }
 
     // Check if all tasks failed
     const allFailed = tasks.every((t) => t.status === 'failed');

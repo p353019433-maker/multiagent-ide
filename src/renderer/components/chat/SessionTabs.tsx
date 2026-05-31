@@ -88,7 +88,7 @@ export default function SessionTabs({
     if (!confirm(`删除 ${conv.worktree.branch} 的 worktree 和分支？`)) return;
     try {
       await ensureKnownWorktree(conv);
-      await window.api.git.worktreeRemove(workspaceRoot!, conv.worktree.path);
+      await window.api.git.worktreeRemove(workspaceRoot!, conv.worktree.path, conv.worktree.branch);
       alert('Worktree 已清理');
       onDelete(conv.id);
     } catch (e: any) {
