@@ -42,6 +42,11 @@ const ALLOWED_DOT_FILES = new Set([
   '.env.production',
 ]);
 
+const MAX_READ_BYTES = 2 * 1024 * 1024;
+const MAX_SEARCH_FILES = 5000;
+const MAX_SEARCH_DIRS = 2000;
+const MAX_SEARCH_MS = 8000;
+
 export class FileService {
   async readDirectory(dirPath: string): Promise<FileNode[]> {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -65,6 +70,10 @@ export class FileService {
   }
 
   async readFile(filePath: string): Promise<string> {
+    const st = await fs.stat(filePath);
+    if (st.size > MAX_READ_BYTES) {
+      throw new Error(`文件过大，拒绝一次性读取：${Math.round(st.size / 1024 / 1024)} MB`);
+    }
     return fs.readFile(filePath, 'utf-8');
   }
 
@@ -127,20 +136,26 @@ export class FileService {
   async findFiles(rootPath: string, pattern: string): Promise<string[]> {
     const results: string[] = [];
     const regex = globToRegex(pattern);
+    let fileCount = 0;
+    let dirCount = 0;
+    const started = Date.now();
+    const shouldStop = () => results.length >= 200 || fileCount >= MAX_SEARCH_FILES || dirCount >= MAX_SEARCH_DIRS || Date.now() - started > MAX_SEARCH_MS;
 
     const walk = async (dir: string): Promise<void> => {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
+      if (shouldStop()) return;
+      dirCount++;
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
       for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name)) continue;
-        if (entry.name.startsWith('.')) continue;
+        if (shouldStop()) return;
+        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
         const full = path.join(dir, entry.name);
         const relative = path.relative(rootPath, full);
         if (entry.isDirectory()) {
-          if (results.length >= 200) return;
           await walk(full);
-        } else if (regex.test(relative) || regex.test(entry.name)) {
-          results.push(full);
-          if (results.length >= 200) return;
+        } else {
+          fileCount++;
+          if (regex.test(relative) || regex.test(entry.name)) results.push(full);
         }
       }
     };

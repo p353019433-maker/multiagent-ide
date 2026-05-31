@@ -28,7 +28,7 @@ export default function ChatPanel() {
     addMessage,
   } = useAI();
   const { rootPath } = useWorkspace();
-  const { activeFilePath, openFiles, openFile } = useEditor();
+  const { activeFilePath, openFiles, openFile, reloadFileFromDisk } = useEditor();
 
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
@@ -72,12 +72,21 @@ export default function ChatPanel() {
 
   // Agent engine: the multi-turn loop, tool execution, checkpoints, streaming.
   const { isStreaming, streamContent, toolExecutions, checkpoints, artifacts, runTurn, abort, revertCheckpoint } =
-    useAgentEngine({ activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction });
+    useAgentEngine({
+      activeProviderId,
+      activeModel,
+      rootPath: effectiveRootPath,
+      addMessage,
+      buildSystemPrompt,
+      gateAction,
+      onFileChanged: reloadFileFromDisk,
+    });
   const handleAbort = abort;
 
-  const resolvePath = (p: string): string => resolveWorkspacePath(rootPath, p);
+  const resolvePath = (p: string): string => resolveWorkspacePath(effectiveRootPath, p);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const effectiveRootPath = activeConversation?.worktree?.path ?? rootPath;
   const messages = activeConversation?.messages || [];
 
   useEffect(() => {
@@ -183,7 +192,7 @@ ${suffix.slice(0, 500)}${editsCtx}
     }
 
     let contextPrefix = '';
-    if (activeFilePath) {
+    if (activeFilePath && (!effectiveRootPath || activeFilePath.startsWith(effectiveRootPath + '/'))) {
       const file = openFiles.find((f) => f.path === activeFilePath);
       if (file) {
         contextPrefix = `[当前文件: ${activeFilePath}]\n\`\`\`${file.language}\n${file.content.slice(0, 3000)}\n\`\`\`\n\n`;
@@ -222,7 +231,7 @@ ${suffix.slice(0, 500)}${editsCtx}
     ];
 
     await runTurn(convId, apiMessages, turnLabel);
-  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages]);
+  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages, effectiveRootPath]);
 
   /** Create a new isolated worktree session */
   const handleNewWorktreeSession = async () => {

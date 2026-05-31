@@ -211,7 +211,9 @@ export class AIService {
         await this.streamOpenAI(apiKey, provider, messages, options, callbacks);
       }
     } catch (e: any) {
-      if (e?.name !== 'AbortError') {
+      if (e?.name === 'AbortError') {
+        callbacks.onComplete({ content: '', finishReason: 'stop' });
+      } else {
         callbacks.onError(e?.message || String(e));
       }
     } finally {

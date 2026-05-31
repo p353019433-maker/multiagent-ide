@@ -4,7 +4,7 @@
  * service; registerIpc() calls them all. Behavior is identical to the original.
  */
 
-import { ipcMain, dialog, safeStorage, BrowserWindow } from 'electron';
+import { ipcMain, dialog, safeStorage, BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
 import type { FileService } from './services/file-service';
@@ -16,6 +16,50 @@ import type { WebService } from './services/web-service';
 import type { GitHubService } from './services/github-service';
 import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
+
+const allowedRoots = new Set<string>();
+
+async function canonical(p: string): Promise<string> {
+  const resolved = path.resolve(p);
+  try {
+    return await fs.realpath(resolved);
+  } catch {
+    const parent = await fs.realpath(path.dirname(resolved));
+    return path.join(parent, path.basename(resolved));
+  }
+}
+
+async function allowRoot(root: string): Promise<string> {
+  const real = await canonical(root);
+  allowedRoots.add(real);
+  return real;
+}
+
+async function assertAllowedPath(p: string, opts: { allowRoot?: boolean } = {}): Promise<string> {
+  if (allowedRoots.size === 0) throw new Error('未授权工作区');
+  const real = await canonical(p);
+  for (const root of allowedRoots) {
+    const rel = path.relative(root, real);
+    if (rel === '') {
+      if (opts.allowRoot) return real;
+      throw new Error('拒绝操作工作区根目录');
+    }
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return real;
+  }
+  throw new Error('拒绝访问：路径超出已授权工作区');
+}
+
+async function assertAllowedRoot(root: string): Promise<string> {
+  return assertAllowedPath(root, { allowRoot: true });
+}
+
+function assertAppOrigin(event: IpcMainInvokeEvent): void {
+  const url = event.senderFrame?.url || '';
+  if (url.startsWith('file://')) return;
+  if (url.startsWith('http://localhost:5173/') || url.startsWith('http://127.0.0.1:5173/')) return;
+  throw new Error(`拒绝来自非应用页面的 IPC: ${url}`);
+}
+
 
 export interface IpcDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -46,37 +90,62 @@ export function registerIpc(deps: IpcDeps): void {
 }
 
 function registerDialogIpc(): void {
-  ipcMain.handle('dialog:openFolder', async () => {
+  ipcMain.handle('dialog:openFolder', async (event) => {
+    assertAppOrigin(event);
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
     if (result.canceled) return null;
-    return result.filePaths[0];
+    return allowRoot(result.filePaths[0]);
   });
 }
 
 function registerFileSystemIpc({ fileService }: IpcDeps): void {
-  ipcMain.handle('fs:readDirectory', (_, dirPath: string) => fileService.readDirectory(dirPath));
-  ipcMain.handle('fs:readFile', (_, filePath: string) => fileService.readFile(filePath));
-  ipcMain.handle('fs:writeFile', (_, filePath: string, content: string) =>
-    fileService.writeFile(filePath, content)
-  );
-  ipcMain.handle('fs:createFile', (_, filePath: string) => fileService.createFile(filePath));
-  ipcMain.handle('fs:createDirectory', (_, dirPath: string) => fileService.createDirectory(dirPath));
-  ipcMain.handle('fs:delete', (_, targetPath: string) => fileService.delete(targetPath));
-  ipcMain.handle('fs:rename', (_, oldPath: string, newPath: string) =>
-    fileService.rename(oldPath, newPath)
-  );
-  ipcMain.handle('fs:searchFiles', (_, rootPath: string, query: string) =>
-    fileService.searchFiles(rootPath, query)
-  );
-  ipcMain.handle('fs:findFiles', (_, rootPath: string, pattern: string) =>
-    fileService.findFiles(rootPath, pattern)
-  );
-  ipcMain.handle('fs:getFileInfo', (_, filePath: string) => fileService.getFileInfo(filePath));
-  ipcMain.handle('fs:readMultipleFiles', async (_, paths: string[]) => {
+  ipcMain.handle('fs:readDirectory', async (event, dirPath: string) => {
+    assertAppOrigin(event);
+    return fileService.readDirectory(await assertAllowedRoot(dirPath));
+  });
+  ipcMain.handle('fs:readFile', async (event, filePath: string) => {
+    assertAppOrigin(event);
+    return fileService.readFile(await assertAllowedPath(filePath));
+  });
+  ipcMain.handle('fs:writeFile', async (event, filePath: string, content: string) => {
+    assertAppOrigin(event);
+    return fileService.writeFile(await assertAllowedPath(filePath), content);
+  });
+  ipcMain.handle('fs:createFile', async (event, filePath: string) => {
+    assertAppOrigin(event);
+    return fileService.createFile(await assertAllowedPath(filePath));
+  });
+  ipcMain.handle('fs:createDirectory', async (event, dirPath: string) => {
+    assertAppOrigin(event);
+    return fileService.createDirectory(await assertAllowedPath(dirPath, { allowRoot: false }));
+  });
+  ipcMain.handle('fs:delete', async (event, targetPath: string) => {
+    assertAppOrigin(event);
+    return fileService.delete(await assertAllowedPath(targetPath));
+  });
+  ipcMain.handle('fs:rename', async (event, oldPath: string, newPath: string) => {
+    assertAppOrigin(event);
+    return fileService.rename(await assertAllowedPath(oldPath), await assertAllowedPath(newPath));
+  });
+  ipcMain.handle('fs:searchFiles', async (event, rootPath: string, query: string) => {
+    assertAppOrigin(event);
+    return fileService.searchFiles(await assertAllowedRoot(rootPath), query);
+  });
+  ipcMain.handle('fs:findFiles', async (event, rootPath: string, pattern: string) => {
+    assertAppOrigin(event);
+    return fileService.findFiles(await assertAllowedRoot(rootPath), pattern);
+  });
+  ipcMain.handle('fs:getFileInfo', async (event, filePath: string) => {
+    assertAppOrigin(event);
+    return fileService.getFileInfo(await assertAllowedPath(filePath));
+  });
+  ipcMain.handle('fs:readMultipleFiles', async (event, paths: string[]) => {
+    assertAppOrigin(event);
     const results: Record<string, string> = {};
-    for (const p of paths) {
+    for (const p of paths.slice(0, 20)) {
       try {
-        results[p] = await fileService.readFile(p);
+        const safe = await assertAllowedPath(p);
+        results[p] = await fileService.readFile(safe);
       } catch {
         results[p] = `[读取失败：${p}]`;
       }
@@ -86,34 +155,47 @@ function registerFileSystemIpc({ fileService }: IpcDeps): void {
 }
 
 function registerTerminalIpc({ terminalService, getMainWindow }: IpcDeps): void {
-  ipcMain.handle('terminal:create', (_, cwd: string) => {
+  ipcMain.handle('terminal:create', async (event, cwd: string) => {
+    assertAppOrigin(event);
     const win = getMainWindow();
     if (!win) return null;
-    return terminalService.create(cwd, win);
+    return terminalService.create(await assertAllowedRoot(cwd), win);
   });
-  ipcMain.handle('terminal:write', (_, id: string, data: string) => terminalService.write(id, data));
-  ipcMain.handle('terminal:resize', (_, id: string, cols: number, rows: number) =>
-    terminalService.resize(id, cols, rows)
-  );
-  ipcMain.handle('terminal:close', (_, id: string) => terminalService.close(id));
-  ipcMain.handle('terminal:runCommand', (_, cwd: string, command: string, timeoutMs?: number) =>
-    terminalService.runCommand(cwd, command, timeoutMs)
-  );
-  ipcMain.handle('terminal:runBackgroundCommand', (_, cwd: string, command: string) =>
-    terminalService.startBackgroundCommand(cwd, command)
-  );
-  ipcMain.handle('terminal:getBackgroundOutput', (_, id: string) =>
-    terminalService.getBackgroundOutput(id)
-  );
-  ipcMain.handle('terminal:killBackgroundCommand', (_, id: string) =>
-    terminalService.killBackgroundCommand(id)
-  );
+  ipcMain.handle('terminal:write', (event, id: string, data: string) => {
+    assertAppOrigin(event);
+    return terminalService.write(id, data);
+  });
+  ipcMain.handle('terminal:resize', (event, id: string, cols: number, rows: number) => {
+    assertAppOrigin(event);
+    return terminalService.resize(id, cols, rows);
+  });
+  ipcMain.handle('terminal:close', (event, id: string) => {
+    assertAppOrigin(event);
+    return terminalService.close(id);
+  });
+  ipcMain.handle('terminal:runCommand', async (event, cwd: string, command: string, timeoutMs?: number) => {
+    assertAppOrigin(event);
+    return terminalService.runCommand(await assertAllowedRoot(cwd), command, timeoutMs);
+  });
+  ipcMain.handle('terminal:runBackgroundCommand', async (event, cwd: string, command: string) => {
+    assertAppOrigin(event);
+    return terminalService.startBackgroundCommand(await assertAllowedRoot(cwd), command);
+  });
+  ipcMain.handle('terminal:getBackgroundOutput', (event, id: string) => {
+    assertAppOrigin(event);
+    return terminalService.getBackgroundOutput(id);
+  });
+  ipcMain.handle('terminal:killBackgroundCommand', (event, id: string) => {
+    assertAppOrigin(event);
+    return terminalService.killBackgroundCommand(id);
+  });
 }
 
 function registerStoreIpc({ storeService }: IpcDeps): void {
-  ipcMain.handle('store:get', (_, key: string) => storeService.get(key));
-  ipcMain.handle('store:set', (_, key: string, value: unknown) => storeService.set(key, value));
-  ipcMain.handle('store:encryptAndStore', (_, key: string, value: string) => {
+  ipcMain.handle('store:get', (event, key: string) => { assertAppOrigin(event); return storeService.get(key); });
+  ipcMain.handle('store:set', (event, key: string, value: unknown) => { assertAppOrigin(event); return storeService.set(key, value); });
+  ipcMain.handle('store:encryptAndStore', (event, key: string, value: string) => {
+    assertAppOrigin(event);
     if (safeStorage.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(value);
       storeService.set(key, encrypted.toString('base64'));
@@ -121,7 +203,9 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
     }
     return false;
   });
-  ipcMain.handle('store:decryptAndGet', (_, key: string) => {
+  ipcMain.handle('store:decryptAndGet', (event, key: string) => {
+    assertAppOrigin(event);
+    if (key !== 'github_token') throw new Error('拒绝读取通用 secret');
     const encrypted = storeService.get(key) as string | undefined;
     if (!encrypted) return null;
     if (safeStorage.isEncryptionAvailable()) {
@@ -160,37 +244,48 @@ function registerAIIpc({ aiService }: IpcDeps): void {
 }
 
 function registerGitIpc({ gitService }: IpcDeps): void {
-  ipcMain.handle('git:status', (_, cwd: string) => gitService.status(cwd));
-  ipcMain.handle('git:diff', (_, cwd: string, staged?: boolean, filePath?: string) =>
-    gitService.diff(cwd, staged, filePath)
-  );
-  ipcMain.handle('git:log', (_, cwd: string, count?: number) => gitService.log(cwd, count));
-  ipcMain.handle('git:stage', (_, cwd: string, files: string[]) => gitService.stage(cwd, files));
-  ipcMain.handle('git:unstage', (_, cwd: string, files: string[]) => gitService.unstage(cwd, files));
-  ipcMain.handle('git:stageAll', (_, cwd: string) => gitService.stageAll(cwd));
-  ipcMain.handle('git:commit', (_, cwd: string, message: string) => gitService.commit(cwd, message));
-  ipcMain.handle('git:push', (_, cwd: string, remote?: string, branch?: string) =>
-    gitService.push(cwd, remote, branch)
-  );
-  ipcMain.handle('git:pull', (_, cwd: string, remote?: string, branch?: string) =>
-    gitService.pull(cwd, remote, branch)
-  );
-  ipcMain.handle('git:branchList', (_, cwd: string) => gitService.branchList(cwd));
-  ipcMain.handle('git:branchSwitch', (_, cwd: string, name: string) => gitService.branchSwitch(cwd, name));
-  ipcMain.handle('git:branchCreate', (_, cwd: string, name: string) => gitService.branchCreate(cwd, name));
-  ipcMain.handle('git:currentBranch', (_, cwd: string) => gitService.currentBranch(cwd));
-  ipcMain.handle('git:worktreeAdd', (_, cwd: string, p: string, name: string, base?: string) =>
-    gitService.worktreeAdd(cwd, p, name, base)
-  );
-  ipcMain.handle('git:worktreeList', (_, cwd: string) => gitService.worktreeList(cwd));
-  ipcMain.handle('git:worktreeRemove', (_, cwd: string, p: string) => gitService.worktreeRemove(cwd, p));
-  ipcMain.handle('git:worktreePrune', (_, cwd: string) => gitService.worktreePrune(cwd));
-  ipcMain.handle('git:worktreeMerge', (_, cwd: string, sourceBranch: string, method: string) =>
-    gitService.worktreeMerge(cwd, sourceBranch, method as any)
-  );
-  ipcMain.handle('git:worktreeMergeDiff', (_, cwd: string, baseBranch: string, headBranch: string) =>
-    gitService.worktreeMergeDiff(cwd, baseBranch, headBranch)
-  );
+  ipcMain.handle('git:status', async (event, cwd: string) => { assertAppOrigin(event); return gitService.status(await assertAllowedRoot(cwd)); });
+  ipcMain.handle('git:diff', async (event, cwd: string, staged?: boolean, filePath?: string) => {
+    assertAppOrigin(event);
+    const safeCwd = await assertAllowedRoot(cwd);
+    const safeFile = filePath ? await assertAllowedPath(filePath) : undefined;
+    return gitService.diff(safeCwd, staged, safeFile);
+  });
+  ipcMain.handle('git:log', async (event, cwd: string, count?: number) => { assertAppOrigin(event); return gitService.log(await assertAllowedRoot(cwd), count); });
+  ipcMain.handle('git:stage', async (event, cwd: string, files: string[]) => { assertAppOrigin(event); return gitService.stage(await assertAllowedRoot(cwd), files); });
+  ipcMain.handle('git:unstage', async (event, cwd: string, files: string[]) => { assertAppOrigin(event); return gitService.unstage(await assertAllowedRoot(cwd), files); });
+  ipcMain.handle('git:stageAll', async (event, cwd: string) => { assertAppOrigin(event); return gitService.stageAll(await assertAllowedRoot(cwd)); });
+  ipcMain.handle('git:commit', async (event, cwd: string, message: string) => { assertAppOrigin(event); return gitService.commit(await assertAllowedRoot(cwd), message); });
+  ipcMain.handle('git:push', async (event, cwd: string, remote?: string, branch?: string) => {
+    assertAppOrigin(event);
+    return gitService.push(await assertAllowedRoot(cwd), remote, branch);
+  });
+  ipcMain.handle('git:pull', async (event, cwd: string, remote?: string, branch?: string) => {
+    assertAppOrigin(event);
+    return gitService.pull(await assertAllowedRoot(cwd), remote, branch);
+  });
+  ipcMain.handle('git:branchList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.branchList(await assertAllowedRoot(cwd)); });
+  ipcMain.handle('git:branchSwitch', async (event, cwd: string, name: string) => { assertAppOrigin(event); return gitService.branchSwitch(await assertAllowedRoot(cwd), name); });
+  ipcMain.handle('git:branchCreate', async (event, cwd: string, name: string) => { assertAppOrigin(event); return gitService.branchCreate(await assertAllowedRoot(cwd), name); });
+  ipcMain.handle('git:currentBranch', async (event, cwd: string) => { assertAppOrigin(event); return gitService.currentBranch(await assertAllowedRoot(cwd)); });
+  ipcMain.handle('git:worktreeAdd', async (event, cwd: string, p: string, name: string, base?: string) => {
+    assertAppOrigin(event);
+    const safeCwd = await assertAllowedRoot(cwd);
+    const res = await gitService.worktreeAdd(safeCwd, path.resolve(p), name, base);
+    if (res.success && res.path) await allowRoot(res.path);
+    return res;
+  });
+  ipcMain.handle('git:worktreeList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreeList(await assertAllowedRoot(cwd)); });
+  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p)); });
+  ipcMain.handle('git:worktreePrune', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreePrune(await assertAllowedRoot(cwd)); });
+  ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string) => {
+    assertAppOrigin(event);
+    return gitService.worktreeMerge(await assertAllowedRoot(cwd), sourceBranch, method as any);
+  });
+  ipcMain.handle('git:worktreeMergeDiff', async (event, cwd: string, baseBranch: string, headBranch: string) => {
+    assertAppOrigin(event);
+    return gitService.worktreeMergeDiff(await assertAllowedRoot(cwd), baseBranch, headBranch);
+  });
 }
 
 function registerWebIpc({ webService }: IpcDeps): void {
@@ -260,9 +355,9 @@ function registerGitHubIpc({ githubService }: IpcDeps): void {
 }
 
 function registerAnalysisIpc({ analysisService }: IpcDeps): void {
-  ipcMain.handle('lint:run', (_, cwd: string, filePath?: string) => analysisService.runLint(cwd, filePath));
-  ipcMain.handle('lint:check', (_, cwd: string, files?: string[]) => analysisService.checkLint(cwd, files));
-  ipcMain.handle('symbols:extract', (_, filePath: string) => analysisService.extractSymbols(filePath));
+  ipcMain.handle('lint:run', async (event, cwd: string, filePath?: string) => { assertAppOrigin(event); return analysisService.runLint(await assertAllowedRoot(cwd), filePath ? await assertAllowedPath(filePath) : undefined); });
+  ipcMain.handle('lint:check', async (event, cwd: string, files?: string[]) => { assertAppOrigin(event); return analysisService.checkLint(await assertAllowedRoot(cwd), files ? await Promise.all(files.map((f) => assertAllowedPath(f))) : undefined); });
+  ipcMain.handle('symbols:extract', async (event, filePath: string) => { assertAppOrigin(event); return analysisService.extractSymbols(await assertAllowedPath(filePath)); });
 }
 
 function registerContextIpc({ storeService }: IpcDeps): void {
@@ -270,7 +365,8 @@ function registerContextIpc({ storeService }: IpcDeps): void {
   const readContextStore = (): Record<string, string> =>
     (storeService.get(CONTEXT_KEY) as Record<string, string>) || {};
 
-  ipcMain.handle('context:save', (_, key: string, content: string, merge?: boolean) => {
+  ipcMain.handle('context:save', (event, key: string, content: string, merge?: boolean) => {
+    assertAppOrigin(event);
     const store = readContextStore();
     if (merge && store[key]) {
       store[key] = store[key] + '\n\n' + content;
@@ -279,14 +375,22 @@ function registerContextIpc({ storeService }: IpcDeps): void {
     }
     storeService.set(CONTEXT_KEY, store);
   });
-  ipcMain.handle('context:load', (_, key: string) => readContextStore()[key] || null);
-  ipcMain.handle('context:list', () => Object.keys(readContextStore()));
+  ipcMain.handle('context:load', (event, key: string) => {
+    assertAppOrigin(event);
+    return readContextStore()[key] || null;
+  });
+  ipcMain.handle('context:list', (event) => {
+    assertAppOrigin(event);
+    return Object.keys(readContextStore());
+  });
 }
 
 function registerRulesIpc(): void {
   // Load project-level agent rules (like Cursor's .cursorrules / AGENTS.md).
   // The first existing file wins; content is appended to the agent system prompt.
-  ipcMain.handle('rules:load', async (_, root: string) => {
+  ipcMain.handle('rules:load', async (event, root: string) => {
+    assertAppOrigin(event);
+    const safeRoot = await assertAllowedRoot(root);
     const candidates = [
       'AGENTS.md',
       '.cursorrules',
@@ -296,7 +400,7 @@ function registerRulesIpc(): void {
     ];
     for (const rel of candidates) {
       try {
-        const content = await fs.readFile(path.join(root, rel), 'utf-8');
+        const content = await fs.readFile(path.join(safeRoot, rel), 'utf-8');
         if (content.trim()) return { file: rel, content: content.slice(0, 8000) };
       } catch {
         // not present, try next
@@ -307,14 +411,17 @@ function registerRulesIpc(): void {
 }
 
 function registerCodebaseIpc({ codebaseSearchService }: IpcDeps): void {
-  ipcMain.handle('codebase:search', (_, root: string, query: string, limit?: number) =>
-    codebaseSearchService.search(root, query, limit)
-  );
-  ipcMain.handle('codebase:reindex', (_, root: string) => codebaseSearchService.reindex(root));
-  ipcMain.handle('codeintel:definition', (_, root: string, name: string) =>
-    codebaseSearchService.findDefinition(root, name)
-  );
-  ipcMain.handle('codeintel:references', (_, root: string, name: string) =>
-    codebaseSearchService.findReferences(root, name)
-  );
+  ipcMain.handle('codebase:search', async (event, root: string, query: string, limit?: number) => {
+    assertAppOrigin(event);
+    return codebaseSearchService.search(await assertAllowedRoot(root), query, limit);
+  });
+  ipcMain.handle('codebase:reindex', async (event, root: string) => { assertAppOrigin(event); return codebaseSearchService.reindex(await assertAllowedRoot(root)); });
+  ipcMain.handle('codeintel:definition', async (event, root: string, name: string) => {
+    assertAppOrigin(event);
+    return codebaseSearchService.findDefinition(await assertAllowedRoot(root), name);
+  });
+  ipcMain.handle('codeintel:references', async (event, root: string, name: string) => {
+    assertAppOrigin(event);
+    return codebaseSearchService.findReferences(await assertAllowedRoot(root), name);
+  });
 }

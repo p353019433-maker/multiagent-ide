@@ -2,9 +2,12 @@
   "name": "ai-code-ide",
   "version": "0.1.0",
   "description": "AI-powered code editor with Agent mode and multi-provider LLM support",
-  "main": "dist/main/index.js",
+  "engines": {
+    "node": ">=20 <26"
+  },
+  "main": "dist/main/main/index.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "npm run build:main && concurrently \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc -p tsconfig.main.json && vite build && electron-builder",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
@@ -12,7 +15,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "tsc -p tsconfig.main.json --noEmit && vite build --mode production"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -53,7 +56,10 @@
     "appId": "com.aicode.ide",
     "productName": "AI Code IDE",
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "!dist/**/*.d.ts",
+      "!dist/**/*.tsbuildinfo",
+      "!dist/**/*.test.js"
     ],
     "directories": {
       "output": "release"
