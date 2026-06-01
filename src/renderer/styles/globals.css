@@ -8,8 +8,8 @@
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #09090b;
-  color: #e4e4e7;
+  background: #1e1f22;
+  color: #e8eaed;
   overflow: hidden;
   user-select: none;
 }
@@ -53,7 +53,7 @@ body {
 }
 .resize-handle:hover,
 .resize-handle.dragging {
-  background: #6366f1; /* editor-accent */
+  background: #8ab4f8; /* editor-accent */
 }
 .resize-handle.w-\[3px\] {
   cursor: col-resize;
@@ -79,7 +79,7 @@ body {
 .streaming-cursor::after {
   content: '▋';
   animation: blink 0.8s step-end infinite;
-  color: #6366f1; /* editor-accent */
+  color: #8ab4f8; /* editor-accent */
 }
 
 /* Glassmorphism utility */

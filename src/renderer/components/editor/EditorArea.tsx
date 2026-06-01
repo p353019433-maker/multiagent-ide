@@ -33,26 +33,26 @@ export default function EditorArea() {
 
       monacoRef.current = monaco;
 
-      // Define custom Aura Dark theme
+      // Define custom Aura Dark theme (Google Dark variant)
       monaco.editor.defineTheme('aura-dark', {
         base: 'vs-dark',
         inherit: true,
         rules: [
-          { background: '09090b' },
-          { token: 'comment', fontStyle: 'italic', foreground: '6272a4' },
-          { token: 'keyword', foreground: 'ff79c6' },
-          { token: 'string', foreground: 'f1fa8c' },
-          { token: 'function', foreground: '50fa7b' },
-          { token: 'variable', foreground: 'f8f8f2' },
-          { token: 'number', foreground: 'bd93f9' },
-          { token: 'type', foreground: '8be9fd' },
+          { background: '1e1f22' },
+          { token: 'comment', foreground: '9aa0a6' },
+          { token: 'keyword', foreground: '8ab4f8' },
+          { token: 'string', foreground: 'fde293' },
+          { token: 'function', foreground: '81c995' },
+          { token: 'variable', foreground: 'e8eaed' },
+          { token: 'number', foreground: 'f28b82' },
+          { token: 'type', foreground: '8ab4f8' },
         ],
         colors: {
-          'editor.background': '#09090b',
-          'editor.foreground': '#f8f8f2',
-          'editor.lineHighlightBackground': '#ffffff0a',
-          'editorLineNumber.foreground': '#6272a4',
-          'editor.selectionBackground': '#44475a',
+          'editor.background': '#1e1f22',
+          'editor.foreground': '#e8eaed',
+          'editor.lineHighlightBackground': '#ffffff08',
+          'editorLineNumber.foreground': '#5f6368',
+          'editor.selectionBackground': '#4285f444',
           'editorIndentGuide.background': '#ffffff10',
           'editorIndentGuide.activeBackground': '#ffffff30',
         },

@@ -140,7 +140,7 @@ export default function MultiAgentPanel() {
                 key={session.id}
                 className={`p-3 border rounded-xl flex flex-col gap-2 transition-all glass-panel ${
                 session.status === 'running' 
-                  ? 'bg-editor-active/50 border-editor-accent/50 animate-glow-pulse' 
+                  ? 'bg-blue-900/10 border-blue-500/30' 
                   : session.status === 'completed'
                   ? 'bg-green-900/10 border-green-700/30'
                   : session.status === 'failed'
