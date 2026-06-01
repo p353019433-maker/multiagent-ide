@@ -60,7 +60,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-editor-sidebar">
+    <div className="h-full flex flex-col bg-editor-sidebar/50 backdrop-blur-md">
       {/* Header with tab switcher */}
       <div className="px-3 pt-2">
         <div className="flex items-center justify-between">
@@ -72,14 +72,14 @@ export default function Sidebar() {
               <>
                 <button
                   onClick={handleNewFile}
-                  className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+                  className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
                   title="新建文件"
                 >
                   📄
                 </button>
                 <button
                   onClick={handleNewFolder}
-                  className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+                  className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
                   title="新建文件夹"
                 >
                   📁
@@ -89,7 +89,7 @@ export default function Sidebar() {
             {activeTab === 'explorer' && (
               <button
                 onClick={openFolder}
-                className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+                className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
                 title="打开文件夹"
               >
                 📂
@@ -129,7 +129,7 @@ export default function Sidebar() {
               <p className="text-sm text-gray-500 mb-3">未打开文件夹</p>
               <button
                 onClick={openFolder}
-                className="text-xs px-3 py-1.5 bg-editor-accent text-white rounded hover:opacity-90"
+                className="text-xs px-3 py-1.5 bg-editor-accent text-white rounded-xl hover:opacity-90"
               >
                 打开文件夹
               </button>

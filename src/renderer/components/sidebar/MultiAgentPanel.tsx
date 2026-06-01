@@ -82,10 +82,10 @@ export default function MultiAgentPanel() {
       <h2 className="text-lg font-semibold mb-4 text-white">🎯 多 Agent 并行</h2>
 
       {/* Orchestration Form */}
-      <div className="mb-6 p-4 bg-editor-sidebar rounded-lg border border-editor-border">
+      <div className="mb-6 p-4 bg-editor-sidebar rounded-xl border border-editor-border">
         <label className="block text-sm text-gray-400 mb-2">大目标</label>
         <textarea
-          className="w-full bg-editor-bg border border-editor-border rounded px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-editor-accent"
+          className="w-full bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-editor-accent"
           rows={3}
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
@@ -96,7 +96,7 @@ export default function MultiAgentPanel() {
         {subTasks.map((task, idx) => (
           <div key={idx} className="flex gap-2 mb-2">
             <input
-              className="flex-1 bg-editor-bg border border-editor-border rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-editor-accent"
+              className="flex-1 bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-editor-accent"
               value={task}
               onChange={(e) => handleSubTaskChange(idx, e.target.value)}
               placeholder={`子任务 ${idx + 1}`}
@@ -120,7 +120,7 @@ export default function MultiAgentPanel() {
         </button>
 
         <button
-          className="w-full bg-editor-accent hover:bg-opacity-80 text-white font-medium py-2 rounded transition"
+          className="w-full bg-editor-accent hover:bg-opacity-80 text-white font-medium py-2 rounded-xl transition"
           onClick={handleOrchestrate}
           disabled={isOrchestrating || !goal.trim() || subTasks.filter((t) => t.trim()).length === 0}
         >
@@ -138,19 +138,27 @@ export default function MultiAgentPanel() {
             {orchestrationSessions.map((session) => (
               <div
                 key={session.id}
-                className="p-3 bg-editor-bg rounded-lg border border-editor-border"
+                className={`p-3 border rounded-xl flex flex-col gap-2 transition-all glass-panel ${
+                session.status === 'running' 
+                  ? 'bg-editor-active/50 border-editor-accent/50 animate-glow-pulse' 
+                  : session.status === 'completed'
+                  ? 'bg-green-900/10 border-green-700/30'
+                  : session.status === 'failed'
+                  ? 'bg-red-900/10 border-red-700/30'
+                  : 'bg-editor-hover/50 border-editor-border/50'
+              }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-white truncate flex-1">
                     {session.goal}
                   </span>
                   <span
-                    className={`text-xs px-2 py-0.5 rounded ${
+                    className={`text-xs px-2 py-0.5 rounded-xl ${
                       session.status === 'completed'
                         ? 'bg-green-500/20 text-green-400'
                         : session.status === 'failed'
                         ? 'bg-red-500/20 text-red-400'
-                        : 'bg-blue-500/20 text-blue-400'
+                        : 'bg-blue-500/20 text-blue-400 animate-pulse'
                     }`}
                   >
                     {session.status === 'completed' ? '✅ 完成' : session.status === 'failed' ? '❌ 失败' : '🔄 运行中'}
@@ -193,13 +201,13 @@ export default function MultiAgentPanel() {
                 {session.status === 'completed' && (
                   <div className="flex gap-2">
                     <button
-                      className="flex-1 text-xs bg-green-600/20 text-green-400 hover:bg-green-600/30 py-1.5 rounded transition"
+                      className="flex-1 text-xs bg-green-600/20 text-green-400 hover:bg-green-600/30 py-1.5 rounded-xl transition"
                       onClick={() => handleMergeSession(session)}
                     >
                       ⥄ 合并
                     </button>
                     <button
-                      className="flex-1 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 py-1.5 rounded transition"
+                      className="flex-1 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 py-1.5 rounded-xl transition"
                       onClick={() => handleCleanupSession(session)}
                     >
                       🗑 清理

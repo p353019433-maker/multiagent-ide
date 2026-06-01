@@ -32,8 +32,34 @@ export default function EditorArea() {
       if (disposed || !containerRef.current || editorRef.current) return;
 
       monacoRef.current = monaco;
+
+      // Define custom Aura Dark theme
+      monaco.editor.defineTheme('aura-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { background: '09090b' },
+          { token: 'comment', fontStyle: 'italic', foreground: '6272a4' },
+          { token: 'keyword', foreground: 'ff79c6' },
+          { token: 'string', foreground: 'f1fa8c' },
+          { token: 'function', foreground: '50fa7b' },
+          { token: 'variable', foreground: 'f8f8f2' },
+          { token: 'number', foreground: 'bd93f9' },
+          { token: 'type', foreground: '8be9fd' },
+        ],
+        colors: {
+          'editor.background': '#09090b',
+          'editor.foreground': '#f8f8f2',
+          'editor.lineHighlightBackground': '#ffffff0a',
+          'editorLineNumber.foreground': '#6272a4',
+          'editor.selectionBackground': '#44475a',
+          'editorIndentGuide.background': '#ffffff10',
+          'editorIndentGuide.activeBackground': '#ffffff30',
+        },
+      });
+
       const editor = monaco.editor.create(containerRef.current, {
-        theme: 'vs-dark',
+        theme: 'aura-dark',
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         minimap: { enabled: true },
