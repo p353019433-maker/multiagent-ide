@@ -75,8 +75,7 @@ export default function SessionTabs({
         mergeTarget.worktree.baseBranch
       );
       if (!res.success) throw new Error(res.message);
-      await window.api.git.push(workspaceRoot!, 'origin', mergeTarget.worktree.baseBranch);
-      alert(`合并成功：${res.message}\n已推送 ${mergeTarget.worktree.baseBranch} 到 origin`);
+      alert(`合并成功：${res.message}\n已保留为本地改动；确认无误后再手动 push 到远端。`);
       setMergeTarget(null);
     } catch (e: any) {
       setMergeError(e.message || String(e));

@@ -1,9 +1,10 @@
 {
   "name": "ai-code-ide",
   "version": "0.1.0",
-  "description": "AI-powered code editor with Agent mode and multi-provider LLM support",
+  "description": "Local-first AI code editor for personal desktop use with Agent mode and multi-provider LLM support",
+  "private": true,
   "engines": {
-    "node": ">=20 <26"
+    "node": ">=20 <27"
   },
   "main": "dist/main/main/index.js",
   "scripts": {
