@@ -14,7 +14,7 @@ const ROOT = '/wt';
 let files: Map<string, string>;
 
 /** Scripted sequence of model responses, consumed one per iteration. */
-function installApi(responses: { content: string; toolCalls?: ToolCall[]; finishReason: string }[]) {
+function installApi(responses: { content: string; toolCalls?: ToolCall[]; finishReason: string }[], extraApi: Record<string, unknown> = {}) {
   let i = 0;
   const chat = vi.fn(async () => responses[Math.min(i++, responses.length - 1)]);
   const fs = {
@@ -24,7 +24,7 @@ function installApi(responses: { content: string; toolCalls?: ToolCall[]; finish
     }),
     writeFile: vi.fn(async (p: string, c: string) => { files.set(p, c); }),
   };
-  (globalThis as any).window = { api: { ai: { chat }, fs }, dispatchEvent: vi.fn() };
+  (globalThis as any).window = { api: { ai: { chat }, fs, ...extraApi }, dispatchEvent: vi.fn() };
   return { chat, fs };
 }
 
@@ -69,13 +69,21 @@ describe('runHeadlessAgent', () => {
     expect(res.content).toBe('处理了错误');
   });
 
-  it('auto-approves writes (no human gate) inside the worktree', async () => {
-    installApi([
-      { content: '', toolCalls: [tc('write_file', { path: 'b.ts', content: 'Y' })], finishReason: 'tool_calls' },
-      { content: 'ok', finishReason: 'stop' },
-    ]);
-    await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写' });
-    expect(files.get(`${ROOT}/b.ts`)).toBe('Y'); // persisted without any approval prompt
+  it('auto-approves workspace writes but rejects shell commands in unattended mode', async () => {
+    const terminal = { runCommand: vi.fn(async () => ({ stdout: 'bad', stderr: '', exitCode: 0 })) };
+
+    installApi(
+      [
+        { content: '', toolCalls: [tc('write_file', { path: 'b.ts', content: 'Y' })], finishReason: 'tool_calls' },
+        { content: '', toolCalls: [tc('run_command', { command: 'touch /tmp/owned' })], finishReason: 'tool_calls' },
+        { content: 'ok', finishReason: 'stop' },
+      ],
+      { terminal }
+    );
+    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写并跑命令' });
+    expect(files.get(`${ROOT}/b.ts`)).toBe('Y');
+    expect(res.content).toBe('ok');
+    expect(terminal.runCommand).not.toHaveBeenCalled();
   });
 
   it('stops and notes when the agent repeats identical calls with no progress', async () => {

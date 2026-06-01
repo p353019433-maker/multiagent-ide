@@ -24,6 +24,34 @@ import { resolveWorkspacePath, classifyToolError } from './agentUtils';
 
 const MAX_ITERATIONS = 20;
 
+const HEADLESS_ALLOWED_TOOLS = new Set([
+  // Read-only workspace/file/code-intel tools.
+  'read_file',
+  'list_directory',
+  'search_files',
+  'find_files',
+  'get_file_info',
+  'read_lints',
+  'extract_symbols',
+  'codebase_search',
+  'find_definition',
+  'find_references',
+  'git_status',
+  'git_diff',
+  'git_log',
+  'git_branch_list',
+  'git_merge_diff',
+  // Workspace-local writes. Still path-fenced by resolveWorkspacePath + main IPC.
+  'write_file',
+  'replace_in_file',
+]);
+
+function assertHeadlessToolAllowed(tc: ToolCall): void {
+  if (!HEADLESS_ALLOWED_TOOLS.has(tc.name)) {
+    throw new Error(`后台 Agent 禁止调用工具 ${tc.name}：无人值守模式只允许读、工作区写入和只读 Git 操作`);
+  }
+}
+
 export interface HeadlessAgentResult {
   /** The agent's final assistant text. */
   content: string;
@@ -51,6 +79,7 @@ async function runToolWithRetry(tc: ToolCall, ctx: ToolContext, maxAttempts = 3)
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      assertHeadlessToolAllowed(tc);
       return await executeSingleTool(tc, ctx);
     } catch (err) {
       lastErr = err;
@@ -74,9 +103,13 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
   const ctx: ToolContext = {
     rootPath: workspaceRoot,
     resolvePath: (p: string) => resolveWorkspacePath(workspaceRoot, p),
-    // Auto-approve: the agent is sandboxed to its own worktree and runs
-    // unattended. Path fencing in the main process still applies on every call.
-    gateAction: async () => true,
+    // Headless agents are unattended. They may write files inside their own
+    // worktree, but they must not auto-approve shell commands, remote writes, or
+    // Git history mutations. Tool allowlisting above is the hard boundary.
+    gateAction: async (_toolCallId, _label, kind, _before, _after, _action, opts) => {
+      if (kind === 'write' && !opts?.dangerous) return true;
+      return false;
+    },
     writeFileTracked: async (filePath: string, content: string) => {
       await window.api.fs.writeFile(filePath, content);
       editedFiles.add(filePath);

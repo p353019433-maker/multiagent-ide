@@ -53,6 +53,18 @@ async function assertAllowedRoot(root: string): Promise<string> {
   return assertAllowedPath(root, { allowRoot: true });
 }
 
+async function assertAllowedWorktreePath(repoRoot: string, requestedPath: string): Promise<string> {
+  const repoParent = path.dirname(repoRoot);
+  const repoBase = path.basename(repoRoot);
+  const allowedParent = await canonical(path.join(repoParent, `${repoBase}_wt`));
+  const real = await canonical(requestedPath);
+  const rel = path.relative(allowedParent, real);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`拒绝创建 worktree：路径必须位于 ${allowedParent} 内`);
+  }
+  return real;
+}
+
 function assertAppOrigin(event: IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url || '';
   if (url.startsWith('file://')) return;
@@ -60,6 +72,38 @@ function assertAppOrigin(event: IpcMainInvokeEvent): void {
   throw new Error(`拒绝来自非应用页面的 IPC: ${url}`);
 }
 
+
+const ALLOWED_STORE_KEYS = new Set([
+  'providers',
+  'activeProviderId',
+  'activeModel',
+  'approvalMode',
+  'embeddingConfig',
+  'rerankConfig',
+  'conversationIndex',
+]);
+
+function assertAllowedStoreKey(key: string): string {
+  if (ALLOWED_STORE_KEYS.has(key) || key.startsWith('conv:')) return key;
+  throw new Error(`拒绝访问 store key: ${key}`);
+}
+
+function assertAllowedSecretKey(key: string): string {
+  if (key === 'github_token' || key.startsWith('apiKey:')) return key;
+  throw new Error('拒绝访问通用 secret');
+}
+
+function assertSafeGitRef(ref: string, label: string): string {
+  if (!ref || ref.length > 200 || /[\0\n\r~^:?*[\\]/.test(ref) || ref.includes('..') || ref.endsWith('.lock')) {
+    throw new Error(`非法 ${label}: ${ref}`);
+  }
+  return ref;
+}
+
+function assertMergeMethod(method: string): 'merge' | 'squash' | 'rebase' {
+  if (method === 'merge' || method === 'squash' || method === 'rebase') return method;
+  throw new Error(`非法合并方式: ${method}`);
+}
 
 export interface IpcDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -192,21 +236,28 @@ function registerTerminalIpc({ terminalService, getMainWindow }: IpcDeps): void 
 }
 
 function registerStoreIpc({ storeService }: IpcDeps): void {
-  ipcMain.handle('store:get', (event, key: string) => { assertAppOrigin(event); return storeService.get(key); });
-  ipcMain.handle('store:set', (event, key: string, value: unknown) => { assertAppOrigin(event); return storeService.set(key, value); });
+  ipcMain.handle('store:get', (event, key: string) => {
+    assertAppOrigin(event);
+    return storeService.get(assertAllowedStoreKey(key));
+  });
+  ipcMain.handle('store:set', (event, key: string, value: unknown) => {
+    assertAppOrigin(event);
+    return storeService.set(assertAllowedStoreKey(key), value);
+  });
   ipcMain.handle('store:encryptAndStore', (event, key: string, value: string) => {
     assertAppOrigin(event);
+    const safeKey = assertAllowedSecretKey(key);
     if (safeStorage.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(value);
-      storeService.set(key, encrypted.toString('base64'));
+      storeService.set(safeKey, encrypted.toString('base64'));
       return true;
     }
     return false;
   });
   ipcMain.handle('store:decryptAndGet', (event, key: string) => {
     assertAppOrigin(event);
-    if (key !== 'github_token') throw new Error('拒绝读取通用 secret');
-    const encrypted = storeService.get(key) as string | undefined;
+    const safeKey = assertAllowedSecretKey(key);
+    const encrypted = storeService.get(safeKey) as string | undefined;
     if (!encrypted) return null;
     if (safeStorage.isEncryptionAvailable()) {
       return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
@@ -284,7 +335,8 @@ function registerGitIpc({ gitService }: IpcDeps): void {
   ipcMain.handle('git:worktreeAdd', async (event, cwd: string, p: string, name: string, base?: string) => {
     assertAppOrigin(event);
     const safeCwd = await assertAllowedRoot(cwd);
-    const res = await gitService.worktreeAdd(safeCwd, path.resolve(p), name, base);
+    const safePath = await assertAllowedWorktreePath(safeCwd, p);
+    const res = await gitService.worktreeAdd(safeCwd, safePath, name, base);
     if (res.success && res.path) await allowRoot(res.path);
     return res;
   });
@@ -308,11 +360,18 @@ function registerGitIpc({ gitService }: IpcDeps): void {
   ipcMain.handle('git:worktreePrune', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreePrune(await assertAllowedRoot(cwd)); });
   ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string, targetBranch?: string) => {
     assertAppOrigin(event);
-    return gitService.worktreeMerge(await assertAllowedRoot(cwd), sourceBranch, method as any, targetBranch);
+    const safeMethod = assertMergeMethod(method);
+    const safeSource = assertSafeGitRef(sourceBranch, 'sourceBranch');
+    const safeTarget = targetBranch ? assertSafeGitRef(targetBranch, 'targetBranch') : undefined;
+    return gitService.worktreeMerge(await assertAllowedRoot(cwd), safeSource, safeMethod, safeTarget);
   });
   ipcMain.handle('git:worktreeMergeDiff', async (event, cwd: string, baseBranch: string, headBranch: string) => {
     assertAppOrigin(event);
-    return gitService.worktreeMergeDiff(await assertAllowedRoot(cwd), baseBranch, headBranch);
+    return gitService.worktreeMergeDiff(
+      await assertAllowedRoot(cwd),
+      assertSafeGitRef(baseBranch, 'baseBranch'),
+      assertSafeGitRef(headBranch, 'headBranch')
+    );
   });
 }
 

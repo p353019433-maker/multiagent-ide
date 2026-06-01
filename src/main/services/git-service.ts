@@ -137,7 +137,8 @@ export class GitService {
       // 'junction' on Windows avoids the admin-privilege requirement of dir symlinks.
       const type = process.platform === 'win32' ? 'junction' : 'dir';
       await fs.symlink(src, dest, type);
-    } catch {
+    } catch (err) {
+      console.warn(`无法共享 node_modules 到 worktree ${worktreePath}:`, err);
       // Non-fatal: the worktree is still usable, deps just won't be shared.
     }
   }

@@ -101,20 +101,30 @@ export class IndexService {
   ): Promise<R> {
     try {
       return await new Promise<R>((resolve, reject) => {
+        let settled = false;
+        const finish = (fn: typeof resolve | typeof reject, value: any) => {
+          if (settled) return;
+          settled = true;
+          void worker.terminate();
+          fn(value);
+        };
         const worker = new Worker(path.join(__dirname, 'index-worker.js'), {
           workerData: { root, mode },
         });
         worker.once('message', (msg: any) => {
-          void worker.terminate();
           if (msg?.ok) {
-            resolve((mode === 'symbols' ? { symbols: msg.symbols, files: msg.files } : msg.chunks) as R);
+            finish(resolve, (mode === 'symbols' ? { symbols: msg.symbols, files: msg.files } : msg.chunks) as R);
           } else {
-            reject(new Error(msg?.error || 'index worker failed'));
+            finish(reject, new Error(msg?.error || 'index worker failed'));
           }
         });
         worker.once('error', (err) => {
-          void worker.terminate();
-          reject(err);
+          finish(reject, err);
+        });
+        worker.once('exit', (code) => {
+          if (!settled && code !== 0) {
+            finish(reject, new Error(`index worker exited with code ${code}`));
+          }
         });
       });
     } catch {
@@ -179,6 +189,7 @@ export class IndexService {
 
   private vectors: ChunkVector[] = [];
   private embeddedRoot: string | null = null;
+  private embeddedAt = 0;
   private buildingEmbeds = new Map<string, Promise<void>>();
 
   /**
@@ -195,6 +206,8 @@ export class IndexService {
     embed: (texts: string[]) => Promise<number[][]>,
     cacheFile: string
   ): Promise<void> {
+    const fresh = this.embeddedRoot === root && Date.now() - this.embeddedAt < 60_000;
+    if (fresh && this.vectors.length > 0) return;
     let promise = this.buildingEmbeds.get(root);
     if (promise) return promise;
     promise = this.buildEmbeddings(root, embed, cacheFile).finally(() => {
@@ -271,6 +284,7 @@ export class IndexService {
     }
 
     this.vectors = next;
+    this.embeddedAt = Date.now();
     await this.saveVectorCache(cacheFile, next);
   }
 
