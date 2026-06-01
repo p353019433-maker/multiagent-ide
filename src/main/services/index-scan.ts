@@ -135,7 +135,105 @@ function extractSymbolsTS(rel: string, content: string, ext: string): SymbolEntr
   return out;
 }
 
-/** Line-regex extraction for languages without an AST parser here. */
+/** Build a symbol, folding any container name into both the label and tokens. */
+function mkSym(rel: string, name: string, kind: string, line: number, container?: string): SymbolEntry {
+  return {
+    name: container ? `${container}.${name}` : name,
+    kind,
+    file: rel,
+    line,
+    tokens: container ? [...tokenize(container), ...tokenize(name)] : tokenize(name),
+  };
+}
+
+/**
+ * Indentation-aware Python extraction: methods are nested under their class
+ * (Class.method) via an indent stack, top-level defs stay functions.
+ */
+function pythonSymbols(rel: string, content: string): SymbolEntry[] {
+  const out: SymbolEntry[] = [];
+  const stack: { indent: number; qname: string }[] = [];
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^([ \t]*)(class|def|async\s+def)\s+(\w+)/);
+    if (!m) continue;
+    const indent = m[1].length;
+    const isClass = m[2] === 'class';
+    const name = m[3];
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const container = stack.length ? stack[stack.length - 1].qname : undefined;
+    if (isClass) {
+      const qname = container ? `${container}.${name}` : name;
+      out.push(mkSym(rel, name, 'class', i + 1, container));
+      stack.push({ indent, qname });
+    } else {
+      out.push(mkSym(rel, name, container ? 'method' : 'function', i + 1, container));
+    }
+  }
+  return out;
+}
+
+/** Go extraction: receiver methods become RecvType.Method; types tracked too. */
+function goSymbols(rel: string, content: string): SymbolEntry[] {
+  const out: SymbolEntry[] = [];
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let m: RegExpMatchArray | null;
+    if ((m = line.match(/^func\s*\(\s*\w+\s+\*?(\w+)\s*\)\s*(\w+)/))) {
+      out.push(mkSym(rel, m[2], 'method', i + 1, m[1]));
+    } else if ((m = line.match(/^func\s+(\w+)/))) {
+      out.push(mkSym(rel, m[1], 'function', i + 1));
+    } else if ((m = line.match(/^type\s+(\w+)\s+struct\b/))) {
+      out.push(mkSym(rel, m[1], 'class', i + 1));
+    } else if ((m = line.match(/^type\s+(\w+)\s+interface\b/))) {
+      out.push(mkSym(rel, m[1], 'interface', i + 1));
+    } else if ((m = line.match(/^type\s+(\w+)\s+\S/))) {
+      out.push(mkSym(rel, m[1], 'type', i + 1));
+    }
+  }
+  return out;
+}
+
+/**
+ * Rust extraction with brace tracking: fns inside `impl T { ... }` become
+ * T.method; structs/enums/traits/type-aliases are recorded at any depth.
+ */
+function rustSymbols(rel: string, content: string): SymbolEntry[] {
+  const out: SymbolEntry[] = [];
+  const impls: { implDepth: number; name: string }[] = [];
+  const lines = content.split('\n');
+  let depth = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const container = impls.length ? impls[impls.length - 1].name : undefined;
+
+    const implMatch = line.match(/^\s*impl\b[^{]*?(?:for\s+)?(\w+)/);
+    let m: RegExpMatchArray | null;
+    if (implMatch) {
+      // impl line itself isn't a symbol; container starts when its body opens.
+    } else if ((m = line.match(/^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)/))) {
+      out.push(mkSym(rel, m[1], container ? 'method' : 'function', i + 1, container));
+    } else if ((m = line.match(/^\s*(?:pub\s+)?struct\s+(\w+)/))) {
+      out.push(mkSym(rel, m[1], 'class', i + 1));
+    } else if ((m = line.match(/^\s*(?:pub\s+)?enum\s+(\w+)/))) {
+      out.push(mkSym(rel, m[1], 'enum', i + 1));
+    } else if ((m = line.match(/^\s*(?:pub\s+)?trait\s+(\w+)/))) {
+      out.push(mkSym(rel, m[1], 'interface', i + 1));
+    } else if ((m = line.match(/^\s*(?:pub\s+)?type\s+(\w+)/))) {
+      out.push(mkSym(rel, m[1], 'type', i + 1));
+    }
+
+    const opens = (line.match(/\{/g) || []).length;
+    const closes = (line.match(/\}/g) || []).length;
+    if (implMatch && opens > 0) impls.push({ implDepth: depth, name: implMatch[1] });
+    depth += opens - closes;
+    while (impls.length && depth <= impls[impls.length - 1].implDepth) impls.pop();
+  }
+  return out;
+}
+
+/** Line-regex extraction for languages without a structured parser here. */
 function extractSymbolsRegex(rel: string, content: string): SymbolEntry[] {
   const out: SymbolEntry[] = [];
   const lines = content.split('\n');
@@ -151,15 +249,20 @@ function extractSymbolsRegex(rel: string, content: string): SymbolEntry[] {
   return out;
 }
 
-/** Pick AST extraction for TS/JS, regex otherwise; AST failures fall back to regex. */
+/**
+ * Choose the best extractor per language: TS compiler AST for TS/JS, structure-
+ * aware line scanners (methods/containers/nesting) for Python/Go/Rust, and the
+ * simple regex for everything else. Any failure degrades to plain regex.
+ */
 export function extractSymbols(rel: string, content: string): SymbolEntry[] {
   const ext = path.extname(rel);
-  if (TS_EXTS.has(ext)) {
-    try {
-      return extractSymbolsTS(rel, content, ext);
-    } catch {
-      return extractSymbolsRegex(rel, content);
-    }
+  try {
+    if (TS_EXTS.has(ext)) return extractSymbolsTS(rel, content, ext);
+    if (ext === '.py') return pythonSymbols(rel, content);
+    if (ext === '.go') return goSymbols(rel, content);
+    if (ext === '.rs') return rustSymbols(rel, content);
+  } catch {
+    return extractSymbolsRegex(rel, content);
   }
   return extractSymbolsRegex(rel, content);
 }

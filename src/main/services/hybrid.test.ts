@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reciprocalRankFusion } from './hybrid';
+import { reciprocalRankFusion, parseRerankOrder } from './hybrid';
 
 const r = (key: string) => ({ key, item: { key } });
 
@@ -31,5 +31,30 @@ describe('reciprocalRankFusion', () => {
   it('handles empty lists', () => {
     expect(reciprocalRankFusion([])).toEqual([]);
     expect(reciprocalRankFusion([[], []])).toEqual([]);
+  });
+});
+
+describe('parseRerankOrder', () => {
+  it('parses a plain 0-based JSON array', () => {
+    expect(parseRerankOrder('[2,0,1]', 3)).toEqual([2, 0, 1]);
+  });
+
+  it('extracts the array from surrounding prose/markdown', () => {
+    expect(parseRerankOrder('Sure! The order is ```json\n[1, 0]\n``` done', 2)).toEqual([1, 0]);
+  });
+
+  it('shifts a 1-based response to 0-based', () => {
+    // values 1..3, no 0 → treated as 1-based
+    expect(parseRerankOrder('[1,3,2]', 3)).toEqual([0, 2, 1]);
+  });
+
+  it('drops out-of-range and duplicate indices', () => {
+    expect(parseRerankOrder('[0,0,9,1]', 3)).toEqual([0, 1]);
+  });
+
+  it('returns null when nothing parseable is present', () => {
+    expect(parseRerankOrder('no array here', 3)).toBeNull();
+    expect(parseRerankOrder('[]', 3)).toBeNull();
+    expect(parseRerankOrder('["a","b"]', 3)).toBeNull();
   });
 });

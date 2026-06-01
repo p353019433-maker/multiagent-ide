@@ -124,10 +124,34 @@ describe('scanSymbols — AST (TS/JS)', () => {
     expect(kindOf('View')).toBe('function');
   });
 
-  it('falls back to regex for non-TS/JS languages', async () => {
-    await write('m.py', 'def py_only():\n  pass');
+});
+
+describe('scanSymbols — structural (Python/Go/Rust)', () => {
+  it('nests Python methods under their class via indentation', async () => {
+    await write('m.py', ['class Animal:', '    def speak(self):', '        pass', '', 'def top():', '    pass'].join('\n'));
     const { symbols } = await scanSymbols(dir);
-    expect(symbols.find((s) => s.name === 'py_only')?.kind).toBe('function');
+    const kindOf = (n: string) => symbols.find((s) => s.name === n)?.kind;
+    expect(kindOf('Animal')).toBe('class');
+    expect(kindOf('Animal.speak')).toBe('method');
+    expect(kindOf('top')).toBe('function'); // dedented back to top level
+  });
+
+  it('maps Go receiver methods to RecvType.Method', async () => {
+    await write('m.go', ['type Server struct {}', 'func (s *Server) Start() {}', 'func Helper() {}'].join('\n'));
+    const { symbols } = await scanSymbols(dir);
+    const kindOf = (n: string) => symbols.find((s) => s.name === n)?.kind;
+    expect(kindOf('Server')).toBe('class');
+    expect(kindOf('Server.Start')).toBe('method');
+    expect(kindOf('Helper')).toBe('function');
+  });
+
+  it('tracks Rust impl blocks so fns become Type.method', async () => {
+    await write('m.rs', ['struct Point { x: i32 }', 'impl Point {', '    pub fn new() -> Self { Point { x: 0 } }', '}', 'fn free() {}'].join('\n'));
+    const { symbols } = await scanSymbols(dir);
+    const kindOf = (n: string) => symbols.find((s) => s.name === n)?.kind;
+    expect(kindOf('Point')).toBe('class');
+    expect(kindOf('Point.new')).toBe('method');
+    expect(kindOf('free')).toBe('function'); // outside the impl block
   });
 });
 
