@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run build:main && concurrently \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc -p tsconfig.main.json && vite build && electron-builder",
-    "build:renderer": "vite build",
+    "build:renderer": "vite build && node scripts/check-renderer-bundles.mjs",
     "build:main": "tsc -p tsconfig.main.json",
     "postinstall": "electron-rebuild",
     "preview": "vite preview",
@@ -29,7 +29,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
-    "react-syntax-highlighter": "^16.1.1",
+    "react-syntax-highlighter": "^15.6.6",
     "remark-gfm": "^4.0.0",
     "typescript": "^5.7.2",
     "uuid": "^11.0.3"
@@ -52,6 +52,11 @@
     "vite-plugin-monaco-editor": "^1.1.0",
     "vitest": "^2.1.9",
     "wait-on": "^8.0.1"
+  },
+  "overrides": {
+    "refractor": {
+      "prismjs": "1.30.0"
+    }
   },
   "build": {
     "appId": "com.aicode.ide",

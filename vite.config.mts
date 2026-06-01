@@ -85,9 +85,26 @@ export default defineConfig({
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,
-    // Monaco is the core editor and is lazy-loaded; keep the warning budget tied to that deliberate chunk.
-    chunkSizeWarningLimit: 3500,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
+      // Stub any missing refractor/lang/* files so react-syntax-highlighter's
+      // async language loader never throws at build time (npm dedupe can drop
+      // language files that were present during the original install).
+      plugins: [
+        {
+          name: 'stub-missing-refractor-lang',
+          resolveId(id) {
+            if (id.match(/^refractor\/lang\//)) return id;
+            return null;
+          },
+          load(id) {
+            if (id.startsWith('refractor/lang/')) {
+              return 'export default function() { return null; }';
+            }
+            return null;
+          },
+        },
+      ],
       output: {
         manualChunks,
       },

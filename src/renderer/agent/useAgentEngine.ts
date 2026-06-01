@@ -34,6 +34,15 @@ const MAX_ITERATIONS = 25;
 export function useAgentEngine(deps: AgentEngineDeps) {
   const { activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction, onFileChanged } = deps;
 
+  // Keep refs for values consumed inside async callbacks (runTurn, chatStream)
+  // to avoid stale closures when deps change mid-turn.
+  const rootPathRef = useRef(rootPath);
+  rootPathRef.current = rootPath;
+  const activeProviderIdRef = useRef(activeProviderId);
+  activeProviderIdRef.current = activeProviderId;
+  const activeModelRef = useRef(activeModel);
+  activeModelRef.current = activeModel;
+
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
   const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
@@ -53,11 +62,16 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   const safeSetCheckpoints: typeof setCheckpoints = (v) => { if (mountedRef.current) setCheckpoints(v); };
   const safeSetArtifacts: typeof setArtifacts = (v) => { if (mountedRef.current) setArtifacts(v); };
 
-  // Snapshots of files captured before the current turn modifies them, so a
-  // checkpoint can be created when the turn finishes. Keyed by path.
-  const turnSnapshots = useRef<Map<string, string | null>>(new Map());
+  // Snapshots of files captured before the current turn modifies them.
+  // Instead of holding full file content in memory (which causes OOM on
+  // multi-file edits), we persist snapshots to .ide/.history/ on disk and
+  // only keep path → snapshotId mapping in memory during the turn.
+  const turnSnapshots = useRef<Map<string, { snapshotId: string; isNew: boolean }>>(new Map());
   // Files edited during the current turn — drives the auto-lint self-heal pass.
   const turnEditedFiles = useRef<Set<string>>(new Set());
+
+  /** Generate a unique snapshot ID for a file checkpoint. */
+  const makeSnapshotId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const resolvePath = (p: string): string => resolveWorkspacePath(rootPath, p);
 
@@ -68,13 +82,20 @@ export function useAgentEngine(deps: AgentEngineDeps) {
    */
   const writeFileTracked = async (filePath: string, content: string) => {
     if (!turnSnapshots.current.has(filePath)) {
-      let before: string | null = null;
+      const snapshotId = makeSnapshotId();
+      let isNew = true;
       try {
-        before = await window.api.fs.readFile(filePath);
+        const before = await window.api.fs.readFile(filePath);
+        isNew = false;
+        // Persist the snapshot to disk so it never accumulates in renderer RAM.
+        if (rootPath) {
+          const snapPath = `${rootPath}/.ide/.history/${snapshotId}.snap`;
+          await window.api.fs.writeFile(snapPath, before);
+        }
       } catch {
-        before = null; // new file
+        // File doesn't exist yet — no snapshot content to persist.
       }
-      turnSnapshots.current.set(filePath, before);
+      turnSnapshots.current.set(filePath, { snapshotId, isNew });
     }
     await window.api.fs.writeFile(filePath, content);
     await onFileChanged?.(filePath, content);
@@ -212,11 +233,11 @@ export function useAgentEngine(deps: AgentEngineDeps) {
             reject(new Error(err));
           });
 
-          window.api.ai.chatStream(activeProviderId!, loopMessages, {
-            model: activeModel!,
+          window.api.ai.chatStream(activeProviderIdRef.current!, loopMessages, {
+            model: activeModelRef.current!,
             tools: BUILTIN_TOOLS,
             systemPrompt: buildSystemPrompt(),
-            workspaceRoot: rootPath || undefined,
+            workspaceRoot: rootPathRef.current || undefined,
           });
         });
 
@@ -316,9 +337,11 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         id: uuid(),
         label: turnLabel || '未命名改动',
         createdAt: Date.now(),
-        files: Array.from(turnSnapshots.current.entries()).map(([path, before]) => ({
+        files: Array.from(turnSnapshots.current.entries()).map(([path, snap]) => ({
           path,
-          before,
+          // Store the snapshot reference (not full content) to avoid memory bloat.
+          // `before` is set to a sentinel that revertCheckpoint knows to read from disk.
+          before: snap.isNew ? null : `__snap__:${snap.snapshotId}`,
         })),
       };
       safeSetCheckpoints((prev) => [cp, ...prev].slice(0, 20));
@@ -406,7 +429,17 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         if (f.before === null) {
           await window.api.fs.delete(f.path); // file was created in the turn
           await onFileChanged?.(f.path);
+        } else if (typeof f.before === 'string' && f.before.startsWith('__snap__:')) {
+          // Snapshot persisted on disk — read it back.
+          const snapshotId = f.before.slice('__snap__:'.length);
+          const snapPath = `${rootPath}/.ide/.history/${snapshotId}.snap`;
+          const content = await window.api.fs.readFile(snapPath);
+          await window.api.fs.writeFile(f.path, content);
+          await onFileChanged?.(f.path, content);
+          // Clean up the snapshot file after a successful revert.
+          await window.api.fs.delete(snapPath).catch(() => {});
         } else {
+          // Legacy: before content stored inline (older checkpoints).
           await window.api.fs.writeFile(f.path, f.before);
           await onFileChanged?.(f.path, f.before);
         }
