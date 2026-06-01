@@ -300,7 +300,7 @@ ${suffix.slice(0, 500)}${editsCtx}
   };
 
   return (
-    <div className="flex flex-col h-full bg-editor-sidebar border-l border-editor-border">
+    <div className="flex h-full flex-col bg-editor-sidebar/50 backdrop-blur-md border-l border-editor-border">
       {/* Multi-session tab bar */}
       {conversations.length > 1 ? (
         <SessionTabs
@@ -321,14 +321,14 @@ ${suffix.slice(0, 500)}${editsCtx}
           <div className="flex gap-1">
             <button
               onClick={() => newConversation()}
-              className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+              className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
               title="新建对话"
             >
               💬+
             </button>
             <button
               onClick={handleNewWorktreeSession}
-              className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+              className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
               title="新建隔离工作树会话"
             >
               🪵+
@@ -348,7 +348,7 @@ ${suffix.slice(0, 500)}${editsCtx}
               key={m}
               onClick={() => changeApprovalMode(m)}
               title={meta.hint}
-              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-xl transition-all duration-200 active:scale-95 ${
                 active
                   ? m === 'full'
                     ? 'bg-red-600/80 text-white'
@@ -398,7 +398,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                 </span>
                 <button
                   onClick={() => revertCheckpoint(cp)}
-                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-editor-hover text-gray-300 hover:bg-red-600 hover:text-white"
+                  className="flex-shrink-0 px-1.5 py-0.5 rounded-xl bg-editor-hover text-gray-300 hover:bg-red-600 hover:text-white"
                   title="回滚此检查点的所有文件改动"
                 >
                   ↩ 回滚
@@ -423,7 +423,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                 {a.path && (
                   <button
                     onClick={() => openFile(a.path!)}
-                    className="flex-shrink-0 px-1.5 py-0.5 rounded bg-editor-hover text-gray-300 hover:bg-editor-accent hover:text-white"
+                    className="flex-shrink-0 px-1.5 py-0.5 rounded-xl bg-editor-hover text-gray-300 hover:bg-editor-accent hover:text-white"
                     title="打开交付报告"
                   >
                     查看
@@ -450,19 +450,19 @@ ${suffix.slice(0, 500)}${editsCtx}
               ⚠️ 高风险操作：{pendingApproval.dangerReason}
             </div>
           )}
-          <pre className="text-[11px] text-gray-300 mt-1 whitespace-pre-wrap bg-black/20 rounded p-2">
+          <pre className="text-[11px] text-gray-300 mt-1 whitespace-pre-wrap bg-black/20 rounded-xl p-2">
             {pendingApproval.after.slice(0, 500)}
           </pre>
           <div className="flex gap-2 mt-2">
             <button
               onClick={handleApprove}
-              className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700"
+              className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded-xl hover:bg-green-700"
             >
               接受
             </button>
             <button
               onClick={handleReject}
-              className="px-2 py-0.5 text-[11px] bg-red-600 text-white rounded hover:bg-red-700"
+              className="px-2 py-0.5 text-[11px] bg-red-600 text-white rounded-xl hover:bg-red-700"
             >
               ✕ 拒绝
             </button>
@@ -470,19 +470,19 @@ ${suffix.slice(0, 500)}${editsCtx}
         </div>
       ) : pendingApproval ? (
         <div className="h-[250px] border-t border-editor-border flex-shrink-0 relative">
-          <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-editor-sidebar/90 rounded px-2 py-1 shadow">
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-editor-sidebar/90 rounded-xl px-2 py-1 shadow">
             <span className="text-[11px] text-yellow-400 animate-pulse">
               {pendingApproval.countdown ? '5 秒后自动接受' : '需手动批准'}
             </span>
             <button
               onClick={handleApprove}
-              className="px-1.5 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700"
+              className="px-1.5 py-0.5 text-[11px] bg-green-600 text-white rounded-xl hover:bg-green-700"
             >
               接受
             </button>
             <button
               onClick={handleReject}
-              className="px-1.5 py-0.5 text-[11px] bg-red-600 text-white rounded hover:bg-red-700"
+              className="px-1.5 py-0.5 text-[11px] bg-red-600 text-white rounded-xl hover:bg-red-700"
             >
               ✕ 拒绝
             </button>
@@ -513,7 +513,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                     <img
                       src={img}
                       alt="attachment"
-                      className="h-12 w-12 object-cover rounded border border-editor-border"
+                      className="h-12 w-12 object-cover rounded-xl border border-editor-border"
                     />
                     <button
                       onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
@@ -533,13 +533,13 @@ ${suffix.slice(0, 500)}${editsCtx}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder="跟 AI 说点什么...（可粘贴/附加图片）"
-                className="flex-1 bg-editor-bg border border-editor-border rounded px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent transition-colors"
+                className="flex-1 bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent transition-all duration-200 active:scale-95"
                 rows={2}
                 disabled={isStreaming}
               />
               <div className="flex flex-col gap-1">
                 <label
-                  className="px-3 py-1 bg-editor-hover text-gray-300 text-xs rounded hover:bg-editor-active transition-colors cursor-pointer text-center"
+                  className="px-3 py-1 bg-editor-hover text-gray-300 text-xs rounded-xl hover:bg-editor-active transition-all duration-200 active:scale-95 cursor-pointer text-center"
                   title="附加图片"
                 >
                   🖼
@@ -557,7 +557,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                 {isStreaming ? (
                   <button
                     onClick={handleAbort}
-                    className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                    className="px-3 py-1 bg-red-600 text-white text-xs rounded-xl hover:bg-red-700 transition-all duration-200 active:scale-95"
                   >
                     停止
                   </button>
@@ -565,7 +565,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                   <button
                     onClick={handleSend}
                     disabled={!input.trim() && pendingImages.length === 0}
-                    className="px-3 py-1 bg-editor-accent text-white text-xs rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+                    className="px-3 py-1 bg-editor-accent text-white text-xs rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40"
                   >
                     发送
                   </button>

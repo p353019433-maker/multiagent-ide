@@ -7,23 +7,17 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--c-bg, #1e1e1e);
-  color: var(--c-text, #cccccc);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #09090b;
+  color: #e4e4e7;
   overflow: hidden;
   user-select: none;
 }
 
-/* Dynamic theme classes via CSS variables */
-.bg-editor-bg        { background: var(--c-bg, #1e1e1e); }
-.bg-editor-sidebar   { background: var(--c-sidebar, #252526); }
-.bg-editor-hover     { background: var(--c-hover, #2a2d2e); }
-.bg-editor-active    { background: var(--c-active, #37373d); }
-.border-editor-border { border-color: var(--c-border, #3c3c3c); }
-.bg-editor-accent    { background: var(--c-accent, #007acc); }
-.border-editor-accent { border-color: var(--c-accent, #007acc); }
-.text-editor-text    { color: var(--c-text, #cccccc); }
-.text-editor-accent  { color: var(--c-accent, #007acc); }
+/* Allow text selection in editor and chat */
+.selectable {
+  user-select: text;
+}
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
@@ -34,11 +28,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--c-border, #424242);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--c-dim, #555);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Allow text selection in editor and chat */
@@ -59,7 +53,7 @@ body {
 }
 .resize-handle:hover,
 .resize-handle.dragging {
-  background: var(--c-accent, #007acc);
+  background: #6366f1; /* editor-accent */
 }
 .resize-handle.w-\[3px\] {
   cursor: col-resize;
@@ -85,5 +79,13 @@ body {
 .streaming-cursor::after {
   content: '▋';
   animation: blink 0.8s step-end infinite;
-  color: var(--c-accent, #007acc);
+  color: #6366f1; /* editor-accent */
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
