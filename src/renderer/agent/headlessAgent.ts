@@ -107,9 +107,16 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
     rootPath: workspaceRoot,
     resolvePath: (p: string) => resolveWorkspacePath(workspaceRoot, p),
     // Policy is enforced at the tool gate (assertHeadlessToolAllowed): whatever
-    // reaches a tool is already vetted, so the approval gate auto-approves —
-    // there is no human to prompt in unattended mode.
-    gateAction: async () => true,
+    // reaches a tool is already vetted by the blocklist. The gate additionally
+    // blocks writes to .git/ (malicious hooks) and rejects dangerous commands
+    // caught by the classifier — but allows safe commands so the agent can
+    // build/test/lint in its worktree without human input.
+    gateAction: async (_toolCallId, label, kind, _before, _after, _action, opts) => {
+      if (typeof label === 'string' && /[\/\\]\.git[\/\\]/i.test(label)) return false;
+      if (kind === 'write' && !opts?.dangerous) return true;
+      if (kind === 'command' && !opts?.dangerous) return true;
+      return false;
+    },
     writeFileTracked: async (filePath: string, content: string) => {
       await window.api.fs.writeFile(filePath, content);
       editedFiles.add(filePath);

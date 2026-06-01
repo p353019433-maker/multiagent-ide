@@ -24,7 +24,16 @@ export function resolveWorkspacePath(rootPath: string | null, p: string): string
       resolved.push(seg);
     }
   }
-  return rootPath + '/' + resolved.join('/');
+  const result = rootPath + '/' + resolved.join('/');
+
+  // Block access to .git internals — a compromised agent could otherwise
+  // overwrite hooks (e.g. .git/hooks/pre-commit) to execute arbitrary code
+  // on the user's next commit. This is a hard security boundary.
+  if (resolved.some((seg) => seg === '.git')) {
+    throw new Error('拒绝访问：禁止读写 .git 目录（安全策略）');
+  }
+
+  return result;
 }
 
 /**

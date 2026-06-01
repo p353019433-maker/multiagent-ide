@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 
 interface Props {
   visible: boolean;
@@ -6,18 +6,14 @@ interface Props {
   initialUrl?: string;
 }
 
-/**
- * Built-in browser preview using Electron's <webview> tag.
- * Agent's preview_url tool opens pages here instead of system browser.
- */
+/** Agent's preview_url tool opens pages here instead of system browser. */
 export default function BrowserPreview({ visible, onClose, initialUrl }: Props) {
   const [url, setUrl] = useState(initialUrl || '');
   const [inputUrl, setInputUrl] = useState(initialUrl || '');
-  const [title, setTitle] = useState('浏览器预览');
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [navHistory, setNavHistory] = useState<string[]>([initialUrl || '']);
   const [navIndex, setNavIndex] = useState(0);
-  const webviewRef = useRef<any>(null);
 
   const navigate = useCallback((targetUrl: string) => {
     if (!targetUrl) return;
@@ -25,6 +21,8 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
     if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
       formatted = 'https://' + formatted;
     }
+    setLoading(true);
+    setLoadFailed(false);
     setUrl(formatted);
     setInputUrl(formatted);
     const newHistory = navHistory.slice(0, navIndex + 1);
@@ -37,6 +35,8 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
     if (navIndex > 0) {
       const newIdx = navIndex - 1;
       setNavIndex(newIdx);
+      setLoading(true);
+      setLoadFailed(false);
       setUrl(navHistory[newIdx]);
       setInputUrl(navHistory[newIdx]);
     }
@@ -46,6 +46,8 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
     if (navIndex < navHistory.length - 1) {
       const newIdx = navIndex + 1;
       setNavIndex(newIdx);
+      setLoading(true);
+      setLoadFailed(false);
       setUrl(navHistory[newIdx]);
       setInputUrl(navHistory[newIdx]);
     }
@@ -57,34 +59,6 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
     window.addEventListener('preview-url', handler as EventListener);
     return () => window.removeEventListener('preview-url', handler as EventListener);
   }, [navigate]);
-
-  React.useEffect(() => {
-    const webview = webviewRef.current;
-    if (!webview) return;
-
-    const handleLoadStart = () => setLoading(true);
-    const handleLoadStop = () => setLoading(false);
-    const handlePageTitleUpdated = (e: { title?: string }) => {
-      if (e.title) setTitle(e.title);
-    };
-    const handleDidNavigate = (e: { url?: string }) => {
-      if (!e.url) return;
-      setUrl(e.url);
-      setInputUrl(e.url);
-    };
-
-    webview.addEventListener('did-start-loading', handleLoadStart);
-    webview.addEventListener('did-stop-loading', handleLoadStop);
-    webview.addEventListener('page-title-updated', handlePageTitleUpdated);
-    webview.addEventListener('did-navigate', handleDidNavigate);
-
-    return () => {
-      webview.removeEventListener('did-start-loading', handleLoadStart);
-      webview.removeEventListener('did-stop-loading', handleLoadStop);
-      webview.removeEventListener('page-title-updated', handlePageTitleUpdated);
-      webview.removeEventListener('did-navigate', handleDidNavigate);
-    };
-  }, [url]);
 
   if (!visible) return null;
 
@@ -137,15 +111,30 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
         </button>
       </div>
 
-      {/* Webview */}
+      {/* Preview */}
       {url ? (
-        <webview
-          ref={webviewRef}
-          src={url}
-          // @ts-ignore — webview is an Electron-specific tag
-          webpreferences="contextIsolation=yes"
-          style={{ flex: 1, background: '#fff' }}
-        />
+        <div className="relative flex-1 bg-white">
+          <iframe
+            key={url}
+            src={url}
+            title="浏览器预览"
+            sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+            className="h-full w-full border-0 bg-white"
+            onLoad={() => setLoading(false)}
+            onError={() => {
+              setLoading(false);
+              setLoadFailed(true);
+            }}
+          />
+          {loadFailed && (
+            <div className="absolute inset-0 flex items-center justify-center bg-editor-bg text-center text-sm text-gray-400">
+              <div>
+                <p>无法在预览面板中加载该页面</p>
+                <p className="mt-1 text-xs text-gray-500">目标页面可能禁止 iframe 嵌入。</p>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-500">输入网址以开始浏览</p>
