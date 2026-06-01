@@ -300,7 +300,7 @@ ${suffix.slice(0, 500)}${editsCtx}
   };
 
   return (
-    <div className="flex h-full flex-col bg-editor-sidebar/50 backdrop-blur-md border-l border-editor-border">
+    <div className="flex h-full flex-col liquid-glass border-l border-editor-border">
       {/* Multi-session tab bar */}
       {conversations.length > 1 ? (
         <SessionTabs
@@ -321,14 +321,14 @@ ${suffix.slice(0, 500)}${editsCtx}
           <div className="flex gap-1">
             <button
               onClick={() => newConversation()}
-              className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
+              className="text-xs px-2 py-1 rounded-xl glass-button text-gray-400 hover:text-white"
               title="新建对话"
             >
               💬+
             </button>
             <button
               onClick={handleNewWorktreeSession}
-              className="text-xs px-1.5 py-0.5 rounded-xl hover:bg-editor-active text-gray-400 hover:text-white"
+              className="text-xs px-2 py-1 rounded-xl glass-button text-gray-400 hover:text-white"
               title="新建隔离工作树会话"
             >
               🪵+
@@ -348,7 +348,7 @@ ${suffix.slice(0, 500)}${editsCtx}
               key={m}
               onClick={() => changeApprovalMode(m)}
               title={meta.hint}
-              className={`text-[10px] px-1.5 py-0.5 rounded-xl transition-all duration-200 active:scale-95 ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-xl glass-button ${
                 active
                   ? m === 'full'
                     ? 'bg-red-600/80 text-white'
@@ -533,13 +533,13 @@ ${suffix.slice(0, 500)}${editsCtx}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder="跟 AI 说点什么...（可粘贴/附加图片）"
-                className="flex-1 bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent transition-all duration-200 active:scale-95"
+                className="flex-1 bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-sm text-editor-text resize-none outline-none focus:border-editor-accent glass-button"
                 rows={2}
                 disabled={isStreaming}
               />
               <div className="flex flex-col gap-1">
                 <label
-                  className="px-3 py-1 bg-editor-hover text-gray-300 text-xs rounded-xl hover:bg-editor-active transition-all duration-200 active:scale-95 cursor-pointer text-center"
+                  className="px-3 py-1 bg-editor-hover text-gray-300 text-xs rounded-xl hover:bg-editor-active glass-button cursor-pointer text-center"
                   title="附加图片"
                 >
                   🖼
@@ -557,7 +557,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                 {isStreaming ? (
                   <button
                     onClick={handleAbort}
-                    className="px-3 py-1 bg-red-600 text-white text-xs rounded-xl hover:bg-red-700 transition-all duration-200 active:scale-95"
+                    className="px-3 py-1 bg-red-600 text-white text-xs rounded-xl hover:bg-red-700 glass-button"
                   >
                     停止
                   </button>

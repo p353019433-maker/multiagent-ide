@@ -120,7 +120,7 @@ export default function MultiAgentPanel() {
         </button>
 
         <button
-          className="w-full bg-editor-accent hover:bg-opacity-80 text-white font-medium py-2 rounded-xl transition"
+          className="w-full bg-editor-accent hover:bg-opacity-80 text-white font-medium py-2 rounded-xl glass-button"
           onClick={handleOrchestrate}
           disabled={isOrchestrating || !goal.trim() || subTasks.filter((t) => t.trim()).length === 0}
         >
@@ -138,7 +138,7 @@ export default function MultiAgentPanel() {
             {orchestrationSessions.map((session) => (
               <div
                 key={session.id}
-                className={`p-3 border rounded-xl flex flex-col gap-2 transition-all glass-panel ${
+                className={`p-3 border rounded-xl flex flex-col gap-2 liquid-glass ${
                 session.status === 'running' 
                   ? 'bg-blue-900/10 border-blue-500/30' 
                   : session.status === 'completed'
