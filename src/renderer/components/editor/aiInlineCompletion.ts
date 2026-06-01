@@ -116,6 +116,27 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
 
         if (!result || result.trim().length === 0 || _token.isCancellationRequested) return { items: [] };
 
+        // Suffix overlap detection: if the completion text starts matching the immediate suffix,
+        // we should overwrite that part of the suffix instead of just inserting.
+        // This is crucial for multi-line edits to feel like a "diff" replacement.
+        let overlapLength = 0;
+        const maxOverlap = Math.min(result.length, suffix.length);
+        // Look for the largest overlap where result ends with or matches a prefix of the suffix.
+        // A simple heuristic: check how many characters of the suffix match the end of the completion,
+        // or how many characters of the completion match the beginning of the suffix.
+        for (let i = maxOverlap; i > 0; i--) {
+          if (result.endsWith(suffix.substring(0, i))) {
+            overlapLength = i;
+            break;
+          }
+        }
+        
+        let endPos = position;
+        if (overlapLength > 0) {
+          // Calculate the end position in the model by advancing overlapLength characters
+          endPos = model.getPositionAt(model.getOffsetAt(position) + overlapLength);
+        }
+
         return {
           items: [
             {
@@ -123,8 +144,8 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
               range: new monaco.Range(
                 position.lineNumber,
                 position.column,
-                position.lineNumber,
-                position.column
+                endPos.lineNumber,
+                endPos.column
               ),
             },
           ],
