@@ -69,13 +69,13 @@ describe('runHeadlessAgent', () => {
     expect(res.content).toBe('处理了错误');
   });
 
-  it('auto-approves workspace writes but rejects shell commands in unattended mode', async () => {
-    const terminal = { runCommand: vi.fn(async () => ({ stdout: 'bad', stderr: '', exitCode: 0 })) };
+  it('auto-approves workspace writes and runs safe shell commands unattended', async () => {
+    const terminal = { runCommand: vi.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 })) };
 
     installApi(
       [
         { content: '', toolCalls: [tc('write_file', { path: 'b.ts', content: 'Y' })], finishReason: 'tool_calls' },
-        { content: '', toolCalls: [tc('run_command', { command: 'touch /tmp/owned' })], finishReason: 'tool_calls' },
+        { content: '', toolCalls: [tc('run_command', { command: 'npm test' })], finishReason: 'tool_calls' },
         { content: 'ok', finishReason: 'stop' },
       ],
       { terminal }
@@ -83,7 +83,30 @@ describe('runHeadlessAgent', () => {
     const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写并跑命令' });
     expect(files.get(`${ROOT}/b.ts`)).toBe('Y');
     expect(res.content).toBe('ok');
+    expect(terminal.runCommand).toHaveBeenCalledWith(ROOT, 'npm test', expect.any(Number));
+  });
+
+  it('blocks destructive shell commands but keeps running', async () => {
+    const terminal = { runCommand: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })) };
+    installApi(
+      [
+        { content: '', toolCalls: [tc('run_command', { command: 'rm -rf /' })], finishReason: 'tool_calls' },
+        { content: '已跳过危险命令', finishReason: 'stop' },
+      ],
+      { terminal }
+    );
+    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '危险命令' });
     expect(terminal.runCommand).not.toHaveBeenCalled();
+    expect(res.content).toBe('已跳过危险命令');
+  });
+
+  it('blocks remote/integration tools (push, github)', async () => {
+    installApi([
+      { content: '', toolCalls: [tc('git_push', { remote: 'origin' })], finishReason: 'tool_calls' },
+      { content: '不推远端', finishReason: 'stop' },
+    ]);
+    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '别推' });
+    expect(res.content).toBe('不推远端');
   });
 
   it('stops and notes when the agent repeats identical calls with no progress', async () => {

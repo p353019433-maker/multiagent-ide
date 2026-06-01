@@ -9,46 +9,49 @@
  *   - uses the NON-streaming `ai.chat` (parallel streams would interleave on the
  *     single global `ai:stream-*` channel),
  *   - executes real tools via the shared {@link executeSingleTool} dispatch, and
- *   - auto-approves actions, since each agent is fenced inside its own worktree
- *     and there is no human watching to click "approve".
+ *   - runs autonomously (no human to click "approve").
+ *
+ * Capability policy (tuned for a single-user local tool that favours automation):
+ * each agent is fenced to its own worktree and may freely read, write, run
+ * commands (build/test/lint) and do LOCAL git, so it can actually implement AND
+ * self-verify a sub-task. The only hard blocks are the things that are
+ * outward-facing or irreversible without a human — remote/GitHub writes
+ * (`github_*`, `git_push`), branch merges (`git_merge`, the user's integration
+ * step), and genuinely destructive shell commands (rm -rf, dd, fork bombs, force
+ * push, hard reset…) caught by the shared danger classifier.
  *
  * This is what turns `orchestrate` from a text-only "复读机" into agents that can
- * actually read, edit, and run commands in their workspace.
+ * actually read, edit, run, and verify changes in their workspace.
  */
 
 import { v4 as uuid } from 'uuid';
 import type { ChatMessage, ToolCall } from '@shared/types';
 import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
+import { classifyCommand } from '@shared/command-policy';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
 import { resolveWorkspacePath, classifyToolError } from './agentUtils';
 
 const MAX_ITERATIONS = 20;
 
-const HEADLESS_ALLOWED_TOOLS = new Set([
-  // Read-only workspace/file/code-intel tools.
-  'read_file',
-  'list_directory',
-  'search_files',
-  'find_files',
-  'get_file_info',
-  'read_lints',
-  'extract_symbols',
-  'codebase_search',
-  'find_definition',
-  'find_references',
-  'git_status',
-  'git_diff',
-  'git_log',
-  'git_branch_list',
-  'git_merge_diff',
-  // Workspace-local writes. Still path-fenced by resolveWorkspacePath + main IPC.
-  'write_file',
-  'replace_in_file',
-]);
+/** Tools an unattended agent must not call: outward-facing or user-owned. */
+const HEADLESS_BLOCKED_TOOLS = new Set(['git_push', 'git_merge']);
 
+/**
+ * Enforce the headless capability policy before a tool runs. Blocks remote /
+ * integration tools outright and destructive shell commands via the shared
+ * danger classifier; everything else (reads, workspace writes, safe commands,
+ * local git) is allowed so the agent can implement and self-verify autonomously.
+ */
 function assertHeadlessToolAllowed(tc: ToolCall): void {
-  if (!HEADLESS_ALLOWED_TOOLS.has(tc.name)) {
-    throw new Error(`后台 Agent 禁止调用工具 ${tc.name}：无人值守模式只允许读、工作区写入和只读 Git 操作`);
+  if (tc.name.startsWith('github_') || HEADLESS_BLOCKED_TOOLS.has(tc.name)) {
+    throw new Error(`后台 Agent 禁止调用 ${tc.name}：无人值守模式不做远端写入/分支合并，请在界面中手动操作`);
+  }
+  if (tc.name === 'run_command' || tc.name === 'run_background_command') {
+    const command = String((tc.arguments as { command?: unknown })?.command ?? '');
+    const risk = classifyCommand(command);
+    if (risk.dangerous) {
+      throw new Error(`后台 Agent 拒绝执行高危命令（${risk.reason}）：${command}`);
+    }
   }
 }
 
@@ -103,13 +106,10 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
   const ctx: ToolContext = {
     rootPath: workspaceRoot,
     resolvePath: (p: string) => resolveWorkspacePath(workspaceRoot, p),
-    // Headless agents are unattended. They may write files inside their own
-    // worktree, but they must not auto-approve shell commands, remote writes, or
-    // Git history mutations. Tool allowlisting above is the hard boundary.
-    gateAction: async (_toolCallId, _label, kind, _before, _after, _action, opts) => {
-      if (kind === 'write' && !opts?.dangerous) return true;
-      return false;
-    },
+    // Policy is enforced at the tool gate (assertHeadlessToolAllowed): whatever
+    // reaches a tool is already vetted, so the approval gate auto-approves —
+    // there is no human to prompt in unattended mode.
+    gateAction: async () => true,
     writeFileTracked: async (filePath: string, content: string) => {
       await window.api.fs.writeFile(filePath, content);
       editedFiles.add(filePath);
@@ -131,6 +131,7 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
   let repeatCount = 0;
   let iterations = 0;
   let note: string | undefined;
+  let selfHealAttempted = false;
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
@@ -160,6 +161,33 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
 
     if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
       messages = [...messages, assistantMsg];
+      // Self-verify once: if the agent edited files, run lint/type-check on them
+      // and feed any errors back so it can fix them before finishing. Enabled by
+      // the shared node_modules symlink, which lets tsc/eslint run in the worktree.
+      if (!selfHealAttempted && editedFiles.size > 0) {
+        selfHealAttempted = true;
+        let check: { hasErrors: boolean; output: string } | null = null;
+        try {
+          check = await window.api.lint.check(workspaceRoot, Array.from(editedFiles));
+        } catch {
+          check = null; // lint unavailable — skip self-heal
+        }
+        if (check?.hasErrors && check.output) {
+          messages = [
+            ...messages,
+            {
+              id: uuid(),
+              role: 'user',
+              content:
+                '你的改动引入了以下 lint/类型错误，请修复它们（不要重复无效操作）：\n\n```\n' +
+                check.output.slice(0, 4000) +
+                '\n```',
+              timestamp: Date.now(),
+            },
+          ];
+          continue;
+        }
+      }
       break; // agent considers the task done
     }
 
