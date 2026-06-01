@@ -12,7 +12,7 @@ import type { IndexService, CodebaseSearchHit } from './index-service';
 import type { AIService } from './ai-service';
 import type { FileService } from './file-service';
 import type { StoreService } from './store-service';
-import { reciprocalRankFusion } from './hybrid';
+import { reciprocalRankFusion, parseRerankOrder } from './hybrid';
 
 export interface CodebaseSearchResult {
   hits: CodebaseSearchHit[];
@@ -35,6 +35,78 @@ export class CodebaseSearchService {
       | undefined;
     if (cfg?.providerId && cfg?.model) return { providerId: cfg.providerId, model: cfg.model };
     return null;
+  }
+
+  /** Rerank config: { providerId, model } when configured, else null. */
+  private getRerankConfig(): { providerId: string; model: string } | null {
+    const cfg = this.store.get('rerankConfig') as { providerId?: string; model?: string } | undefined;
+    if (cfg?.providerId && cfg?.model) return { providerId: cfg.providerId, model: cfg.model };
+    return null;
+  }
+
+  /**
+   * LLM rerank of the top candidates. Reads a small code excerpt around each
+   * hit, asks the model to order them by relevance to the query, and reorders
+   * accordingly. Best-effort: any failure leaves the original order intact.
+   */
+  private async rerankHits(
+    root: string,
+    query: string,
+    hits: CodebaseSearchHit[],
+    cfg: { providerId: string; model: string }
+  ): Promise<CodebaseSearchHit[]> {
+    const pool = hits.slice(0, 20);
+    if (pool.length < 2) return hits;
+
+    // Build a compact candidate list with a few lines of context each.
+    const blocks: string[] = [];
+    for (let i = 0; i < pool.length; i++) {
+      const h = pool[i];
+      let excerpt = '';
+      try {
+        const content = await this.files.readFile(path.join(root, h.file));
+        const lines = content.split('\n');
+        const from = Math.max(0, h.line - 2);
+        excerpt = lines.slice(from, from + 4).join('\n').slice(0, 280);
+      } catch {
+        // excerpt is optional context
+      }
+      blocks.push(`[${i}] ${h.file}:${h.line} (${h.kind}) ${h.name}\n${excerpt}`);
+    }
+
+    const prompt =
+      `Query: ${query}\n\n` +
+      `Candidate code locations:\n${blocks.join('\n\n')}\n\n` +
+      `Return ONLY a JSON array of the candidate indices ordered from most to least ` +
+      `relevant to the query. Omit clearly irrelevant ones. Example: [3,0,5]`;
+
+    try {
+      const res = await this.ai.chat(
+        cfg.providerId,
+        [{ id: 'rk', role: 'user', content: prompt, timestamp: Date.now() }],
+        { model: cfg.model, temperature: 0, maxTokens: 200 }
+      );
+      const order = parseRerankOrder(res?.content || '', pool.length);
+      if (!order) return hits;
+      const reordered = order.map((idx) => pool[idx]);
+      // Append any pool items the model omitted, then the untouched tail.
+      const used = new Set(order);
+      for (let i = 0; i < pool.length; i++) if (!used.has(i)) reordered.push(pool[i]);
+      return [...reordered, ...hits.slice(20)];
+    } catch {
+      return hits;
+    }
+  }
+
+  /** Apply LLM rerank when a rerank model is configured; else pass through. */
+  private async maybeRerank(
+    root: string,
+    query: string,
+    hits: CodebaseSearchHit[]
+  ): Promise<CodebaseSearchHit[]> {
+    const cfg = this.getRerankConfig();
+    if (!cfg) return hits;
+    return this.rerankHits(root, query, hits, cfg);
   }
 
   /** Per-workspace cache file for the embedding index. */
@@ -79,13 +151,17 @@ export class CodebaseSearchService {
               semantic.map((h) => ({ key: h.file, item: h })),
             ]);
             const lexByFile = new Map(lexical.map((h) => [h.file, h]));
-            const hits = fused.slice(0, max).map((f) => ({
+            const pool = fused.slice(0, max * 2).map((f) => ({
               ...(lexByFile.get(f.key) ?? f.item),
               score: f.score,
             }));
-            return { hits, fellBack: false, mode: 'hybrid' };
+            const hits = await this.maybeRerank(root, query, pool);
+            return { hits: hits.slice(0, max), fellBack: false, mode: 'hybrid' };
           }
-          if (semantic.length) return { hits: semantic.slice(0, max), fellBack: false, mode: 'embedding' };
+          if (semantic.length) {
+            const hits = await this.maybeRerank(root, query, semantic.slice(0, max * 2));
+            return { hits: hits.slice(0, max), fellBack: false, mode: 'embedding' };
+          }
         }
       } catch {
         // fall through to lexical/text search
@@ -94,7 +170,8 @@ export class CodebaseSearchService {
 
     // 2. Lexical-only symbol/path index.
     if (lexical.length > 0) {
-      return { hits: lexical.slice(0, max), fellBack: false, mode: 'symbol' };
+      const hits = await this.maybeRerank(root, query, lexical.slice(0, max * 2));
+      return { hits: hits.slice(0, max), fellBack: false, mode: 'symbol' };
     }
 
     // 3. Full-text search.

@@ -37,3 +37,41 @@ export function reciprocalRankFusion<T>(lists: RankedItem<T>[][], k = 60): { key
     .map(([key, s]) => ({ key, item: best.get(key)!.item, score: s }))
     .sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Parse an LLM rerank response into an ordering of candidate indices.
+ *
+ * Accepts a JSON array of 0-based (or 1-based) indices, tolerating surrounding
+ * prose/markdown. Out-of-range and duplicate indices are dropped. Returns null
+ * when nothing parseable is found, so callers can keep the original order.
+ *
+ * @param n number of candidates that were offered (for range validation)
+ */
+export function parseRerankOrder(text: string, n: number): number[] | null {
+  const match = text.match(/\[[\s\S]*?\]/);
+  if (!match) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  // Detect 1-based indexing: if every value is in [1..n] and none is 0, shift.
+  const nums = parsed.filter((x): x is number => typeof x === 'number' && Number.isInteger(x));
+  if (nums.length === 0) return null;
+  const oneBased = nums.every((x) => x >= 1 && x <= n) && !nums.includes(0);
+
+  const seen = new Set<number>();
+  const order: number[] = [];
+  for (const raw of nums) {
+    const idx = oneBased ? raw - 1 : raw;
+    if (idx >= 0 && idx < n && !seen.has(idx)) {
+      seen.add(idx);
+      order.push(idx);
+    }
+  }
+  return order.length ? order : null;
+}
+
