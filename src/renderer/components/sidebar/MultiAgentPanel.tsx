@@ -4,7 +4,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import type { OrchestrationSession } from '@shared/types';
 
 export default function MultiAgentPanel() {
-  const { orchestrationSessions, orchestrate } = useAI();
+  const { orchestrationSessions, orchestrate, updateOrchestrationSession } = useAI();
   const { rootPath } = useWorkspace();
   const [goal, setGoal] = useState('');
   const [subTasks, setSubTasks] = useState<string[]>(['', '', '']);
@@ -40,13 +40,41 @@ export default function MultiAgentPanel() {
   };
 
   const handleMergeSession = async (session: OrchestrationSession) => {
-    // TODO: Show merge dialog, call git worktree merge
-    console.log('Merge session:', session.id);
+    if (!rootPath) return;
+    try {
+      for (let i = 0; i < session.tasks.length; i++) {
+        const task = session.tasks[i];
+        if (task.status === 'completed') {
+          const branch = `agent-${session.id.slice(0, 6)}-task-${i + 1}`;
+          const wtPath = `${rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath}_wt/${branch}`;
+          await window.api.git.worktreeMerge(rootPath, branch, 'squash');
+          await window.api.git.worktreeRemove(rootPath, wtPath, branch).catch(() => {});
+          task.status = 'merged';
+        }
+      }
+      updateOrchestrationSession(session.id, { tasks: [...session.tasks], status: 'completed' });
+    } catch (err: any) {
+      console.error('Merge failed', err);
+      window.alert(`合并失败：${err.message}`);
+    }
   };
 
   const handleCleanupSession = async (session: OrchestrationSession) => {
-    // TODO: Call git worktree remove --force for each task's worktree
-    console.log('Cleanup session:', session.id);
+    if (!rootPath) return;
+    try {
+      for (let i = 0; i < session.tasks.length; i++) {
+        const task = session.tasks[i];
+        if (task.status !== 'pending' && task.status !== 'running') {
+          const branch = `agent-${session.id.slice(0, 6)}-task-${i + 1}`;
+          const wtPath = `${rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath}_wt/${branch}`;
+          await window.api.git.worktreeRemove(rootPath, wtPath, branch).catch(() => {});
+        }
+      }
+      await window.api.git.worktreePrune(rootPath).catch(() => {});
+      updateOrchestrationSession(session.id, { status: 'failed' }); // Mark failed so it hides buttons if cleaned without merge
+    } catch (err: any) {
+      console.error('Cleanup failed', err);
+    }
   };
 
   return (
@@ -129,20 +157,35 @@ export default function MultiAgentPanel() {
                   </span>
                 </div>
 
-                <div className="space-y-1 mb-3">
+                <div className="space-y-2 mb-3">
                   {session.tasks.map((task, idx) => (
-                    <div key={task.id} className="text-xs flex items-center gap-2">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          task.status === 'completed'
-                            ? 'bg-green-400'
-                            : task.status === 'failed'
-                            ? 'bg-red-400'
-                            : 'bg-blue-400'
-                        }`}
-                      />
-                      <span className="text-gray-300 truncate flex-1">{task.description}</span>
-                      {task.error && <span className="text-red-400 text-[10px]">{task.error}</span>}
+                    <div key={task.id} className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            task.status === 'completed' || task.status === 'merged'
+                              ? 'bg-green-400'
+                              : task.status === 'failed'
+                              ? 'bg-red-400'
+                              : task.status === 'running'
+                              ? 'bg-blue-400 animate-pulse'
+                              : 'bg-gray-500'
+                          }`}
+                        />
+                        <span className="text-gray-300 truncate flex-1">{task.description}</span>
+                        <span className="text-gray-500 text-[10px]">
+                          {task.status === 'merged' ? '已合并' : task.status}
+                        </span>
+                      </div>
+                      {task.error && <div className="text-red-400 text-[10px] ml-3 mt-1">{task.error}</div>}
+                      {task.editedFiles && task.editedFiles.length > 0 && (
+                        <div className="ml-3 mt-1 text-[10px] text-gray-400">
+                          修改了 {task.editedFiles.length} 个文件：
+                          <div className="truncate opacity-70">
+                            {task.editedFiles.map(f => f.split(/[/\\]/).pop()).join(', ')}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

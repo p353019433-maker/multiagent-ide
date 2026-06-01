@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { FileNode } from '@shared/types';
 import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
@@ -14,6 +14,14 @@ function isSafeName(name: string): boolean {
 }
 
 export default function FileTree({ nodes, depth }: Props) {
+  const { refreshTree } = useWorkspace();
+
+  useEffect(() => {
+    const handleReverted = () => refreshTree();
+    window.addEventListener('files-reverted', handleReverted);
+    return () => window.removeEventListener('files-reverted', handleReverted);
+  }, [refreshTree]);
+
   return (
     <div>
       {nodes.map((node) => (

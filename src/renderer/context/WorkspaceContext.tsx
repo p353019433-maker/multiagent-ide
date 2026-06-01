@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { FileNode } from '@shared/types';
 
 interface WorkspaceContextValue {
@@ -28,6 +28,27 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const tree = await window.api.fs.readDirectory(rootPath);
     setFileTree(tree);
   }, [rootPath]);
+
+  // Start watching the workspace and handle file tree changes
+  useEffect(() => {
+    if (!rootPath) return;
+    
+    window.api.fs.startWatching(rootPath);
+    
+    const cleanup = window.api.fs.onFileChanged((events) => {
+      // Only refresh tree if there are adds or deletes.
+      // Changes to existing files don't affect the tree structure.
+      const needsTreeRefresh = events.some(e => e.type === 'add' || e.type === 'unlink');
+      if (needsTreeRefresh) {
+        refreshTree();
+      }
+    });
+
+    return () => {
+      cleanup();
+      window.api.fs.stopWatching();
+    };
+  }, [rootPath, refreshTree]);
 
   const openFolder = useCallback(async () => {
     const folderPath = await window.api.openFolder();

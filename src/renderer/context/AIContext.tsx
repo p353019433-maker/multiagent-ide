@@ -35,6 +35,7 @@ interface AIContextValue {
 
   /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
   orchestrate: (goal: string, subTasks?: string[]) => Promise<OrchestrationSession>;
+  updateOrchestrationSession: (id: string, patch: Partial<OrchestrationSession>) => void;
 }
 
 const AIContext = createContext<AIContextValue | null>(null);
@@ -274,6 +275,12 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const updateOrchestrationSession = useCallback((sessionId: string, patch: Partial<OrchestrationSession>) => {
+    setOrchestrationSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, ...patch } : s))
+    );
+  }, []);
+
   /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
   const orchestrate = useCallback(async (goal: string, subTasks?: string[]): Promise<OrchestrationSession> => {
     const sessionId = uuid();
@@ -394,6 +401,15 @@ Response:`;
             model: conv.model,
             workspaceRoot: conv.worktree.path,
             task: task.description,
+            onFileWritten: (filePath) => {
+              task.editedFiles = task.editedFiles || [];
+              if (!task.editedFiles.includes(filePath)) {
+                task.editedFiles.push(filePath);
+                setOrchestrationSessions((prev) =>
+                  prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
+                );
+              }
+            }
           });
           task.result = result.note ? `${result.content}\n\n⚠️ ${result.note}` : result.content;
           task.status = 'completed';
@@ -447,6 +463,7 @@ Response:`;
         updateMessage,
         renameConversation,
         orchestrate,
+        updateOrchestrationSession,
       }}
     >
       {children}

@@ -16,6 +16,7 @@ import type { WebService } from './services/web-service';
 import type { GitHubService } from './services/github-service';
 import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
+import type { FileWatcherService } from './services/file-watcher-service';
 
 const allowedRoots = new Set<string>();
 
@@ -116,6 +117,7 @@ export interface IpcDeps {
   githubService: GitHubService;
   analysisService: AnalysisService;
   codebaseSearchService: CodebaseSearchService;
+  fileWatcherService: FileWatcherService;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -142,7 +144,20 @@ function registerDialogIpc(): void {
   });
 }
 
-function registerFileSystemIpc({ fileService }: IpcDeps): void {
+function registerFileSystemIpc({ fileService, fileWatcherService, getMainWindow }: IpcDeps): void {
+  ipcMain.handle('fs:startWatching', async (event, rootPath: string) => {
+    assertAppOrigin(event);
+    const win = getMainWindow();
+    if (win) {
+      fileWatcherService.startWatching(await assertAllowedRoot(rootPath), win);
+    }
+  });
+  
+  ipcMain.handle('fs:stopWatching', async (event) => {
+    assertAppOrigin(event);
+    fileWatcherService.stopWatching();
+  });
+
   ipcMain.handle('fs:readDirectory', async (event, dirPath: string) => {
     assertAppOrigin(event);
     return fileService.readDirectory(await assertAllowedRoot(dirPath));
@@ -153,7 +168,9 @@ function registerFileSystemIpc({ fileService }: IpcDeps): void {
   });
   ipcMain.handle('fs:writeFile', async (event, filePath: string, content: string) => {
     assertAppOrigin(event);
-    return fileService.writeFile(await assertAllowedPath(filePath), content);
+    const allowedPath = await assertAllowedPath(filePath);
+    fileWatcherService.ignoreNext(allowedPath);
+    return fileService.writeFile(allowedPath, content);
   });
   ipcMain.handle('fs:createFile', async (event, filePath: string) => {
     assertAppOrigin(event);
