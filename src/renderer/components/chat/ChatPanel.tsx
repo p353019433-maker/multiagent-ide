@@ -143,7 +143,10 @@ export default function ChatPanel() {
         // fall through to chat-based completion
       }
 
-      const prompt = `Complete the code at the cursor. Return ONLY the code to insert — no explanations, no markdown, no code fences. The completion should follow naturally from the prefix and suffix. If recent edits suggest a repetitive change (e.g. a rename or a pattern being applied), predict that next edit.
+      const prompt = `You are an expert code completion engine. Complete the code exactly where the cursor is placed.
+Return ONLY the raw code to insert. No explanations, no markdown formatting, no code fences.
+The completion MUST follow naturally from the prefix and connect smoothly to the suffix.
+If you need to replace or overwrite parts of the suffix (e.g. replacing a whole block), output the replacement text including the parts of the suffix you want to "consume". The editor will automatically handle the overlap.
 
 Language: ${language}
 
@@ -153,7 +156,7 @@ ${prefix.slice(-2000)}
 === SUFFIX (after cursor) ===
 ${suffix.slice(0, 500)}${editsCtx}
 
-=== COMPLETION ===`;
+=== EXACT COMPLETION ===`;
 
       try {
         const result = await window.api.ai.chat(
