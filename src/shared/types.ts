@@ -194,6 +194,7 @@ export interface OrchestrationTask {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'merged';
   result?: string;
   error?: string;
+  editedFiles?: string[];
 }
 
 export interface OrchestrationSession {

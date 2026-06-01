@@ -75,6 +75,8 @@ export interface HeadlessAgentParams {
   task: string;
   /** Optional extra system guidance appended to the base agent prompt. */
   systemPromptSuffix?: string;
+  /** Callback fired when a file is written. */
+  onFileWritten?: (path: string) => void;
 }
 
 /** Run a tool with exponential-backoff retry on transient (retriable) errors. */
@@ -100,7 +102,7 @@ async function runToolWithRetry(tc: ToolCall, ctx: ToolContext, maxAttempts = 3)
  * can record a per-task status without aborting its siblings.
  */
 export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<HeadlessAgentResult> {
-  const { providerId, model, workspaceRoot, task, systemPromptSuffix } = params;
+  const { providerId, model, workspaceRoot, task, systemPromptSuffix, onFileWritten } = params;
 
   const editedFiles = new Set<string>();
   const ctx: ToolContext = {
@@ -120,6 +122,7 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
     writeFileTracked: async (filePath: string, content: string) => {
       await window.api.fs.writeFile(filePath, content);
       editedFiles.add(filePath);
+      onFileWritten?.(filePath);
     },
     // Background agents don't act on GitHub; surface a clear failure if they try.
     getGitHubContext: async () => ({ token: null, info: null }),

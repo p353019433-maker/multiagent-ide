@@ -22,6 +22,13 @@ const api = {
     getFileInfo: (path: string) => ipcRenderer.invoke('fs:getFileInfo', path),
     readMultipleFiles: (paths: string[]) =>
       ipcRenderer.invoke('fs:readMultipleFiles', paths),
+    startWatching: (rootPath: string) => ipcRenderer.invoke('fs:startWatching', rootPath),
+    stopWatching: () => ipcRenderer.invoke('fs:stopWatching'),
+    onFileChanged: (callback: (events: { type: 'add' | 'change' | 'unlink', path: string }[]) => void) => {
+      const handler = (_: unknown, events: { type: 'add' | 'change' | 'unlink', path: string }[]) => callback(events);
+      ipcRenderer.on('fs:fileChanged', handler);
+      return () => ipcRenderer.removeListener('fs:fileChanged', handler);
+    },
   },
 
   // Terminal
