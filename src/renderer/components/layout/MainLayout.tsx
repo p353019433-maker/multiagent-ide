@@ -84,7 +84,7 @@ export default function MainLayout({ onOpenSettings }: Props) {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-transparent">
+    <div className="flex flex-col h-full bg-editor-bg">
       <TitleBar
         onOpenSettings={onOpenSettings}
         onToggleChat={() => { setShowChat(!showChat); setShowBrowser(false); }}

@@ -14,10 +14,8 @@ export default function App() {
       <WorkspaceProvider>
         <AIContextProvider>
           <EditorProvider>
-            <div className="flex flex-col h-screen w-screen overflow-hidden bg-space-gradient text-editor-text p-2 sm:p-3">
-              <div className="flex-1 flex flex-col relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
-                <MainLayout onOpenSettings={() => setShowSettings(true)} />
-              </div>
+            <div className="flex flex-col h-screen w-screen overflow-hidden bg-editor-bg text-editor-text">
+              <MainLayout onOpenSettings={() => setShowSettings(true)} />
               {showSettings && (
                 <SettingsModal onClose={() => setShowSettings(false)} />
               )}
