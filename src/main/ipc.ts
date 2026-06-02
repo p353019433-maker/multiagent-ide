@@ -82,6 +82,7 @@ const ALLOWED_STORE_KEYS = new Set([
   'embeddingConfig',
   'rerankConfig',
   'conversationIndex',
+  'conversations',
 ]);
 
 function assertAllowedStoreKey(key: string): string {

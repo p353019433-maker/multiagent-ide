@@ -48,7 +48,7 @@ export default function DiffPreview({ original, modified, filePath, language, vi
         base: 'vs-dark',
         inherit: true,
         rules: [
-          { background: '1e1f22' },
+          { background: '18181b' },
           { token: 'comment', foreground: '9aa0a6' },
           { token: 'keyword', foreground: '8ab4f8' },
           { token: 'string', foreground: 'fde293' },
@@ -58,7 +58,7 @@ export default function DiffPreview({ original, modified, filePath, language, vi
           { token: 'type', foreground: '8ab4f8' },
         ],
         colors: {
-          'editor.background': '#1e1f22',
+          'editor.background': '#18181b',
           'editor.foreground': '#e8eaed',
           'editor.lineHighlightBackground': '#ffffff08',
           'editorLineNumber.foreground': '#5f6368',

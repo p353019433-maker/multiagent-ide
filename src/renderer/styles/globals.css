@@ -82,30 +82,18 @@ body {
   color: #8ab4f8; /* editor-accent */
 }
 
-/* Glassmorphism utility */
-.glass-panel {
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  background-color: rgba(30, 30, 32, 0.4);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.liquid-glass {
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* UI utility */
+.glass-panel, .liquid-glass {
+  background-color: #1e1e24;
+  border: 1px solid #3f3f46;
 }
 
 .glass-button {
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 75ms ease-in-out;
 }
 .glass-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.2), inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
+  background-color: #27272a;
 }
 .glass-button:active {
-  transform: scale(0.95);
+  background-color: #3f3f46;
 }

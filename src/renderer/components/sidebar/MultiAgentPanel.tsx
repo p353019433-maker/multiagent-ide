@@ -82,10 +82,10 @@ export default function MultiAgentPanel() {
       <h2 className="text-lg font-semibold mb-4 text-white">🎯 多 Agent 并行</h2>
 
       {/* Orchestration Form */}
-      <div className="mb-6 p-4 bg-editor-sidebar rounded-xl border border-editor-border">
+      <div className="mb-6 p-4 bg-editor-sidebar rounded-sm border border-editor-border">
         <label className="block text-sm text-gray-400 mb-2">大目标</label>
         <textarea
-          className="w-full bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-editor-accent"
+          className="w-full bg-editor-bg border border-editor-border rounded-sm px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-editor-accent"
           rows={3}
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
@@ -96,7 +96,7 @@ export default function MultiAgentPanel() {
         {subTasks.map((task, idx) => (
           <div key={idx} className="flex gap-2 mb-2">
             <input
-              className="flex-1 bg-editor-bg border border-editor-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-editor-accent"
+              className="flex-1 bg-editor-bg border border-editor-border rounded-sm px-3 py-2 text-white text-sm focus:outline-none focus:border-editor-accent"
               value={task}
               onChange={(e) => handleSubTaskChange(idx, e.target.value)}
               placeholder={`子任务 ${idx + 1}`}
@@ -120,7 +120,7 @@ export default function MultiAgentPanel() {
         </button>
 
         <button
-          className="w-full bg-editor-accent hover:bg-opacity-80 text-white font-medium py-2 rounded-xl glass-button"
+          className="w-full bg-editor-accent hover:bg-opacity-80 text-white font-medium py-2 rounded-sm transition-colors duration-75 hover:bg-editor-active"
           onClick={handleOrchestrate}
           disabled={isOrchestrating || !goal.trim() || subTasks.filter((t) => t.trim()).length === 0}
         >
@@ -138,7 +138,7 @@ export default function MultiAgentPanel() {
             {orchestrationSessions.map((session) => (
               <div
                 key={session.id}
-                className={`p-3 border rounded-xl flex flex-col gap-2 liquid-glass ${
+                className={`p-3 border rounded-sm flex flex-col gap-2 bg-editor-sidebar ${
                 session.status === 'running' 
                   ? 'bg-blue-900/10 border-blue-500/30' 
                   : session.status === 'completed'
@@ -153,7 +153,7 @@ export default function MultiAgentPanel() {
                     {session.goal}
                   </span>
                   <span
-                    className={`text-xs px-2 py-0.5 rounded-xl ${
+                    className={`text-xs px-2 py-0.5 rounded-sm ${
                       session.status === 'completed'
                         ? 'bg-green-500/20 text-green-400'
                         : session.status === 'failed'
@@ -201,13 +201,13 @@ export default function MultiAgentPanel() {
                 {session.status === 'completed' && (
                   <div className="flex gap-2">
                     <button
-                      className="flex-1 text-xs bg-green-600/20 text-green-400 hover:bg-green-600/30 py-1.5 rounded-xl transition"
+                      className="flex-1 text-xs bg-green-600/20 text-green-400 hover:bg-green-600/30 py-1.5 rounded-sm transition"
                       onClick={() => handleMergeSession(session)}
                     >
                       ⥄ 合并
                     </button>
                     <button
-                      className="flex-1 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 py-1.5 rounded-xl transition"
+                      className="flex-1 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 py-1.5 rounded-sm transition"
                       onClick={() => handleCleanupSession(session)}
                     >
                       🗑 清理

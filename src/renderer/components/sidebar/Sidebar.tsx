@@ -60,7 +60,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <div className="h-full flex flex-col liquid-glass">
+    <div className="h-full flex flex-col bg-editor-sidebar">
       {/* Header with tab switcher */}
       <div className="px-3 pt-2">
         <div className="flex items-center justify-between">
@@ -72,14 +72,14 @@ export default function Sidebar() {
               <>
                 <button
                   onClick={handleNewFile}
-                  className="text-xs px-2 py-1 rounded-xl glass-button text-gray-400 hover:text-white"
+                  className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors duration-75"
                   title="新建文件"
                 >
                   📄
                 </button>
                 <button
                   onClick={handleNewFolder}
-                  className="text-xs px-2 py-1 rounded-xl glass-button text-gray-400 hover:text-white"
+                  className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors duration-75"
                   title="新建文件夹"
                 >
                   📁
@@ -89,7 +89,7 @@ export default function Sidebar() {
             {activeTab === 'explorer' && (
               <button
                 onClick={openFolder}
-                className="text-xs px-2 py-1 rounded-xl glass-button text-gray-400 hover:text-white"
+                className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white transition-colors duration-75"
                 title="打开文件夹"
               >
                 📂
