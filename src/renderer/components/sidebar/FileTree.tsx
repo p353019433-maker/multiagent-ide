@@ -3,6 +3,21 @@ import type { FileNode } from '@shared/types';
 import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import ContextMenu from '../ui/ContextMenu';
+import {
+  Braces,
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  Database,
+  File,
+  FileText,
+  Folder,
+  FolderOpen,
+  Globe,
+  Palette,
+  Terminal,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface Props {
   nodes: FileNode[];
@@ -23,7 +38,7 @@ export default function FileTree({ nodes, depth }: Props) {
   }, [refreshTree]);
 
   return (
-    <div>
+    <div role={depth === 0 ? 'tree' : 'group'}>
       {nodes.map((node) => (
         <FileTreeNode key={node.path} node={node} depth={depth} />
       ))}
@@ -186,7 +201,8 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   }, [newName, node.name, node.path, rootPath, closeFile, refreshTree, expanded, loadChildren]);
 
   const isDirectory = node.isDirectory;
-  const typeLabel = isDirectory ? 'DIR' : getFileLabel(node.name);
+  const icon = getFileIcon(node.name, isDirectory, expanded);
+  const FileIcon = icon.Icon;
 
   const menuItems = isDirectory
     ? [
@@ -206,18 +222,34 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   return (
     <div>
       <div
-        className={`flex h-6 items-center gap-1 px-2 cursor-pointer text-sm hover:bg-editor-hover transition-colors ${
+        className={`flex h-6 items-center gap-1 px-2 cursor-pointer text-sm transition-colors hover:bg-editor-hover focus:bg-editor-active focus:outline-none ${
           isActive ? 'bg-editor-active text-white' : 'text-editor-text'
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleClick}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            void handleClick();
+          }
+        }}
         onContextMenu={handleContextMenu}
+        role="treeitem"
+        aria-expanded={isDirectory ? expanded : undefined}
+        aria-selected={isActive}
+        tabIndex={0}
       >
-        <span className="text-xs w-4 text-center flex-shrink-0 text-gray-500">
-          {isDirectory && (expanded ? '▾' : '▸')}
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-gray-500">
+          {node.isDirectory && (
+            expanded ? (
+              <ChevronDown size={13} strokeWidth={1.8} />
+            ) : (
+              <ChevronRight size={13} strokeWidth={1.8} />
+            )
+          )}
         </span>
-        <span className="w-7 flex-shrink-0 font-mono text-[9px] uppercase text-gray-500">
-          {typeLabel}
+        <span className={`flex h-4 w-5 flex-shrink-0 items-center justify-center ${icon.color}`}>
+          <FileIcon size={15} strokeWidth={1.7} />
         </span>
         {renaming ? (
           <input
@@ -243,8 +275,12 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
           style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
         >
           <span className="text-xs w-4 text-center flex-shrink-0" />
-          <span className="w-7 flex-shrink-0 font-mono text-[9px] uppercase text-gray-500">
-            {creating === 'file' ? 'NEW' : 'DIR'}
+          <span className="flex h-4 w-5 flex-shrink-0 items-center justify-center text-gray-500">
+            {creating === 'file' ? (
+              <File size={15} strokeWidth={1.7} />
+            ) : (
+              <Folder size={15} strokeWidth={1.7} />
+            )}
           </span>
           <input
             ref={createInputRef}
@@ -316,25 +352,36 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   );
 }
 
-function getFileLabel(name: string): string {
+function getFileIcon(
+  name: string,
+  isDirectory: boolean,
+  expanded: boolean
+): { Icon: LucideIcon; color: string } {
+  if (isDirectory) {
+    return {
+      Icon: expanded ? FolderOpen : Folder,
+      color: expanded ? 'text-editor-accent' : 'text-gray-500',
+    };
+  }
+
   const ext = name.split('.').pop()?.toLowerCase() || '';
-  const labels: Record<string, string> = {
-    ts: 'TS',
-    tsx: 'TSX',
-    js: 'JS',
-    jsx: 'JSX',
-    py: 'PY',
-    rs: 'RS',
-    go: 'GO',
-    json: '{}',
-    md: 'MD',
-    html: '<>',
-    css: 'CSS',
-    yaml: 'YML',
-    yml: 'YML',
-    toml: 'TOML',
-    sh: 'SH',
-    sql: 'SQL',
+  const icons: Record<string, { Icon: LucideIcon; color: string }> = {
+    ts: { Icon: Code2, color: 'text-sky-400' },
+    tsx: { Icon: Code2, color: 'text-sky-400' },
+    js: { Icon: Code2, color: 'text-yellow-400' },
+    jsx: { Icon: Code2, color: 'text-yellow-400' },
+    py: { Icon: Code2, color: 'text-blue-400' },
+    rs: { Icon: Code2, color: 'text-orange-400' },
+    go: { Icon: Code2, color: 'text-cyan-400' },
+    json: { Icon: Braces, color: 'text-yellow-500' },
+    md: { Icon: FileText, color: 'text-blue-300' },
+    html: { Icon: Globe, color: 'text-orange-400' },
+    css: { Icon: Palette, color: 'text-violet-400' },
+    yaml: { Icon: Braces, color: 'text-gray-400' },
+    yml: { Icon: Braces, color: 'text-gray-400' },
+    toml: { Icon: Braces, color: 'text-gray-400' },
+    sh: { Icon: Terminal, color: 'text-green-400' },
+    sql: { Icon: Database, color: 'text-cyan-400' },
   };
-  return labels[ext] || 'FILE';
+  return icons[ext] || { Icon: File, color: 'text-gray-500' };
 }

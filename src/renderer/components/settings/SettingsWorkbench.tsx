@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
@@ -17,8 +17,11 @@ const EMBEDDING_MODEL_HINTS = [
   'bge-m3',
 ];
 
+export type SettingsTab = 'providers' | 'editor' | 'index';
+
 interface Props {
   onClose: () => void;
+  initialTab?: SettingsTab;
 }
 
 const PRESET_PROVIDERS: { name: string; type: ProviderType; baseURL: string; models: string[] }[] = [
@@ -76,11 +79,11 @@ const SETTING_VALUE_CLASS = 'min-w-0 px-3 py-1.5';
 
 const createApiKeyRef = () => `apiKey:${uuid()}`;
 
-export default function SettingsWorkbench({ onClose }: Props) {
+export default function SettingsWorkbench({ onClose, initialTab = 'providers' }: Props) {
   const { providers, saveProvider, deleteProvider, testProvider } = useTaskWorkspace();
   const { rootPath } = useWorkspace();
   const { themeName, setThemeName } = useTheme();
-  const [tab, setTab] = useState<'providers' | 'editor' | 'index'>('providers');
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [editing, setEditing] = useState<ModelProvider | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
@@ -91,6 +94,11 @@ export default function SettingsWorkbench({ onClose }: Props) {
   const [embedModel, setEmbedModel] = useState('');
   const [reindexState, setReindexState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [reindexMsg, setReindexMsg] = useState('');
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     window.api.store.get('embeddingConfig').then((c: any) => {
@@ -199,10 +207,21 @@ export default function SettingsWorkbench({ onClose }: Props) {
   const activeNavLabel = navItems.find((item) => item.id === tab)?.label || '设置';
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-editor-bg">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-editor-bg"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose();
+      }}
+    >
       <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
-        <div className="text-[12px] font-medium text-editor-text">设置</div>
+        <div id="settings-title" className="text-[12px] font-medium text-editor-text">
+          设置
+        </div>
         <button
+          ref={closeButtonRef}
           onClick={onClose}
           className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
           title="关闭设置"
