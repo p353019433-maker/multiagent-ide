@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Eraser, X } from 'lucide-react';
@@ -13,9 +13,21 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const [terminalUnavailable, setTerminalUnavailable] = useState('');
 
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || termRef.current) return;
+
+    setTerminalUnavailable('');
+    const id = await window.api.terminal.create(cwd).catch(() => null);
+    if (!id) {
+      setTerminalUnavailable('终端不可用（node-pty 未加载）');
+      return;
+    }
+    if (!containerRef.current) {
+      await window.api.terminal.close(id).catch(() => undefined);
+      return;
+    }
 
     const term = new Terminal({
       fontSize: 13,
@@ -53,12 +65,6 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
 
     termRef.current = term;
     fitRef.current = fitAddon;
-
-    const id = await window.api.terminal.create(cwd);
-    if (!id) {
-      term.writeln('\r\n[warning] 终端不可用（node-pty 未加载）');
-      return;
-    }
     sessionIdRef.current = id;
 
     term.onData((data) => {
@@ -142,7 +148,17 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 p-1 overflow-hidden" />
+      <div className="relative flex-1 overflow-hidden">
+        {terminalUnavailable && (
+          <div className="absolute inset-0 flex items-start border-t border-editor-border bg-editor-bg px-3 py-3 font-mono text-[12px] text-gray-500">
+            {terminalUnavailable}
+          </div>
+        )}
+        <div
+          ref={containerRef}
+          className={`absolute inset-0 p-1 overflow-hidden ${terminalUnavailable ? 'invisible' : ''}`}
+        />
+      </div>
     </div>
   );
 }

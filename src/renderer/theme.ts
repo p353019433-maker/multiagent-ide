@@ -16,7 +16,7 @@ export interface ThemeConfig {
   };
 }
 
-const commonDimText = '#808080';
+const commonDimText = '#8f96a3';
 
 export const THEMES: Record<ThemeName, ThemeConfig> = {
   dark: {
@@ -24,13 +24,13 @@ export const THEMES: Record<ThemeName, ThemeConfig> = {
     display: 'Dark',
     editorTheme: 'vs-dark',
     colors: {
-      bg: '#1e1e1e',
-      sidebar: '#252526',
-      border: '#3c3c3c',
-      hover: '#2a2d2e',
-      active: '#37373d',
-      accent: '#007acc',
-      text: '#cccccc',
+      bg: '#1f2024',
+      sidebar: '#242529',
+      border: '#34363d',
+      hover: '#2f3137',
+      active: '#2f3137',
+      accent: '#579aff',
+      text: '#d7dce2',
       dimText: commonDimText,
     },
   },

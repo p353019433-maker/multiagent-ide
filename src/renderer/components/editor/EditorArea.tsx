@@ -1,7 +1,8 @@
 import React from 'react';
-import { FileText, FolderOpen, PanelLeft } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CircleDot, FileText, FolderOpen, PanelLeft, X } from 'lucide-react';
 import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 import {
   registerInlineCompletion,
   unregisterInlineCompletion,
@@ -11,10 +12,32 @@ import {
 
 type MonacoModule = typeof import('monaco-editor');
 
-export default function EditorArea() {
+interface Props {
+  readiness: AgentReadiness;
+  onReadinessAction: (actionId: ReadinessActionId) => void;
+}
+
+const STATUS_LABEL: Record<ReadinessStatus, string> = {
+  done: '完成',
+  ready: '就绪',
+  blocked: '需要处理',
+  optional: '可选',
+};
+
+function ReadinessIcon({ status }: { status: ReadinessStatus }) {
+  if (status === 'done' || status === 'ready') {
+    return <CheckCircle2 size={14} strokeWidth={1.8} className="text-emerald-400" />;
+  }
+  if (status === 'blocked') {
+    return <CircleAlert size={14} strokeWidth={1.8} className="text-yellow-400" />;
+  }
+  return <CircleDot size={14} strokeWidth={1.8} className="text-gray-500" />;
+}
+
+export default function EditorArea({ readiness, onReadinessAction }: Props) {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
     useEditor();
-  const { rootName, openFolder } = useWorkspace();
+  const { rootName } = useWorkspace();
   const containerRef = React.useRef<HTMLDivElement>(null);
   const monacoRef = React.useRef<MonacoModule | null>(null);
   const editorRef = React.useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
@@ -167,23 +190,35 @@ export default function EditorArea() {
             return (
               <div
                 key={file.path}
-                className={`flex items-center gap-1 px-3 py-1.5 text-xs cursor-pointer border-r border-editor-border transition-colors ${
+                className={`group flex h-8 min-w-[128px] max-w-[240px] items-center gap-2 border-r border-editor-border px-2.5 text-xs cursor-pointer transition-colors focus:outline-none focus:ring-1 focus:ring-editor-accent ${
                   isActive
                     ? 'bg-editor-bg text-white border-t-2 border-t-editor-accent'
                     : 'bg-editor-sidebar text-gray-400 hover:bg-editor-hover'
                 }`}
                 onClick={() => setActiveFile(file.path)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setActiveFile(file.path);
+                  }
+                }}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={0}
               >
-                <span className="truncate max-w-[120px]">{name}</span>
+                <FileText size={14} strokeWidth={1.7} className="flex-shrink-0 text-gray-500" />
+                <span className="min-w-0 flex-1 truncate">{name}</span>
                 {file.isDirty && <span className="text-editor-accent">●</span>}
                 <button
-                  className="ml-1 text-gray-500 hover:text-white text-[10px]"
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-gray-500 transition-colors hover:bg-editor-active hover:text-white"
+                  title={`关闭 ${name}`}
+                  aria-label={`关闭 ${name}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     closeFile(file.path);
                   }}
                 >
-                  ✕
+                  <X size={13} strokeWidth={1.8} />
                 </button>
               </div>
             );
@@ -199,33 +234,55 @@ export default function EditorArea() {
         />
         {!activeFile && (
           <div className="h-full overflow-hidden bg-editor-bg text-gray-500">
-            <div className="grid grid-cols-[72px_minmax(0,1fr)] border-b border-editor-border text-sm">
-              <div className="border-r border-editor-border bg-editor-sidebar px-2 py-2 font-mono text-[10px] leading-5 text-gray-600">
-                WORK
+            <div className="mx-auto mt-20 w-full max-w-[520px] px-8">
+              <div className="flex h-8 items-center gap-2 border-b border-editor-border text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                <PanelLeft size={14} strokeWidth={1.8} />
+                工作台
               </div>
-              <div>
-                <div className="flex h-8 items-center gap-2 border-b border-editor-border px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
-                  <PanelLeft size={14} strokeWidth={1.8} />
-                  工作台
-                </div>
+              <div className="border-b border-editor-border py-4">
                 {!rootName ? (
                   <button
-                    onClick={openFolder}
-                    className="flex h-9 w-full items-center gap-2 border-b border-editor-border px-3 text-left text-editor-text hover:bg-editor-hover"
+                    onClick={() => onReadinessAction('openWorkspace')}
+                    className="inline-flex h-8 items-center gap-2 border border-editor-border bg-editor-sidebar px-3 text-sm text-editor-text transition-colors hover:bg-editor-hover"
                   >
                     <FolderOpen size={15} strokeWidth={1.8} />
                     <span>打开文件夹</span>
                   </button>
                 ) : (
-                  <div className="flex h-9 items-center gap-2 border-b border-editor-border px-3 text-gray-400">
+                  <div className="flex h-8 min-w-0 items-center gap-2 text-sm text-gray-400">
                     <FolderOpen size={15} strokeWidth={1.8} />
                     <span className="truncate">{rootName}</span>
                   </div>
                 )}
-                <div className="flex h-9 items-center gap-2 px-3 text-gray-500">
-                  <FileText size={15} strokeWidth={1.8} />
-                  <span>没有活动编辑器</span>
-                </div>
+              </div>
+              <div className="flex h-10 items-center gap-2 border-b border-editor-border text-sm text-gray-500">
+                <FileText size={15} strokeWidth={1.8} />
+                <span>没有活动编辑器</span>
+              </div>
+              <div className="border-b border-editor-border">
+                {readiness.items.map((item) => {
+                  const isNext = item.actionId === readiness.nextActionId;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onReadinessAction(item.actionId)}
+                      className={`grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-2 border-b border-editor-border px-0 text-left text-xs transition-colors last:border-b-0 hover:bg-editor-hover ${
+                        isNext ? 'text-editor-text' : 'text-gray-500'
+                      }`}
+                    >
+                      <ReadinessIcon status={item.status} />
+                      <span className="min-w-0">
+                        <span className="block truncate">{item.label}</span>
+                        <span className="block truncate font-mono text-[10px] text-gray-600">
+                          {STATUS_LABEL[item.status]}
+                        </span>
+                      </span>
+                      <span className={`text-right text-[11px] ${isNext ? 'text-editor-accent' : 'text-gray-600'}`}>
+                        {item.actionLabel}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

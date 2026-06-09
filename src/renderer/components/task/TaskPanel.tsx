@@ -12,15 +12,38 @@ import { resolveWorkspacePath } from '../../task-engine/taskUtils';
 import { useApproval } from '../../task-engine/useApproval';
 import { useTaskEngine } from '../../task-engine/useTaskEngine';
 import TaskSessionTabs from './TaskSessionTabs';
-import { GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
 import {
   ApprovalModeStrip,
   ArtifactList,
   CheckpointList,
   PendingApprovalView,
 } from './TaskPanelSections';
+import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 
-export default function TaskPanel() {
+interface Props {
+  readiness: AgentReadiness;
+  onReadinessAction: (actionId: ReadinessActionId) => void;
+}
+
+const STATUS_LABEL: Record<ReadinessStatus, string> = {
+  done: '完成',
+  ready: '就绪',
+  blocked: '需要处理',
+  optional: '可选',
+};
+
+function ReadinessIcon({ status }: { status: ReadinessStatus }) {
+  if (status === 'done' || status === 'ready') {
+    return <CheckCircle2 size={13} strokeWidth={1.8} className="text-emerald-400" />;
+  }
+  if (status === 'blocked') {
+    return <CircleAlert size={13} strokeWidth={1.8} className="text-yellow-400" />;
+  }
+  return <CircleDot size={13} strokeWidth={1.8} className="text-gray-500" />;
+}
+
+export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   const {
     activeProviderId,
     activeModel,
@@ -379,7 +402,7 @@ ${suffix.slice(0, 500)}${editsCtx}
           </button>
           <button
             onClick={handleNewWorktreeSession}
-            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-yellow-500/80 hover:bg-editor-active hover:text-yellow-300"
             title="新建隔离工作树任务"
             aria-label="新建隔离工作树任务"
           >
@@ -408,7 +431,7 @@ ${suffix.slice(0, 500)}${editsCtx}
               READY
             </div>
             <div className="bg-editor-sidebar px-3 py-2 text-xs text-gray-500">
-              无活动任务
+              {readiness.canRunAgent ? '无活动任务' : '等待就绪'}
             </div>
           </div>
         )}
@@ -468,9 +491,32 @@ ${suffix.slice(0, 500)}${editsCtx}
             {worktreeNotice.text}
           </div>
         )}
-        {!activeProviderId ? (
-          <div className="px-3 py-2 text-xs text-gray-500">
-            未配置模型服务
+        {!activeProviderId || !activeModel ? (
+          <div className="px-3 py-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs text-gray-400">模型服务未就绪</span>
+              <button
+                onClick={() => onReadinessAction('openSettings')}
+                className="h-7 border border-editor-border px-2 text-xs text-editor-accent hover:bg-editor-hover"
+              >
+                配置模型
+              </button>
+            </div>
+            <div className="border-y border-editor-border">
+              {readiness.items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onReadinessAction(item.actionId)}
+                  className="grid min-h-8 w-full grid-cols-[18px_minmax(0,1fr)_52px] items-center gap-2 border-b border-editor-border py-1 text-left text-[11px] text-gray-500 transition-colors last:border-b-0 hover:bg-editor-hover"
+                >
+                  <ReadinessIcon status={item.status} />
+                  <span className="min-w-0 truncate">{item.label}</span>
+                  <span className="text-right font-mono text-[10px] text-gray-600">
+                    {STATUS_LABEL[item.status]}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="px-3 py-2">

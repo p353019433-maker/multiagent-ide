@@ -8,12 +8,17 @@ import BrowserPreview from '../editor/BrowserPreview';
 import TitleBar from './TitleBar';
 import StatusBar from './StatusBar';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { useTaskWorkspace } from '../../context/TaskContext';
+import { getAuxPanelWidth, normalizeWorkbenchPanels } from './layoutState';
+import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
+import type { SettingsTab } from '../settings/SettingsWorkbench';
 
 interface Props {
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
+  settingsVersion: number;
 }
 
-export default function MainLayout({ onOpenSettings }: Props) {
+export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [taskPanelWidth, setTaskPanelWidth] = useState(380);
   const [searchWidth, setSearchWidth] = useState(320);
@@ -25,15 +30,75 @@ export default function MainLayout({ onOpenSettings }: Props) {
   const [showBrowser, setShowBrowser] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
   const dragging = useRef<'sidebar' | 'task' | 'search' | 'terminal' | null>(null);
-  const { rootPath } = useWorkspace();
+  const { rootPath, openFolder } = useWorkspace();
+  const { providers, activeProviderId, activeModel } = useTaskWorkspace();
+  const [embeddingConfig, setEmbeddingConfig] = useState<{
+    providerId?: string | null;
+    model?: string | null;
+  } | null>(null);
   const isCompact = viewportWidth < 760;
   const effectiveSidebarWidth = isCompact ? 160 : sidebarWidth;
-  const effectiveTaskPanelWidth = isCompact
-    ? Math.max(220, viewportWidth - effectiveSidebarWidth - 6)
-    : taskPanelWidth;
-  const effectiveSearchWidth = isCompact
-    ? Math.max(220, viewportWidth - effectiveSidebarWidth - 6)
-    : searchWidth;
+  const effectiveTaskPanelWidth = getAuxPanelWidth({
+    isCompact,
+    viewportWidth,
+    sidebarWidth: effectiveSidebarWidth,
+    preferredWidth: taskPanelWidth,
+  });
+  const effectiveSearchWidth = getAuxPanelWidth({
+    isCompact,
+    viewportWidth,
+    sidebarWidth: effectiveSidebarWidth,
+    preferredWidth: searchWidth,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    window.api.store
+      .get('embeddingConfig')
+      .then((config) => {
+        if (!cancelled) {
+          setEmbeddingConfig((config as { providerId?: string; model?: string } | null) || null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEmbeddingConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsVersion]);
+
+  const readiness = getAgentReadiness({
+    rootPath,
+    providers,
+    activeProviderId,
+    activeModel,
+    embeddingConfig,
+  });
+
+  const openTaskPanel = useCallback(() => {
+    setShowTaskPanel(true);
+    setShowBrowser(false);
+    if (isCompact) {
+      setShowSearch(false);
+      setShowTerminal(false);
+    }
+  }, [isCompact]);
+
+  const runReadinessAction = useCallback(
+    (actionId: ReadinessActionId) => {
+      if (actionId === 'openWorkspace') {
+        void openFolder();
+      } else if (actionId === 'openSettings') {
+        onOpenSettings('providers');
+      } else if (actionId === 'openIndexSettings') {
+        onOpenSettings('index');
+      } else if (actionId === 'openTaskPanel') {
+        openTaskPanel();
+      }
+    },
+    [onOpenSettings, openFolder, openTaskPanel]
+  );
 
   const handleToggleSearch = useCallback(() => {
     if (!rootPath) {
@@ -45,21 +110,46 @@ export default function MainLayout({ onOpenSettings }: Props) {
       if (next && isCompact) {
         setShowTaskPanel(false);
         setShowBrowser(false);
+        setShowTerminal(false);
       }
       return next;
     });
   }, [isCompact, rootPath]);
 
   const handleToggleTaskPanel = useCallback(() => {
-    setShowTaskPanel((prev) => !prev);
+    setShowTaskPanel((prev) => {
+      const next = !prev;
+      if (next && isCompact) {
+        setShowSearch(false);
+        setShowTerminal(false);
+      }
+      return next;
+    });
     setShowBrowser(false);
-    if (isCompact) setShowSearch(false);
   }, [isCompact]);
 
   const handleToggleBrowser = useCallback(() => {
-    setShowBrowser((prev) => !prev);
+    setShowBrowser((prev) => {
+      const next = !prev;
+      if (next && isCompact) {
+        setShowSearch(false);
+        setShowTerminal(false);
+      }
+      return next;
+    });
     setShowTaskPanel(false);
-    if (isCompact) setShowSearch(false);
+  }, [isCompact]);
+
+  const handleToggleTerminal = useCallback(() => {
+    setShowTerminal((prev) => {
+      const next = !prev;
+      if (next && isCompact) {
+        setShowSearch(false);
+        setShowTaskPanel(false);
+        setShowBrowser(false);
+      }
+      return next;
+    });
   }, [isCompact]);
 
   const handleMouseDown = useCallback((panel: 'sidebar' | 'task' | 'search' | 'terminal') => {
@@ -102,13 +192,31 @@ export default function MainLayout({ onOpenSettings }: Props) {
   }, []);
 
   useEffect(() => {
+    const normalized = normalizeWorkbenchPanels({
+      isCompact,
+      showSearch,
+      showTaskPanel,
+      showBrowser,
+      showTerminal,
+    });
+
+    if (normalized.showSearch !== showSearch) setShowSearch(normalized.showSearch);
+    if (normalized.showTaskPanel !== showTaskPanel) setShowTaskPanel(normalized.showTaskPanel);
+    if (normalized.showBrowser !== showBrowser) setShowBrowser(normalized.showBrowser);
+    if (normalized.showTerminal !== showTerminal) setShowTerminal(normalized.showTerminal);
+  }, [isCompact, showSearch, showTaskPanel, showBrowser, showTerminal]);
+
+  useEffect(() => {
     const handlePreviewUrl = (e: Event) => {
       const url = (e as CustomEvent<{ url?: string }>).detail?.url;
       if (!url) return;
       setBrowserUrl(url);
       setShowBrowser(true);
       setShowTaskPanel(false);
-      if (isCompact) setShowSearch(false);
+      if (isCompact) {
+        setShowSearch(false);
+        setShowTerminal(false);
+      }
     };
     window.addEventListener('preview-url', handlePreviewUrl);
     return () => window.removeEventListener('preview-url', handlePreviewUrl);
@@ -132,7 +240,7 @@ export default function MainLayout({ onOpenSettings }: Props) {
       <TitleBar
         onOpenSettings={onOpenSettings}
         onToggleTaskPanel={handleToggleTaskPanel}
-        onToggleTerminal={() => setShowTerminal(!showTerminal)}
+        onToggleTerminal={handleToggleTerminal}
         onToggleSearch={handleToggleSearch}
         onToggleBrowser={handleToggleBrowser}
         showTaskPanel={showTaskPanel}
@@ -159,7 +267,7 @@ export default function MainLayout({ onOpenSettings }: Props) {
           {/* Editor + Terminal vertical split */}
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-hidden">
-              <EditorArea />
+              <EditorArea readiness={readiness} onReadinessAction={runReadinessAction} />
             </div>
 
             {/* Terminal */}
@@ -194,10 +302,12 @@ export default function MainLayout({ onOpenSettings }: Props) {
           {/* Task or browser panel */}
           {(showTaskPanel || showBrowser) && (
             <>
-              <div
-                className="resize-handle w-[3px] h-full"
-                onMouseDown={() => handleMouseDown('task')}
-              />
+              {!isCompact && (
+                <div
+                  className="resize-handle w-[3px] h-full"
+                  onMouseDown={() => handleMouseDown('task')}
+                />
+              )}
               <div style={{ width: effectiveTaskPanelWidth }} className="flex-shrink-0 h-full">
                 {showBrowser ? (
                   <BrowserPreview
@@ -206,7 +316,7 @@ export default function MainLayout({ onOpenSettings }: Props) {
                     initialUrl={browserUrl}
                   />
                 ) : (
-                  <TaskPanel />
+                  <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
                 )}
               </div>
             </>
