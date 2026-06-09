@@ -38,6 +38,8 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState(node.name);
   const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [nodeError, setNodeError] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,6 +77,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
     }
     setCreating('file');
     setNewName('');
+    setNodeError('');
   }, [expanded, node, loadChildren]);
 
   const handleNewFolder = useCallback(async () => {
@@ -85,13 +88,19 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
     }
     setCreating('folder');
     setNewName('');
+    setNodeError('');
   }, [expanded, node, loadChildren]);
 
   const handleCreateConfirm = useCallback(async () => {
     const cleanName = newName.trim();
-    if (!cleanName || !rootPath) return;
+    if (!rootPath) return;
+    if (!cleanName) {
+      setCreating(null);
+      setNewName('');
+      return;
+    }
     if (!isSafeName(cleanName)) {
-      window.alert('名称不能包含路径分隔符或 ..');
+      setNodeError('名称不能包含路径分隔符或 ..');
       return;
     }
     const fullPath = node.path + '/' + cleanName;
@@ -109,17 +118,21 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
       if (creating === 'file') {
         openFile(fullPath);
       }
-    } catch (err: any) {
-      // silently fail
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNodeError(message || '创建失败');
+      return;
     }
     setCreating(null);
     setNewName('');
   }, [newName, rootPath, node.path, creating, refreshTree, expanded, loadChildren, openFile]);
 
-  const handleDelete = useCallback(async () => {
-    const name = node.name;
-    const confirmed = window.confirm(`确定删除「${name}」？此操作不可撤销。`);
-    if (!confirmed) return;
+  const requestDelete = useCallback(() => {
+    setPendingDelete(true);
+    setNodeError('');
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
     try {
       closeFile(node.path);
       await window.api.fs.delete(node.path);
@@ -128,14 +141,17 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         const loaded = await loadChildren(node);
         setChildren(loaded);
       }
-    } catch (err: any) {
-      window.alert(`删除失败：${err.message}`);
+      setPendingDelete(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNodeError(`删除失败：${message}`);
     }
   }, [node, closeFile, refreshTree, expanded, loadChildren]);
 
   const handleStartRename = useCallback(() => {
     setRenaming(true);
     setNewName(node.name);
+    setNodeError('');
     setTimeout(() => renameInputRef.current?.focus(), 10);
     setTimeout(() => renameInputRef.current?.select(), 20);
   }, [node.name]);
@@ -147,7 +163,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
     }
     const cleanName = newName.trim();
     if (!isSafeName(cleanName)) {
-      window.alert('名称不能包含路径分隔符或 ..');
+      setNodeError('名称不能包含路径分隔符或 ..');
       setRenaming(false);
       return;
     }
@@ -162,52 +178,51 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         const loaded = await loadChildren(node);
         setChildren(loaded);
       }
-    } catch (err: any) {
-      window.alert(`重命名失败：${err.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNodeError(`重命名失败：${message}`);
     }
     setRenaming(false);
   }, [newName, node.name, node.path, rootPath, closeFile, refreshTree, expanded, loadChildren]);
 
   const isDirectory = node.isDirectory;
-  const icon = isDirectory
-    ? expanded
-      ? '📂'
-      : '📁'
-    : getFileIcon(node.name);
+  const typeLabel = isDirectory ? 'DIR' : getFileLabel(node.name);
 
   const menuItems = isDirectory
     ? [
         { label: '新建文件', action: handleNewFile },
         { label: '新建文件夹', action: handleNewFolder },
-        { label: 'separator' },
+        { label: '', separator: true },
         { label: '重命名', action: handleStartRename },
-        { label: 'separator' },
-        { label: '删除', action: handleDelete },
+        { label: '', separator: true },
+        { label: '删除', action: requestDelete },
       ]
     : [
         { label: '重命名', action: handleStartRename },
-        { label: 'separator' },
-        { label: '删除', action: handleDelete },
+        { label: '', separator: true },
+        { label: '删除', action: requestDelete },
       ];
 
   return (
     <div>
       <div
-        className={`flex items-center gap-1 px-2 py-[2px] cursor-pointer text-sm hover:bg-editor-hover transition-colors ${
+        className={`flex h-6 items-center gap-1 px-2 cursor-pointer text-sm hover:bg-editor-hover transition-colors ${
           isActive ? 'bg-editor-active text-white' : 'text-editor-text'
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <span className="text-xs w-4 text-center flex-shrink-0">
+        <span className="text-xs w-4 text-center flex-shrink-0 text-gray-500">
           {isDirectory && (expanded ? '▾' : '▸')}
         </span>
-        <span className="text-xs">{icon}</span>
+        <span className="w-7 flex-shrink-0 font-mono text-[9px] uppercase text-gray-500">
+          {typeLabel}
+        </span>
         {renaming ? (
           <input
             ref={renameInputRef}
-            className="bg-editor-active text-editor-text text-[13px] border border-editor-accent rounded px-1 py-0 outline-none flex-1 min-w-0"
+            className="min-w-0 flex-1 border border-editor-accent bg-editor-active px-1 py-0 text-[13px] text-editor-text outline-none"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -224,14 +239,16 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
 
       {creating && (
         <div
-          className="flex items-center gap-1 px-2 py-[2px]"
+          className="flex h-6 items-center gap-1 px-2"
           style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
         >
           <span className="text-xs w-4 text-center flex-shrink-0" />
-          <span className="text-xs">{creating === 'file' ? '📄' : '📁'}</span>
+          <span className="w-7 flex-shrink-0 font-mono text-[9px] uppercase text-gray-500">
+            {creating === 'file' ? 'NEW' : 'DIR'}
+          </span>
           <input
             ref={createInputRef}
-            className="bg-editor-active text-editor-text text-[13px] border border-editor-accent rounded px-1 py-0 outline-none flex-1 min-w-0"
+            className="min-w-0 flex-1 border border-editor-accent bg-editor-active px-1 py-0 text-[13px] text-editor-text outline-none"
             value={newName}
             placeholder={creating === 'file' ? '文件名.ts' : '文件夹名'}
             onChange={(e) => setNewName(e.target.value)}
@@ -242,10 +259,46 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
                 setNewName('');
               }
             }}
-            onBlur={handleCreateConfirm}
+            onBlur={() => {
+              if (newName.trim()) void handleCreateConfirm();
+              else {
+                setCreating(null);
+                setNewName('');
+              }
+            }}
             onClick={(e) => e.stopPropagation()}
             autoFocus
           />
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div
+          className="flex min-h-7 items-center gap-2 px-2 text-xs"
+          style={{ paddingLeft: `${depth * 12 + 28}px` }}
+        >
+          <span className="min-w-0 flex-1 truncate text-red-300">删除 {node.name}？</span>
+          <button
+            onClick={handleDeleteConfirm}
+            className="border border-red-700 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-editor-hover"
+          >
+            删除
+          </button>
+          <button
+            onClick={() => setPendingDelete(false)}
+            className="border border-editor-border px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-editor-hover hover:text-white"
+          >
+            取消
+          </button>
+        </div>
+      )}
+
+      {nodeError && (
+        <div
+          className="border-b border-editor-border px-2 py-1 text-xs text-red-400"
+          style={{ paddingLeft: `${depth * 12 + 28}px` }}
+        >
+          {nodeError}
         </div>
       )}
 
@@ -263,25 +316,25 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   );
 }
 
-function getFileIcon(name: string): string {
+function getFileLabel(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() || '';
-  const icons: Record<string, string> = {
-    ts: '🔷',
-    tsx: '⚛️',
-    js: '🟨',
-    jsx: '⚛️',
-    py: '🐍',
-    rs: '🦀',
-    go: '🐹',
-    json: '📋',
-    md: '📝',
-    html: '🌐',
-    css: '🎨',
-    yaml: '⚙️',
-    yml: '⚙️',
-    toml: '⚙️',
-    sh: '🖥️',
-    sql: '🗃️',
+  const labels: Record<string, string> = {
+    ts: 'TS',
+    tsx: 'TSX',
+    js: 'JS',
+    jsx: 'JSX',
+    py: 'PY',
+    rs: 'RS',
+    go: 'GO',
+    json: '{}',
+    md: 'MD',
+    html: '<>',
+    css: 'CSS',
+    yaml: 'YML',
+    yml: 'YML',
+    toml: 'TOML',
+    sh: 'SH',
+    sql: 'SQL',
   };
-  return icons[ext] || '📄';
+  return labels[ext] || 'FILE';
 }

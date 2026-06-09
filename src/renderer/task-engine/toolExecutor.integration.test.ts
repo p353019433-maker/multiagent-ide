@@ -1,5 +1,5 @@
 /**
- * Integration tests for the agent tool executor.
+ * Integration tests for the task tool executor.
  *
  * Drives executeSingleTool end-to-end against an in-memory filesystem and a real
  * ToolContext (resolvePath / gateAction / writeFileTracked), exercising the
@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
-import { resolveWorkspacePath } from './agentUtils';
+import { resolveWorkspacePath } from './taskUtils';
 import type { ToolCall } from '@shared/types';
 
 const ROOT = '/workspace';

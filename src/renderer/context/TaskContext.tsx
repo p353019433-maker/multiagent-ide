@@ -1,16 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
-import type { AIProvider as AIProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
+import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
 import { useWorkspace } from './WorkspaceContext';
-import { runHeadlessAgent } from '../agent/headlessAgent';
+import { runHeadlessTask } from '../task-engine/headlessTaskRunner';
 import {
   loadConversations,
   createConversationPersister,
   type StoreBackend,
 } from './conversationStore';
 
-interface AIContextValue {
-  providers: AIProviderConfig[];
+interface TaskContextValue {
+  providers: ModelProviderConfig[];
   activeProviderId: string | null;
   activeModel: string | null;
   conversations: Conversation[];
@@ -20,7 +20,7 @@ interface AIContextValue {
   setActiveProvider: (id: string) => void;
   setActiveModel: (model: string) => void;
 
-  saveProvider: (provider: AIProviderConfig, apiKey: string) => Promise<void>;
+  saveProvider: (provider: ModelProviderConfig, apiKey: string) => Promise<void>;
   deleteProvider: (id: string) => Promise<void>;
   testProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
 
@@ -33,15 +33,70 @@ interface AIContextValue {
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
   renameConversation: (conversationId: string, title: string) => void;
 
-  /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
+  /** Run multiple isolated tasks in parallel, with optional model-based decomposition. */
   orchestrate: (goal: string, subTasks?: string[]) => Promise<OrchestrationSession>;
   updateOrchestrationSession: (id: string, patch: Partial<OrchestrationSession>) => void;
 }
 
-const AIContext = createContext<AIContextValue | null>(null);
+const TaskContext = createContext<TaskContextValue | null>(null);
 
-export function AIContextProvider({ children }: { children: React.ReactNode }) {
-  const [providers, setProviders] = useState<AIProviderConfig[]>([]);
+export function selectModelForProvider(
+  provider: ModelProviderConfig,
+  preferredModel?: string | null
+): string {
+  if (preferredModel && provider.models.includes(preferredModel)) return preferredModel;
+  if (provider.defaultModel && provider.models.includes(provider.defaultModel)) return provider.defaultModel;
+  return provider.models[0] ?? provider.defaultModel ?? '';
+}
+
+export function normalizeProviderForSave(provider: ModelProviderConfig): ModelProviderConfig {
+  const models = provider.models.map((model) => model.trim()).filter(Boolean);
+  const normalized = {
+    ...provider,
+    name: provider.name.trim() || provider.name,
+    baseURL: provider.baseURL.trim(),
+    models,
+  };
+  return {
+    ...normalized,
+    defaultModel: selectModelForProvider(normalized, provider.defaultModel.trim()),
+  };
+}
+
+export function upsertProvider(
+  providers: ModelProviderConfig[],
+  provider: ModelProviderConfig
+): ModelProviderConfig[] {
+  const idx = providers.findIndex((p) => p.id === provider.id);
+  return idx >= 0
+    ? providers.map((p) => (p.id === provider.id ? provider : p))
+    : [...providers, provider];
+}
+
+export function selectProviderAfterDelete(
+  providers: ModelProviderConfig[],
+  activeProviderId: string | null,
+  deleteId: string
+) {
+  const nextProviders = providers.filter((p) => p.id !== deleteId);
+  if (activeProviderId !== deleteId) {
+    return {
+      providers: nextProviders,
+      activeProviderId,
+      activeModel: null,
+    };
+  }
+
+  const replacement = nextProviders[0] ?? null;
+  return {
+    providers: nextProviders,
+    activeProviderId: replacement?.id ?? null,
+    activeModel: replacement?.defaultModel ?? null,
+  };
+}
+
+export function TaskContextProvider({ children }: { children: React.ReactNode }) {
+  const [providers, setProviders] = useState<ModelProviderConfig[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [activeModel, setActiveModelState] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -49,7 +104,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
   const [orchestrationSessions, setOrchestrationSessions] = useState<OrchestrationSession[]>([]);
   const { rootPath } = useWorkspace();
 
-  const providersRef = useRef<AIProviderConfig[]>([]);
+  const providersRef = useRef<ModelProviderConfig[]>([]);
   providersRef.current = providers;
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
@@ -68,15 +123,23 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const storedProviders = (await window.api.store.get('providers')) as AIProviderConfig[] | undefined;
+      const storedProviders = (await window.api.store.get('providers')) as ModelProviderConfig[] | undefined;
       const storedActiveId = (await window.api.store.get('activeProviderId')) as string | undefined;
       const storedActiveModel = (await window.api.store.get('activeModel')) as string | undefined;
 
       if (storedProviders?.length) {
-        setProviders(storedProviders);
-        const provider = storedProviders.find((p) => p.id === storedActiveId) || storedProviders[0];
+        const normalizedProviders = storedProviders.map(normalizeProviderForSave);
+        setProviders(normalizedProviders);
+        if (JSON.stringify(normalizedProviders) !== JSON.stringify(storedProviders)) {
+          window.api.store.set('providers', normalizedProviders);
+        }
+        const provider = normalizedProviders.find((p) => p.id === storedActiveId) || normalizedProviders[0];
+        const selectedModel = selectModelForProvider(provider, storedActiveModel);
         setActiveProviderId(provider.id);
-        setActiveModelState(storedActiveModel || provider.defaultModel);
+        setActiveModelState(selectedModel);
+        if (selectedModel !== storedActiveModel) {
+          window.api.store.set('activeModel', selectedModel);
+        }
       }
 
       // Load conversations via the per-conversation store (migrates legacy blob).
@@ -122,8 +185,9 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     window.api.store.set('activeProviderId', id);
     const provider = providersRef.current.find((p) => p.id === id);
     if (provider) {
-      setActiveModelState(provider.defaultModel);
-      window.api.store.set('activeModel', provider.defaultModel);
+      const selectedModel = selectModelForProvider(provider);
+      setActiveModelState(selectedModel);
+      window.api.store.set('activeModel', selectedModel);
     }
   }, []);
 
@@ -132,43 +196,43 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     window.api.store.set('activeModel', model);
   }, []);
 
-  const saveProvider = useCallback(async (provider: AIProviderConfig, apiKey: string) => {
+  const saveProvider = useCallback(async (provider: ModelProviderConfig, apiKey: string) => {
+    const normalizedProvider = normalizeProviderForSave(provider);
     if (apiKey) {
-      await window.api.store.encryptAndStore(provider.apiKeyRef, apiKey);
+      await window.api.store.encryptAndStore(normalizedProvider.apiKeyRef, apiKey);
     }
-    setProviders((prev) => {
-      const idx = prev.findIndex((p) => p.id === provider.id);
-      const next = idx >= 0
-        ? prev.map((p) => (p.id === provider.id ? provider : p))
-        : [...prev, provider];
-      window.api.store.set('providers', next);
-      return next;
-    });
-    setActiveProviderId((current) => {
-      if (!current) {
-        window.api.store.set('activeProviderId', provider.id);
-        setActiveModelState(provider.defaultModel);
-        window.api.store.set('activeModel', provider.defaultModel);
-        return provider.id;
+    const nextProviders = upsertProvider(providersRef.current, normalizedProvider);
+    providersRef.current = nextProviders;
+    await window.api.store.set('providers', nextProviders);
+    setProviders(nextProviders);
+
+    if (!activeProviderId) {
+      const selectedModel = selectModelForProvider(normalizedProvider);
+      setActiveProviderId(normalizedProvider.id);
+      setActiveModelState(selectedModel);
+      await window.api.store.set('activeProviderId', normalizedProvider.id);
+      await window.api.store.set('activeModel', selectedModel);
+    } else if (activeProviderId === normalizedProvider.id) {
+      const selectedModel = selectModelForProvider(normalizedProvider, activeModel);
+      if (selectedModel !== activeModel) {
+        setActiveModelState(selectedModel);
+        await window.api.store.set('activeModel', selectedModel);
       }
-      return current;
-    });
-  }, []);
+    }
+  }, [activeProviderId, activeModel]);
 
   const deleteProvider = useCallback(async (id: string) => {
-    setProviders((prev) => {
-      const next = prev.filter((p) => p.id !== id);
-      window.api.store.set('providers', next);
-      return next;
-    });
-    setActiveProviderId((current) => {
-      if (current === id) {
-        setActiveModelState(null);
-        return null;
-      }
-      return current;
-    });
-  }, []);
+    const nextState = selectProviderAfterDelete(providersRef.current, activeProviderId, id);
+    setProviders(nextState.providers);
+    await window.api.store.set('providers', nextState.providers);
+
+    if (activeProviderId === id) {
+      setActiveProviderId(nextState.activeProviderId);
+      setActiveModelState(nextState.activeModel);
+      await window.api.store.set('activeProviderId', nextState.activeProviderId);
+      await window.api.store.set('activeModel', nextState.activeModel);
+    }
+  }, [activeProviderId]);
 
   const testProvider = useCallback(async (id: string) => {
     return window.api.ai.testConnection(id);
@@ -181,7 +245,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
       const mdl = model || activeModel || '';
       const conv: Conversation = {
         id,
-        title: '新对话',
+        title: '新任务',
         messages: [],
         providerId: pid,
         model: mdl,
@@ -202,7 +266,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
       const mdl = activeModel || '';
       const conv: Conversation = {
         id,
-        title: `🪵 ${branch}`,
+        title: `WT ${branch}`,
         messages: [],
         providerId: pid,
         model: mdl,
@@ -281,7 +345,7 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  /** Orchestrate multiple agents in parallel — auto-decomposes goal via LLM */
+  /** Run isolated tasks in parallel; decompose the goal with the active model when needed. */
   const orchestrate = useCallback(async (goal: string, subTasks?: string[]): Promise<OrchestrationSession> => {
     const sessionId = uuid();
     let tasks: OrchestrationTask[] = [];
@@ -289,10 +353,10 @@ export function AIContextProvider({ children }: { children: React.ReactNode }) {
     // Step 1: Auto-decompose via LLM if no subtasks provided
     if (!subTasks || subTasks.length === 0) {
       if (!activeProviderId || !activeModel) {
-        throw new Error('No active AI provider or model');
+        throw new Error('No active model provider or model');
       }
 
-      const decomposePrompt = `You are a task decomposition engine. Given a large goal, split it into 2-5 independent subtasks that can be executed in parallel by different agents.
+      const decomposePrompt = `You are a task decomposition engine. Given a large goal, split it into 2-5 independent subtasks that can be executed in parallel by separate task runners.
 
 Goal: ${goal}
 
@@ -337,19 +401,31 @@ Response:`;
     }
 
     if (!rootPath) {
-      throw new Error('需要先打开一个 Git 项目才能进行多 Agent 编排');
+      throw new Error('需要先打开一个 Git 项目才能运行并行任务');
+    }
+    if (!activeProviderId || !activeModel) {
+      throw new Error('需要先配置模型服务和模型才能运行并行任务');
     }
     const baseBranch = await window.api.git.currentBranch(rootPath);
     const parentDir = rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath;
+    const runConfigs = new Map<
+      string,
+      { providerId: string; model: string; workspaceRoot: string }
+    >();
 
     // Step 2: Create worktree for each subtask
     for (let i = 0; i < subTasks.length; i++) {
-      const branch = `agent-${sessionId.slice(0, 6)}-task-${i + 1}`;
+      const branch = `task-${sessionId.slice(0, 6)}-${i + 1}`;
       const wtPath = `${parentDir}_wt/${branch}`;
       try {
         const res = await window.api.git.worktreeAdd(rootPath, wtPath, branch, baseBranch);
         if (!res.success) throw new Error(res.message);
         const convId = await newWorktreeConversation(res.path, branch, baseBranch);
+        runConfigs.set(convId, {
+          providerId: activeProviderId,
+          model: activeModel,
+          workspaceRoot: res.path || wtPath,
+        });
 
         tasks.push({
           id: uuid(),
@@ -378,15 +454,16 @@ Response:`;
 
     setOrchestrationSessions((prev) => [session, ...prev]);
 
-    // Step 3: Start all agents in parallel
+    // Step 3: Start all tasks in parallel
     const promises = tasks
       .filter((t) => t.status !== 'failed')
       .map(async (task) => {
         try {
           const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
-          if (!conv) throw new Error('Conversation not found');
-
-          if (!conv.worktree?.path) throw new Error('子任务缺少 worktree');
+          const runConfig = conv?.worktree?.path
+            ? { providerId: conv.providerId, model: conv.model, workspaceRoot: conv.worktree.path }
+            : runConfigs.get(task.conversationId);
+          if (!runConfig) throw new Error('子任务缺少运行配置');
 
           task.status = 'running';
           // Refresh session to show running state
@@ -394,12 +471,12 @@ Response:`;
             prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
           );
 
-          // Drive the sub-task with a real agent loop (tools enabled) inside its
-          // isolated worktree, instead of a single tool-less chat completion.
-          const result = await runHeadlessAgent({
-            providerId: conv.providerId,
-            model: conv.model,
-            workspaceRoot: conv.worktree.path,
+          // Drive the sub-task with the task engine (tools enabled) inside its
+          // isolated worktree, instead of a single tool-less model completion.
+          const result = await runHeadlessTask({
+            providerId: runConfig.providerId,
+            model: runConfig.model,
+            workspaceRoot: runConfig.workspaceRoot,
             task: task.description,
             onFileWritten: (filePath) => {
               task.editedFiles = task.editedFiles || [];
@@ -411,7 +488,7 @@ Response:`;
               }
             }
           });
-          task.result = result.note ? `${result.content}\n\n⚠️ ${result.note}` : result.content;
+          task.result = result.note ? `${result.content}\n\n[warning] ${result.note}` : result.content;
           task.status = 'completed';
         } catch (err: any) {
           task.status = 'failed';
@@ -423,7 +500,7 @@ Response:`;
 
     // Garbage-collect worktrees for tasks that failed before doing any work
     // (worktree creation failed, so no conversation/changes exist) and prune
-    // stale metadata. Worktrees that actually ran — even if the agent later
+    // stale metadata. Worktrees that actually ran — even if the task later
     // failed — are KEPT so partial work isn't lost; the user reclaims them via
     // the session-tab cleanup (which now removes the branch too). The bigger
     // disk win comes from sharing node_modules via symlink at creation time.
@@ -441,7 +518,7 @@ Response:`;
   }, [activeProviderId, activeModel, newWorktreeConversation, rootPath]);
 
   return (
-    <AIContext.Provider
+    <TaskContext.Provider
       value={{
         providers,
         activeProviderId,
@@ -467,12 +544,12 @@ Response:`;
       }}
     >
       {children}
-    </AIContext.Provider>
+    </TaskContext.Provider>
   );
 }
 
-export function useAI() {
-  const ctx = useContext(AIContext);
-  if (!ctx) throw new Error('useAI must be used within AIContextProvider');
+export function useTaskWorkspace() {
+  const ctx = useContext(TaskContext);
+  if (!ctx) throw new Error('useTaskWorkspace must be used within TaskContextProvider');
   return ctx;
 }

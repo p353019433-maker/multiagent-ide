@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { WorkspaceProvider } from './context/WorkspaceContext';
-import { AIContextProvider } from './context/AIContext';
+import { TaskContextProvider } from './context/TaskContext';
 import { EditorProvider } from './context/EditorContext';
 import { ThemeProvider } from './context/ThemeContext';
 import MainLayout from './components/layout/MainLayout';
-import SettingsModal from './components/settings/SettingsModal';
+import SettingsWorkbench from './components/settings/SettingsWorkbench';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
@@ -12,16 +12,16 @@ export default function App() {
   return (
     <ThemeProvider>
       <WorkspaceProvider>
-        <AIContextProvider>
+        <TaskContextProvider>
           <EditorProvider>
             <div className="flex flex-col h-screen w-screen overflow-hidden bg-editor-bg text-editor-text">
               <MainLayout onOpenSettings={() => setShowSettings(true)} />
               {showSettings && (
-                <SettingsModal onClose={() => setShowSettings(false)} />
+                <SettingsWorkbench onClose={() => setShowSettings(false)} />
               )}
             </div>
           </EditorProvider>
-        </AIContextProvider>
+        </TaskContextProvider>
       </WorkspaceProvider>
     </ThemeProvider>
   );

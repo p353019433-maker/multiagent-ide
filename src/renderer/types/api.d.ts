@@ -6,6 +6,8 @@ interface CodebaseSearchResult {
   mode?: 'hybrid' | 'embedding' | 'symbol' | 'text';
 }
 
+type FileChangeEvent = { type: 'add' | 'change' | 'unlink'; path: string };
+
 declare global {
   interface Window {
     api: {
@@ -27,6 +29,9 @@ declare global {
           path: string
         ) => Promise<{ size: number; modified: string; isDirectory: boolean }>;
         readMultipleFiles: (paths: string[]) => Promise<Record<string, string>>;
+        startWatching: (rootPath: string) => Promise<void>;
+        stopWatching: () => Promise<void>;
+        onFileChanged: (callback: (events: FileChangeEvent[]) => void) => () => void;
       };
       terminal: {
         create: (cwd: string) => Promise<string | null>;
@@ -212,4 +217,5 @@ declare global {
   }
 }
 
+export type RendererApi = Window['api'];
 export {};

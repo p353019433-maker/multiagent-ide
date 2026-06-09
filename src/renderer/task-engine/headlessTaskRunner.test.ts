@@ -1,5 +1,5 @@
 /**
- * Unit tests for the headless orchestration agent loop.
+ * Unit tests for the headless orchestration task loop.
  *
  * Mocks window.api.ai.chat (the non-streaming model call) and an in-memory fs,
  * verifying the loop executes real tools, feeds results back, stops on a plain
@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { runHeadlessAgent } from './headlessAgent';
+import { runHeadlessTask } from './headlessTaskRunner';
 import type { ToolCall } from '@shared/types';
 
 const ROOT = '/wt';
@@ -34,10 +34,10 @@ beforeEach(() => {
   files = new Map();
 });
 
-describe('runHeadlessAgent', () => {
+describe('runHeadlessTask', () => {
   it('stops immediately on a plain completion (no tools)', async () => {
     const { chat } = installApi([{ content: '完成了', finishReason: 'stop' }]);
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '做点事' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '做点事' });
     expect(res.content).toBe('完成了');
     expect(res.iterations).toBe(1);
     expect(chat).toHaveBeenCalledOnce();
@@ -49,7 +49,7 @@ describe('runHeadlessAgent', () => {
       { content: '', toolCalls: [tc('write_file', { path: 'a.ts', content: 'X' })], finishReason: 'tool_calls' },
       { content: '写好了', finishReason: 'stop' },
     ]);
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写文件' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写文件' });
     expect(fs.writeFile).toHaveBeenCalledWith(`${ROOT}/a.ts`, 'X');
     expect(files.get(`${ROOT}/a.ts`)).toBe('X');
     expect(res.editedFiles).toContain(`${ROOT}/a.ts`);
@@ -65,7 +65,7 @@ describe('runHeadlessAgent', () => {
       { content: '', toolCalls: [tc('read_file', { path: 'missing.ts' })], finishReason: 'tool_calls' },
       { content: '处理了错误', finishReason: 'stop' },
     ]);
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '读不存在的文件' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '读不存在的文件' });
     expect(res.content).toBe('处理了错误');
   });
 
@@ -80,7 +80,7 @@ describe('runHeadlessAgent', () => {
       ],
       { terminal }
     );
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写并跑命令' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '写并跑命令' });
     expect(files.get(`${ROOT}/b.ts`)).toBe('Y');
     expect(res.content).toBe('ok');
     expect(terminal.runCommand).toHaveBeenCalledWith(ROOT, 'npm test', expect.any(Number));
@@ -95,7 +95,7 @@ describe('runHeadlessAgent', () => {
       ],
       { terminal }
     );
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '危险命令' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '危险命令' });
     expect(terminal.runCommand).not.toHaveBeenCalled();
     expect(res.content).toBe('已跳过危险命令');
   });
@@ -105,11 +105,11 @@ describe('runHeadlessAgent', () => {
       { content: '', toolCalls: [tc('git_push', { remote: 'origin' })], finishReason: 'tool_calls' },
       { content: '不推远端', finishReason: 'stop' },
     ]);
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '别推' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '别推' });
     expect(res.content).toBe('不推远端');
   });
 
-  it('stops and notes when the agent repeats identical calls with no progress', async () => {
+  it('stops and notes when the task repeats identical calls with no progress', async () => {
     const repeated = { content: '', toolCalls: [tc('read_file', { path: 'a.ts' })], finishReason: 'tool_calls' };
     files.set(`${ROOT}/a.ts`, 'hi');
     // Use a stable id so signatures match across iterations.
@@ -121,7 +121,7 @@ describe('runHeadlessAgent', () => {
       { content: '', toolCalls: [fixed], finishReason: 'tool_calls' },
     ]);
     void repeated;
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '卡住' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: '卡住' });
     expect(res.note).toMatch(/重复/);
     expect(res.iterations).toBeLessThan(20);
   });
@@ -129,7 +129,7 @@ describe('runHeadlessAgent', () => {
   it('returns a note when the model call fails', async () => {
     const chat = vi.fn(async () => { throw new Error('网络炸了'); });
     (globalThis as any).window = { api: { ai: { chat }, fs: { writeFile: vi.fn() } }, dispatchEvent: vi.fn() };
-    const res = await runHeadlessAgent({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: 'x' });
+    const res = await runHeadlessTask({ providerId: 'p', model: 'm', workspaceRoot: ROOT, task: 'x' });
     expect(res.note).toMatch(/模型调用失败/);
     expect(res.note).toMatch(/网络炸了/);
   });

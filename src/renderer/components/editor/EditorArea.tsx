@@ -1,17 +1,20 @@
 import React from 'react';
+import { FileText, FolderOpen, PanelLeft } from 'lucide-react';
 import { useEditor } from '../../context/EditorContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
 import {
-  registerAiInlineCompletion,
-  unregisterAiInlineCompletion,
+  registerInlineCompletion,
+  unregisterInlineCompletion,
   updateInlineCompletionConfig,
   recordEdit,
-} from './aiInlineCompletion';
+} from './inlineCompletion';
 
 type MonacoModule = typeof import('monaco-editor');
 
 export default function EditorArea() {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
     useEditor();
+  const { rootName, openFolder } = useWorkspace();
   const containerRef = React.useRef<HTMLDivElement>(null);
   const monacoRef = React.useRef<MonacoModule | null>(null);
   const editorRef = React.useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
@@ -33,12 +36,10 @@ export default function EditorArea() {
 
       monacoRef.current = monaco;
 
-      // Define custom Aura Dark theme (Google Dark variant)
-      monaco.editor.defineTheme('aura-dark', {
+      monaco.editor.defineTheme('workbench-dark', {
         base: 'vs-dark',
         inherit: true,
         rules: [
-          { background: '18181b' },
           { token: 'comment', foreground: '9aa0a6' },
           { token: 'keyword', foreground: '8ab4f8' },
           { token: 'string', foreground: 'fde293' },
@@ -48,7 +49,7 @@ export default function EditorArea() {
           { token: 'type', foreground: '8ab4f8' },
         ],
         colors: {
-          'editor.background': '#18181b',
+          'editor.background': '#1f2024',
           'editor.foreground': '#e8eaed',
           'editor.lineHighlightBackground': '#ffffff08',
           'editorLineNumber.foreground': '#5f6368',
@@ -59,7 +60,7 @@ export default function EditorArea() {
       });
 
       const editor = monaco.editor.create(containerRef.current, {
-        theme: 'aura-dark',
+        theme: 'workbench-dark',
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         minimap: { enabled: true },
@@ -76,7 +77,7 @@ export default function EditorArea() {
       });
 
       editorRef.current = editor;
-      registerAiInlineCompletion(monaco);
+      registerInlineCompletion(monaco);
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         saveRef.current();
@@ -90,7 +91,7 @@ export default function EditorArea() {
       modelsRef.current.forEach((m) => m.dispose());
       modelsRef.current.clear();
       listenedModelsRef.current.clear();
-      unregisterAiInlineCompletion();
+      unregisterInlineCompletion();
       monacoRef.current = null;
       editorRef.current = null;
       setIsMonacoReady(false);
@@ -197,13 +198,35 @@ export default function EditorArea() {
           style={{ display: activeFile ? 'block' : 'none' }}
         />
         {!activeFile && (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <div className="text-center">
-              <p className="text-4xl mb-4">🚀</p>
-              <p className="text-sm">打开文件开始编辑</p>
-              <p className="text-xs text-gray-600 mt-1">
-                使用侧边栏浏览项目文件
-              </p>
+          <div className="h-full overflow-hidden bg-editor-bg text-gray-500">
+            <div className="grid grid-cols-[72px_minmax(0,1fr)] border-b border-editor-border text-sm">
+              <div className="border-r border-editor-border bg-editor-sidebar px-2 py-2 font-mono text-[10px] leading-5 text-gray-600">
+                WORK
+              </div>
+              <div>
+                <div className="flex h-8 items-center gap-2 border-b border-editor-border px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                  <PanelLeft size={14} strokeWidth={1.8} />
+                  工作台
+                </div>
+                {!rootName ? (
+                  <button
+                    onClick={openFolder}
+                    className="flex h-9 w-full items-center gap-2 border-b border-editor-border px-3 text-left text-editor-text hover:bg-editor-hover"
+                  >
+                    <FolderOpen size={15} strokeWidth={1.8} />
+                    <span>打开文件夹</span>
+                  </button>
+                ) : (
+                  <div className="flex h-9 items-center gap-2 border-b border-editor-border px-3 text-gray-400">
+                    <FolderOpen size={15} strokeWidth={1.8} />
+                    <span className="truncate">{rootName}</span>
+                  </div>
+                )}
+                <div className="flex h-9 items-center gap-2 px-3 text-gray-500">
+                  <FileText size={15} strokeWidth={1.8} />
+                  <span>没有活动编辑器</span>
+                </div>
+              </div>
             </div>
           </div>
         )}

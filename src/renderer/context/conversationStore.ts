@@ -1,10 +1,10 @@
 /**
  * Conversation persistence — per-conversation, debounced writes.
  *
- * The original AIContext wrote the ENTIRE conversations array to the store on
+ * The original task context wrote the ENTIRE conversations array to the store on
  * every state change (every streamed message, tool result, etc.). With long
  * sessions that means re-serializing hundreds of messages on every keystroke of
- * agent output — O(all) writes at high frequency.
+ * streamed task output — O(all) writes at high frequency.
  *
  * This module fixes both axes:
  *  - frequency: writes are debounced, collapsing a turn's storm into one flush

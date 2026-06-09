@@ -1,17 +1,18 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { Eraser, X } from 'lucide-react';
 
 interface Props {
   cwd: string;
+  onClose: () => void;
 }
 
-export default function TerminalPanel({ cwd }: Props) {
+export default function TerminalPanel({ cwd, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-  const [visible, setVisible] = useState(true);
 
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || termRef.current) return;
@@ -20,8 +21,8 @@ export default function TerminalPanel({ cwd }: Props) {
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
       theme: {
-        background: '#1e1e1e',
-        foreground: '#cccccc',
+        background: '#1f2024',
+        foreground: '#e8eaed',
         cursor: '#ffffff',
         selectionBackground: '#264f78',
         black: '#000000',
@@ -55,7 +56,7 @@ export default function TerminalPanel({ cwd }: Props) {
 
     const id = await window.api.terminal.create(cwd);
     if (!id) {
-      term.writeln('\r\n⚠️  终端不可用（node-pty 未加载）');
+      term.writeln('\r\n[warning] 终端不可用（node-pty 未加载）');
       return;
     }
     sessionIdRef.current = id;
@@ -115,37 +116,33 @@ export default function TerminalPanel({ cwd }: Props) {
 
   return (
     <div className="flex flex-col h-full bg-editor-bg border-t border-editor-border">
-      <div className="flex items-center justify-between px-3 py-1 bg-editor-sidebar border-b border-editor-border">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+      <div className="flex h-8 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
           终端
         </span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => {
-              if (sessionIdRef.current) {
-                window.api.terminal.close(sessionIdRef.current);
-                sessionIdRef.current = null;
-                termRef.current?.clear();
-              }
+              termRef.current?.clear();
             }}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
             title="清屏"
+            aria-label="清屏"
           >
-            🗑
+            <Eraser size={14} strokeWidth={1.8} />
           </button>
           <button
-            onClick={() => setVisible(!visible)}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-            title={visible ? '收起终端' : '展开终端'}
+            onClick={onClose}
+            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            title="关闭终端"
+            aria-label="关闭终端"
           >
-            {visible ? '▼' : '▲'}
+            <X size={14} strokeWidth={1.8} />
           </button>
         </div>
       </div>
 
-      {visible && (
-        <div ref={containerRef} className="flex-1 p-1 overflow-hidden" />
-      )}
+      <div ref={containerRef} className="flex-1 p-1 overflow-hidden" />
     </div>
   );
 }

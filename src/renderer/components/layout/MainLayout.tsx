@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import Sidebar from '../sidebar/Sidebar';
 import EditorArea from '../editor/EditorArea';
-import ChatPanel from '../chat/ChatPanel';
+import TaskPanel from '../task/TaskPanel';
 import TerminalPanel from '../terminal/TerminalPanel';
 import SearchPanel from '../search/SearchPanel';
 import BrowserPreview from '../editor/BrowserPreview';
 import TitleBar from './TitleBar';
+import StatusBar from './StatusBar';
 import { useWorkspace } from '../../context/WorkspaceContext';
 
 interface Props {
@@ -14,18 +15,54 @@ interface Props {
 
 export default function MainLayout({ onOpenSettings }: Props) {
   const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [chatWidth, setChatWidth] = useState(380);
+  const [taskPanelWidth, setTaskPanelWidth] = useState(380);
   const [searchWidth, setSearchWidth] = useState(320);
   const [terminalHeight, setTerminalHeight] = useState(200);
-  const [showChat, setShowChat] = useState(true);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
-  const dragging = useRef<'sidebar' | 'chat' | 'search' | 'terminal' | null>(null);
+  const dragging = useRef<'sidebar' | 'task' | 'search' | 'terminal' | null>(null);
   const { rootPath } = useWorkspace();
+  const isCompact = viewportWidth < 760;
+  const effectiveSidebarWidth = isCompact ? 160 : sidebarWidth;
+  const effectiveTaskPanelWidth = isCompact
+    ? Math.max(220, viewportWidth - effectiveSidebarWidth - 6)
+    : taskPanelWidth;
+  const effectiveSearchWidth = isCompact
+    ? Math.max(220, viewportWidth - effectiveSidebarWidth - 6)
+    : searchWidth;
 
-  const handleMouseDown = useCallback((panel: 'sidebar' | 'chat' | 'search' | 'terminal') => {
+  const handleToggleSearch = useCallback(() => {
+    if (!rootPath) {
+      setShowSearch(false);
+      return;
+    }
+    setShowSearch((prev) => {
+      const next = !prev;
+      if (next && isCompact) {
+        setShowTaskPanel(false);
+        setShowBrowser(false);
+      }
+      return next;
+    });
+  }, [isCompact, rootPath]);
+
+  const handleToggleTaskPanel = useCallback(() => {
+    setShowTaskPanel((prev) => !prev);
+    setShowBrowser(false);
+    if (isCompact) setShowSearch(false);
+  }, [isCompact]);
+
+  const handleToggleBrowser = useCallback(() => {
+    setShowBrowser((prev) => !prev);
+    setShowTaskPanel(false);
+    if (isCompact) setShowSearch(false);
+  }, [isCompact]);
+
+  const handleMouseDown = useCallback((panel: 'sidebar' | 'task' | 'search' | 'terminal') => {
     dragging.current = panel;
     if (panel === 'terminal') {
       document.body.style.cursor = 'row-resize';
@@ -37,8 +74,8 @@ export default function MainLayout({ onOpenSettings }: Props) {
     const handleMouseMove = (e: MouseEvent) => {
       if (dragging.current === 'sidebar') {
         setSidebarWidth(Math.max(160, Math.min(400, e.clientX)));
-      } else if (dragging.current === 'chat') {
-        setChatWidth(Math.max(280, Math.min(600, window.innerWidth - e.clientX)));
+      } else if (dragging.current === 'task') {
+        setTaskPanelWidth(Math.max(280, Math.min(600, window.innerWidth - e.clientX)));
       } else if (dragging.current === 'search') {
         setSearchWidth(Math.max(240, Math.min(500, window.innerWidth - e.clientX)));
       } else if (dragging.current === 'terminal') {
@@ -59,16 +96,23 @@ export default function MainLayout({ onOpenSettings }: Props) {
   }, []);
 
   useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     const handlePreviewUrl = (e: Event) => {
       const url = (e as CustomEvent<{ url?: string }>).detail?.url;
       if (!url) return;
       setBrowserUrl(url);
       setShowBrowser(true);
-      setShowChat(false);
+      setShowTaskPanel(false);
+      if (isCompact) setShowSearch(false);
     };
     window.addEventListener('preview-url', handlePreviewUrl);
     return () => window.removeEventListener('preview-url', handlePreviewUrl);
-  }, []);
+  }, [isCompact]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -76,22 +120,22 @@ export default function MainLayout({ onOpenSettings }: Props) {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.shiftKey && e.key === 'f') {
         e.preventDefault();
-        setShowSearch((prev) => !prev);
+        handleToggleSearch();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleToggleSearch]);
 
   return (
     <div className="flex flex-col h-full bg-editor-bg">
       <TitleBar
         onOpenSettings={onOpenSettings}
-        onToggleChat={() => { setShowChat(!showChat); setShowBrowser(false); }}
+        onToggleTaskPanel={handleToggleTaskPanel}
         onToggleTerminal={() => setShowTerminal(!showTerminal)}
-        onToggleSearch={() => setShowSearch(!showSearch)}
-        onToggleBrowser={() => { setShowBrowser(!showBrowser); setShowChat(false); }}
-        showChat={showChat}
+        onToggleSearch={handleToggleSearch}
+        onToggleBrowser={handleToggleBrowser}
+        showTaskPanel={showTaskPanel}
         showTerminal={showTerminal}
         showSearch={showSearch}
         showBrowser={showBrowser}
@@ -100,18 +144,20 @@ export default function MainLayout({ onOpenSettings }: Props) {
         {/* Main area: sidebar + editor + panels */}
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div style={{ width: sidebarWidth }} className="flex-shrink-0 h-full">
+          <div style={{ width: effectiveSidebarWidth }} className="flex-shrink-0 h-full">
             <Sidebar />
           </div>
 
           {/* Sidebar resize handle */}
-          <div
-            className="resize-handle w-[3px] h-full"
-            onMouseDown={() => handleMouseDown('sidebar')}
-          />
+          {!isCompact && (
+            <div
+              className="resize-handle w-[3px] h-full"
+              onMouseDown={() => handleMouseDown('sidebar')}
+            />
+          )}
 
           {/* Editor + Terminal vertical split */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-hidden">
               <EditorArea />
             </div>
@@ -124,7 +170,7 @@ export default function MainLayout({ onOpenSettings }: Props) {
                   onMouseDown={() => handleMouseDown('terminal')}
                 />
                 <div style={{ height: terminalHeight }} className="flex-shrink-0">
-                  <TerminalPanel cwd={rootPath} />
+                  <TerminalPanel cwd={rootPath} onClose={() => setShowTerminal(false)} />
                 </div>
               </>
             )}
@@ -133,24 +179,26 @@ export default function MainLayout({ onOpenSettings }: Props) {
           {/* Search panel */}
           {showSearch && rootPath && (
             <>
-              <div
-                className="resize-handle w-[3px] h-full"
-                onMouseDown={() => handleMouseDown('search')}
-              />
-              <div style={{ width: searchWidth }} className="flex-shrink-0 h-full">
-                <SearchPanel />
+              {!isCompact && (
+                <div
+                  className="resize-handle w-[3px] h-full"
+                  onMouseDown={() => handleMouseDown('search')}
+                />
+              )}
+              <div style={{ width: effectiveSearchWidth }} className="flex-shrink-0 h-full">
+                <SearchPanel onClose={() => setShowSearch(false)} />
               </div>
             </>
           )}
 
-          {/* Chat or Browser panel */}
-          {(showChat || showBrowser) && (
+          {/* Task or browser panel */}
+          {(showTaskPanel || showBrowser) && (
             <>
               <div
                 className="resize-handle w-[3px] h-full"
-                onMouseDown={() => handleMouseDown('chat')}
+                onMouseDown={() => handleMouseDown('task')}
               />
-              <div style={{ width: chatWidth }} className="flex-shrink-0 h-full">
+              <div style={{ width: effectiveTaskPanelWidth }} className="flex-shrink-0 h-full">
                 {showBrowser ? (
                   <BrowserPreview
                     visible={showBrowser}
@@ -158,13 +206,14 @@ export default function MainLayout({ onOpenSettings }: Props) {
                     initialUrl={browserUrl}
                   />
                 ) : (
-                  <ChatPanel />
+                  <TaskPanel />
                 )}
               </div>
             </>
           )}
         </div>
       </div>
+      <StatusBar />
     </div>
   );
 }
