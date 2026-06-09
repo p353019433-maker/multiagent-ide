@@ -28,13 +28,6 @@ function manualChunks(id: string): string | undefined {
 
   if (normalizedId.includes('/node_modules/@xterm/')) return 'vendor-terminal';
   if (
-    normalizedId.includes('/node_modules/react-syntax-highlighter/') ||
-    normalizedId.includes('/node_modules/refractor/core.js') ||
-    normalizedId.includes('/node_modules/prismjs/')
-  ) {
-    return 'vendor-syntax';
-  }
-  if (
     normalizedId.includes('/node_modules/react-markdown/') ||
     normalizedId.includes('/node_modules/remark-gfm/') ||
     normalizedId.includes('/node_modules/unified/') ||
@@ -85,7 +78,8 @@ export default defineConfig({
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 600,
+    // Renderer bundle budgets are enforced by scripts/check-renderer-bundles.mjs.
+    chunkSizeWarningLimit: 3400,
     rollupOptions: {
       // Stub any missing refractor/lang/* files so react-syntax-highlighter's
       // async language loader never throws at build time (npm dedupe can drop

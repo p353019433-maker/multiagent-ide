@@ -1,7 +1,7 @@
 /**
- * AI Inline Completion provider for Monaco Editor.
- * Uses current AI provider to generate code completions at cursor position.
- * Does NOT use FIM (fill-in-the-middle) — sends context as chat completion.
+ * Inline completion provider for Monaco Editor.
+ * Uses the active model provider to generate code completions at cursor position.
+ * Non-FIM models receive prefix/suffix context through the model service.
  */
 
 import type * as Monaco from 'monaco-editor';
@@ -16,7 +16,7 @@ type ProviderConfig = {
   fim?: boolean;
 };
 
-type AiCompleteFn = (params: {
+type InlineCompletionSource = (params: {
   prefix: string;
   suffix: string;
   language: string;
@@ -25,7 +25,7 @@ type AiCompleteFn = (params: {
   recentEdits: string[];
 }) => Promise<string | null>;
 
-let _aiCompleteFn: AiCompleteFn | null = null;
+let _completionSource: InlineCompletionSource | null = null;
 
 // Ring buffer of recent edits (Cursor-Tab style "next edit" context).
 const _recentEdits: string[] = [];
@@ -37,14 +37,14 @@ export function recordEdit(snippet: string) {
 }
 let _pendingId = 0;
 let _lastRequestTime = 0;
-// FIM models are fast & cheap, so we can fire much more often than chat models.
+// FIM models are fast and cheap, so we can fire much more often than request/response models.
 const DEBOUNCE_FIM_MS = 150;
 const DEBOUNCE_CHAT_MS = 300;
 const COOLDOWN_FIM_MS = 300;
 const COOLDOWN_CHAT_MS = 2000;
 
-export function setAiCompleteFn(fn: AiCompleteFn) {
-  _aiCompleteFn = fn;
+export function setInlineCompletionSource(fn: InlineCompletionSource) {
+  _completionSource = fn;
 }
 
 let _monaco: MonacoModule | null = null;
@@ -56,7 +56,7 @@ function disposeInlineCompletionProvider() {
   _disposables = [];
 }
 
-export function registerAiInlineCompletion(monaco: MonacoModule) {
+export function registerInlineCompletion(monaco: MonacoModule) {
   _monaco = monaco;
   disposeInlineCompletionProvider();
 
@@ -67,7 +67,7 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
       _context: Monaco.languages.InlineCompletionContext,
       _token: Monaco.CancellationToken
     ): Promise<Monaco.languages.InlineCompletions> => {
-      if (!_aiCompleteFn || !_config.providerId) return { items: [] };
+      if (!_completionSource || !_config.providerId) return { items: [] };
 
       const cooldown = _config.fim ? COOLDOWN_FIM_MS : COOLDOWN_CHAT_MS;
       const debounce = _config.fim ? DEBOUNCE_FIM_MS : DEBOUNCE_CHAT_MS;
@@ -106,7 +106,7 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
       const language = model.getLanguageId();
 
       try {
-        const result = await _aiCompleteFn({
+        const result = await _completionSource({
           prefix,
           suffix,
           language,
@@ -165,7 +165,7 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
   _disposables = [d1];
 }
 
-export function unregisterAiInlineCompletion() {
+export function unregisterInlineCompletion() {
   disposeInlineCompletionProvider();
   _config = { providerId: null, model: null };
 }
@@ -173,8 +173,8 @@ export function unregisterAiInlineCompletion() {
 export function updateInlineCompletionConfig(config: ProviderConfig) {
   _config = config;
   if (!config.providerId) {
-    unregisterAiInlineCompletion();
+    unregisterInlineCompletion();
   } else if (_disposables.length === 0 && _monaco) {
-    registerAiInlineCompletion(_monaco);
+    registerInlineCompletion(_monaco);
   }
 }

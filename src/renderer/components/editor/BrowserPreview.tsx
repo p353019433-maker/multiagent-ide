@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { ArrowLeft, ArrowRight, Globe, LoaderCircle, RotateCw, X } from 'lucide-react';
 
 interface Props {
   visible: boolean;
@@ -6,7 +7,7 @@ interface Props {
   initialUrl?: string;
 }
 
-/** Agent's preview_url tool opens pages here instead of system browser. */
+/** The preview_url tool opens pages here instead of the system browser. */
 export default function BrowserPreview({ visible, onClose, initialUrl }: Props) {
   const [url, setUrl] = useState(initialUrl || '');
   const [inputUrl, setInputUrl] = useState(initialUrl || '');
@@ -14,6 +15,7 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
   const [loadFailed, setLoadFailed] = useState(false);
   const [navHistory, setNavHistory] = useState<string[]>([initialUrl || '']);
   const [navIndex, setNavIndex] = useState(0);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   const navigate = useCallback((targetUrl: string) => {
     if (!targetUrl) return;
@@ -65,49 +67,57 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
   return (
     <div className="h-full flex flex-col bg-editor-bg border-l border-editor-border">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-editor-border flex-shrink-0">
+      <div className="flex h-8 flex-shrink-0 items-center gap-1 border-b border-editor-border px-2">
         {/* Nav buttons */}
         <button
           onClick={goBack}
           disabled={navIndex <= 0}
-          className="text-sm px-1 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white disabled:opacity-30"
+          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-30"
+          title="后退"
+          aria-label="后退"
         >
-          ◀
+          <ArrowLeft size={14} strokeWidth={1.8} />
         </button>
         <button
           onClick={goForward}
           disabled={navIndex >= navHistory.length - 1}
-          className="text-sm px-1 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white disabled:opacity-30"
+          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-30"
+          title="前进"
+          aria-label="前进"
         >
-          ▶
+          <ArrowRight size={14} strokeWidth={1.8} />
         </button>
         <button
           onClick={() => navigate(inputUrl)}
-          className="text-sm px-1 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
           title="刷新"
+          aria-label="刷新预览"
         >
-          🔄
+          <RotateCw size={14} strokeWidth={1.8} />
         </button>
 
         {/* URL bar */}
         <div className="flex-1 flex items-center gap-1">
-          {loading && <span className="text-xs text-editor-accent animate-pulse">⟳</span>}
+          {loading && <LoaderCircle size={13} strokeWidth={1.8} className="animate-spin text-editor-accent" />}
           <input
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && navigate(inputUrl)}
-            placeholder="输入网址..."
+            placeholder="地址"
             spellCheck={false}
-            className="flex-1 text-[12px] bg-editor-sidebar border border-editor-border rounded px-2 py-0.5 text-editor-text font-mono focus:outline-none focus:border-editor-accent"
+            ref={inputRef}
+            className="flex-1 border border-editor-border bg-editor-sidebar px-2 py-0.5 font-mono text-[12px] text-editor-text focus:border-editor-accent focus:outline-none"
           />
         </div>
 
         {/* Close */}
         <button
           onClick={onClose}
-          className="text-sm px-2 py-0.5 rounded hover:bg-red-900/50 text-gray-400 hover:text-white"
+          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-red-400"
+          title="关闭"
+          aria-label="关闭浏览器"
         >
-          ✕
+          <X size={14} strokeWidth={1.8} />
         </button>
       </div>
 
@@ -136,8 +146,19 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
           )}
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-500">输入网址以开始浏览</p>
+        <div className="flex-1 bg-editor-bg">
+          <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
+            <div className="border-r border-editor-border bg-editor-sidebar px-2 py-2 font-mono text-[10px] leading-5 text-gray-600">
+              READY
+            </div>
+            <button
+              onClick={() => inputRef.current?.focus()}
+              className="flex min-h-9 items-center gap-2 bg-editor-bg px-3 text-left text-editor-text hover:bg-editor-hover"
+            >
+              <Globe size={15} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
+              <span>地址栏</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

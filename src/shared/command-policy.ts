@@ -15,20 +15,17 @@ export const DEFAULT_APPROVAL_MODE: ApprovalMode = 'auto';
 
 export const APPROVAL_MODE_META: Record<
   ApprovalMode,
-  { icon: string; label: string; hint: string }
+  { label: string; hint: string }
 > = {
   readonly: {
-    icon: '🔒',
     label: '只读',
     hint: '所有写入与命令都需手动批准',
   },
   auto: {
-    icon: '⚖️',
     label: '自动',
     hint: '读放行，写入预览后自动接受，危险命令拦截',
   },
   full: {
-    icon: '⚡',
     label: '完全',
     hint: '全部自动执行，无拦截（有风险）',
   },

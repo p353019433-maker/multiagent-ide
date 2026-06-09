@@ -1,10 +1,10 @@
 // ============================================================
-// AI Provider Types
+// Model Provider Types
 // ============================================================
 
 export type ProviderType = 'openai' | 'anthropic' | 'google' | 'custom';
 
-export interface AIProvider {
+export interface ModelProvider {
   id: string;
   name: string;
   type: ProviderType;
@@ -14,6 +14,8 @@ export interface AIProvider {
   models: string[];
   defaultModel: string;
 }
+
+export type AIProvider = ModelProvider;
 
 // ============================================================
 // Chat Message Types
@@ -45,8 +47,8 @@ export interface ChatMessage {
 }
 
 /**
- * A verifiable deliverable produced at the end of an agent turn that changed
- * files (Antigravity-style "Artifact"): what changed + verification result.
+ * A verifiable deliverable produced at the end of a task turn that changed
+ * files: what changed plus the verification result.
  */
 export interface Artifact {
   id: string;
@@ -62,7 +64,7 @@ export interface Artifact {
 }
 
 /**
- * A snapshot of file contents taken before an agent turn modifies them, so the
+ * A snapshot of file contents taken before a task turn modifies them, so the
  * user can revert all changes from that turn in one click.
  */
 export interface Checkpoint {
@@ -91,7 +93,7 @@ export interface Conversation {
 }
 
 // ============================================================
-// AI Service Types
+// Model Service Types
 // ============================================================
 
 export interface ChatOptions {
@@ -168,10 +170,10 @@ export interface OpenFile {
 }
 
 // ============================================================
-// Agent Tool I/O (renderer-side execution shape)
+// Task Tool I/O (renderer-side execution shape)
 // ============================================================
 
-export interface AgentToolExecution {
+export interface TaskToolExecution {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
@@ -183,8 +185,10 @@ export interface AgentToolExecution {
   diff?: { before: string; after: string; filePath: string };
 }
 
+export type AgentToolExecution = TaskToolExecution;
+
 // ============================================================
-// Multi-Agent Orchestration
+// Parallel Task Orchestration
 // ============================================================
 
 export interface OrchestrationTask {

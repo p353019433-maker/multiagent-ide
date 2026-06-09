@@ -7,7 +7,7 @@ import type {
   ChatResult,
   StreamCallbacks,
   ToolCall,
-  AIProvider,
+  ModelProvider,
   FimRequest,
 } from '../../shared/types';
 import { getFimCapability, fimBaseURL } from '../../shared/fim';
@@ -28,11 +28,11 @@ export class AIService {
     }
   }
 
-  private getProviders(): AIProvider[] {
-    return (this.store.get('providers') as AIProvider[]) || [];
+  private getProviders(): ModelProvider[] {
+    return (this.store.get('providers') as ModelProvider[]) || [];
   }
 
-  private async getApiKey(provider: AIProvider): Promise<string> {
+  private async getApiKey(provider: ModelProvider): Promise<string> {
     const encrypted = this.store.get(provider.apiKeyRef) as string | undefined;
     if (!encrypted) return '';
     try {
@@ -205,11 +205,10 @@ export class AIService {
       return;
     }
 
-    const apiKey = await this.getApiKey(provider);
-    const controller = new AbortController();
-    this.abortControllers.set(senderId, controller);
-
     try {
+      const apiKey = await this.getApiKey(provider);
+      const controller = new AbortController();
+      this.abortControllers.set(senderId, controller);
       if (provider.type === 'anthropic') {
         await this.streamAnthropic(apiKey, provider, messages, options, callbacks, controller.signal);
       } else {
@@ -289,9 +288,23 @@ export class AIService {
     }));
   }
 
+  private parseToolArguments(raw: string | null | undefined): Record<string, unknown> {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Providers occasionally emit malformed tool JSON. Surface the tool call
+      // with empty args instead of crashing the whole chat turn.
+    }
+    return {};
+  }
+
   private async chatOpenAI(
     apiKey: string,
-    provider: AIProvider,
+    provider: ModelProvider,
     messages: ChatMessage[],
     options: ChatOptions
   ): Promise<ChatResult> {
@@ -312,7 +325,7 @@ export class AIService {
     const toolCalls: ToolCall[] = (choice.message.tool_calls || []).map((tc) => ({
       id: tc.id,
       name: tc.function.name,
-      arguments: JSON.parse(tc.function.arguments || '{}'),
+      arguments: this.parseToolArguments(tc.function.arguments),
     }));
 
     return {
@@ -335,7 +348,7 @@ export class AIService {
 
   private async streamOpenAI(
     apiKey: string,
-    provider: AIProvider,
+    provider: ModelProvider,
     messages: ChatMessage[],
     options: ChatOptions,
     callbacks: StreamCallbacks,
@@ -405,7 +418,7 @@ export class AIService {
     const toolCalls: ToolCall[] = Object.values(toolCallAccum).map((tc) => ({
       id: tc.id,
       name: tc.name,
-      arguments: (() => { try { return JSON.parse(tc.args); } catch { return {}; } })(),
+      arguments: this.parseToolArguments(tc.args),
     }));
     // If the model emitted tool calls, that is the effective finish reason even
     // when the terminal chunk reported 'stop'.
@@ -484,7 +497,7 @@ export class AIService {
     }
 
     // Place a cache breakpoint on the last content block of the most recent
-    // message. On each agent turn the conversation prefix is identical, so the
+    // message. On each task turn the conversation prefix is identical, so the
     // whole history up to here is served from cache rather than re-billed.
     const last = result[result.length - 1];
     if (last) {
@@ -509,7 +522,7 @@ export class AIService {
       input_schema: t.parameters as Anthropic.Tool['input_schema'],
     }));
     // Mark the last (and therefore the whole) tool definition block as cacheable.
-    // The tool list is large and stable across an agent loop, so caching it
+    // The tool list is large and stable across a task loop, so caching it
     // avoids re-billing those tokens on every turn.
     if (tools.length) {
       (tools[tools.length - 1] as Record<string, unknown>).cache_control = {
@@ -521,7 +534,7 @@ export class AIService {
 
   /**
    * Build a cacheable system prompt block for Anthropic. The system prompt is
-   * identical on every turn of an agent loop, so caching it is a large win.
+   * identical on every turn of a task loop, so caching it is a large win.
    */
   private buildAnthropicSystem(
     systemPrompt?: string
@@ -538,7 +551,7 @@ export class AIService {
 
   private async chatAnthropic(
     apiKey: string,
-    provider: AIProvider,
+    provider: ModelProvider,
     messages: ChatMessage[],
     options: ChatOptions
   ): Promise<ChatResult> {
@@ -581,7 +594,7 @@ export class AIService {
 
   private async streamAnthropic(
     apiKey: string,
-    provider: AIProvider,
+    provider: ModelProvider,
     messages: ChatMessage[],
     options: ChatOptions,
     callbacks: StreamCallbacks,

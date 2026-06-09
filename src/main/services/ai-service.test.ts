@@ -18,6 +18,7 @@ const oai = (m: ChatMessage[], sys?: string) => (svc as any).buildOpenAIMessages
 const ant = (m: ChatMessage[]) => (svc as any).buildAnthropicMessages(m) as any[];
 const oaiTools = (o: ChatOptions) => (svc as any).buildOpenAITools(o);
 const antTools = (o: ChatOptions) => (svc as any).buildAnthropicTools(o);
+const parseToolArguments = (raw: string) => (svc as any).parseToolArguments(raw);
 
 const userMsg = (content: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({
   id: 'u', role: 'user', content, timestamp: 0, ...extra,
@@ -112,5 +113,19 @@ describe('tool builders', () => {
   it('both return undefined when no tools', () => {
     expect(oaiTools({ model: 'm' })).toBeUndefined();
     expect(antTools({ model: 'm' })).toBeUndefined();
+  });
+});
+
+describe('tool argument parsing', () => {
+  it('parses valid JSON object arguments', () => {
+    expect(parseToolArguments('{"path":"a.ts"}')).toEqual({ path: 'a.ts' });
+  });
+
+  it('falls back to an empty object when provider tool arguments are malformed', () => {
+    expect(parseToolArguments('{bad json')).toEqual({});
+  });
+
+  it('rejects non-object JSON values as tool argument objects', () => {
+    expect(parseToolArguments('"not an object"')).toEqual({});
   });
 });

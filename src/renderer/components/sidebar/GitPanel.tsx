@@ -1,10 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { Download, GitBranchPlus, Plus, RefreshCw, Upload } from 'lucide-react';
 
 interface GitChange {
   status: string; // "M ", "??", "A ", "AM", etc.
   path: string;
   staged: boolean; // in staging area vs working tree
+}
+
+const ACTION_BUTTON_CLASS =
+  'flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-40';
+const FIELD_CLASS =
+  'w-full border border-editor-border bg-editor-bg px-2 py-1 text-xs font-mono text-editor-text placeholder-gray-600 focus:border-editor-accent focus:outline-none';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export default function GitPanel() {
@@ -21,6 +31,13 @@ export default function GitPanel() {
   const [statusMsg, setStatusMsg] = useState('');
   const [diffFile, setDiffFile] = useState<string | undefined>();
   const [diffStaged, setDiffStaged] = useState(false);
+  const [creatingBranch, setCreatingBranch] = useState(false);
+  const [branchDraft, setBranchDraft] = useState('');
+  const branchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (creatingBranch) branchInputRef.current?.focus();
+  }, [creatingBranch]);
 
   const parseStatus = (text: string) => {
     const lines = text.split('\n');
@@ -61,8 +78,9 @@ export default function GitPanel() {
       setBranch(curBr || branch);
       setBranches(brText.split('\n').map((l) => l.replace('*', '').trim()).filter(Boolean));
       setStatusMsg('');
-    } catch (e: any) {
-      setStatusMsg(e.message || '获取状态失败');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusMsg(message || '获取状态失败');
     }
     setLoading(false);
   }, [rootPath]);
@@ -87,63 +105,69 @@ export default function GitPanel() {
     setView('log');
   };
 
+  const runGitAction = async (action: () => Promise<string>, onSuccess?: () => void) => {
+    try {
+      const result = await action();
+      setStatusMsg(result);
+      onSuccess?.();
+    } catch (error) {
+      setStatusMsg(getErrorMessage(error) || 'Git 操作失败');
+    } finally {
+      refresh();
+    }
+  };
+
   const handleStage = async (filePath: string) => {
     if (!rootPath) return;
-    const result = await window.api.git.stage(rootPath, [filePath]);
-    setStatusMsg(result);
-    refresh();
+    await runGitAction(() => window.api.git.stage(rootPath, [filePath]));
   };
 
   const handleUnstage = async (filePath: string) => {
     if (!rootPath) return;
-    const result = await window.api.git.unstage(rootPath, [filePath]);
-    setStatusMsg(result);
-    refresh();
+    await runGitAction(() => window.api.git.unstage(rootPath, [filePath]));
   };
 
   const handleStageAll = async () => {
     if (!rootPath) return;
-    const result = await window.api.git.stageAll(rootPath);
-    setStatusMsg(result);
-    refresh();
+    await runGitAction(() => window.api.git.stageAll(rootPath));
   };
 
   const handleCommit = async () => {
     if (!rootPath || !commitMsg.trim()) return;
-    const result = await window.api.git.commit(rootPath, commitMsg);
-    setStatusMsg(result);
-    setCommitMsg('');
-    refresh();
+    await runGitAction(() => window.api.git.commit(rootPath, commitMsg), () => setCommitMsg(''));
   };
 
   const handlePush = async () => {
     if (!rootPath) return;
-    const result = await window.api.git.push(rootPath);
-    setStatusMsg(result);
-    refresh();
+    await runGitAction(() => window.api.git.push(rootPath));
   };
 
   const handlePull = async () => {
     if (!rootPath) return;
-    const result = await window.api.git.pull(rootPath);
-    setStatusMsg(result);
-    refresh();
+    await runGitAction(() => window.api.git.pull(rootPath));
   };
 
   const handleSwitchBranch = async (name: string) => {
     if (!rootPath) return;
-    const result = await window.api.git.branchSwitch(rootPath, name);
-    setStatusMsg(result);
-    refresh();
+    await runGitAction(() => window.api.git.branchSwitch(rootPath, name));
+  };
+
+  const startCreateBranch = () => {
+    setCreatingBranch(true);
+    setBranchDraft('');
+    setStatusMsg('');
   };
 
   const handleCreateBranch = async () => {
-    if (!rootPath) return;
-    const name = prompt('新分支名：');
-    if (!name) return;
-    const result = await window.api.git.branchCreate(rootPath, name);
-    setStatusMsg(result);
-    refresh();
+    if (!rootPath || !branchDraft.trim()) return;
+    const name = branchDraft.trim();
+    await runGitAction(
+      () => window.api.git.branchCreate(rootPath, name),
+      () => {
+        setCreatingBranch(false);
+        setBranchDraft('');
+      }
+    );
   };
 
   const statusLabel = (s: string) => {
@@ -158,11 +182,11 @@ export default function GitPanel() {
   return (
     <div className="h-full flex flex-col bg-editor-sidebar">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
+      <div className="flex h-8 items-center justify-between border-b border-editor-border px-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Git</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Git</span>
           {branch && (
-            <span className="text-[11px] text-editor-accent font-mono" title="当前分支">
+            <span className="font-mono text-[10px] text-editor-accent" title="当前分支">
               {branch}
             </span>
           )}
@@ -171,17 +195,19 @@ export default function GitPanel() {
           <button
             onClick={refresh}
             disabled={loading}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+            className={ACTION_BUTTON_CLASS}
             title="刷新"
+            aria-label="刷新 Git"
           >
-            🔄
+            <RefreshCw size={14} strokeWidth={1.8} />
           </button>
           <button
-            onClick={handleCreateBranch}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+            onClick={startCreateBranch}
+            className={ACTION_BUTTON_CLASS}
             title="新建分支"
+            aria-label="新建分支"
           >
-            ➕
+            <GitBranchPlus size={14} strokeWidth={1.8} />
           </button>
         </div>
       </div>
@@ -207,41 +233,72 @@ export default function GitPanel() {
           <div>
             {/* Action bar */}
             <div className="px-3 py-1.5 border-b border-editor-border/50">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between gap-1">
                 <button
                   onClick={handleStageAll}
-                  className="flex-1 py-0.5 text-[11px] bg-editor-active/50 rounded hover:bg-editor-active text-editor-text"
+                  className={ACTION_BUTTON_CLASS}
                   title="暂存所有变更"
+                  aria-label="暂存所有变更"
                 >
-                  + 全部暂存
+                  <Plus size={14} strokeWidth={1.8} />
                 </button>
-                <button
-                  onClick={handlePush}
-                  className="flex-1 py-0.5 text-[11px] bg-editor-active/50 rounded hover:bg-editor-active text-green-400"
-                  title="推送到远程"
-                >
-                  ↑ 推送
-                </button>
-                <button
-                  onClick={handlePull}
-                  className="flex-1 py-0.5 text-[11px] bg-editor-active/50 rounded hover:bg-editor-active text-blue-400"
-                  title="从远程拉取"
-                >
-                  ↓ 拉取
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handlePull}
+                    className={ACTION_BUTTON_CLASS}
+                    title="从远程拉取"
+                    aria-label="从远程拉取"
+                  >
+                    <Download size={14} strokeWidth={1.8} />
+                  </button>
+                  <button
+                    onClick={handlePush}
+                    className={ACTION_BUTTON_CLASS}
+                    title="推送到远程"
+                    aria-label="推送到远程"
+                  >
+                    <Upload size={14} strokeWidth={1.8} />
+                  </button>
+                </div>
               </div>
 
               {/* Branch quick switcher */}
+              {creatingBranch && (
+                <div className="mt-1.5 flex items-center gap-1">
+                  <GitBranchPlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
+                  <input
+                    ref={branchInputRef}
+                    value={branchDraft}
+                    onChange={(e) => setBranchDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleCreateBranch();
+                      } else if (e.key === 'Escape') {
+                        setCreatingBranch(false);
+                        setBranchDraft('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!branchDraft.trim()) setCreatingBranch(false);
+                    }}
+                    placeholder="分支名"
+                    spellCheck={false}
+                    className={FIELD_CLASS}
+                  />
+                </div>
+              )}
+
               {branches.length > 1 && (
                 <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                   {branches.slice(0, 6).map((br) => (
                     <button
                       key={br}
                       onClick={() => handleSwitchBranch(br)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                      className={`border px-1.5 py-0.5 font-mono text-[10px] ${
                         br === branch
-                          ? 'bg-editor-accent/30 text-editor-accent'
-                          : 'bg-editor-active/30 text-gray-400 hover:text-white'
+                          ? 'border-editor-accent bg-editor-accent/20 text-editor-accent'
+                          : 'border-editor-border bg-editor-bg text-gray-400 hover:bg-editor-hover hover:text-white'
                       }`}
                       title={`切换到 ${br}`}
                     >
@@ -326,8 +383,8 @@ export default function GitPanel() {
             )}
 
             {stagedChanges.length === 0 && changes.length === 0 && !statusMsg && (
-              <div className="px-3 py-4 text-center text-xs text-gray-500">
-                工作区干净 ✓
+              <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+                工作区干净
               </div>
             )}
 
@@ -339,7 +396,7 @@ export default function GitPanel() {
                   onChange={(e) => setCommitMsg(e.target.value)}
                   placeholder="提交信息..."
                   rows={2}
-                  className="w-full text-xs bg-editor-bg border border-editor-border rounded px-2 py-1 text-editor-text resize-none font-mono placeholder-gray-600 focus:outline-none focus:border-editor-accent"
+                  className={`${FIELD_CLASS} resize-none`}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
@@ -347,12 +404,11 @@ export default function GitPanel() {
                     }
                   }}
                 />
-                <div className="flex justify-between items-center mt-1">
-                  <span className="text-[10px] text-gray-600">⌘Enter 提交</span>
+                <div className="mt-1 flex justify-end">
                   <button
                     onClick={handleCommit}
                     disabled={!commitMsg.trim()}
-                    className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-2 py-0.5 text-[11px] bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     提交
                   </button>
@@ -366,13 +422,13 @@ export default function GitPanel() {
           <div>
             <div className="flex items-center gap-2 px-3 py-1 border-b border-editor-border/50 text-[11px]">
               <span
-                className={`px-1.5 py-0.5 rounded cursor-pointer ${!diffStaged ? 'bg-editor-accent/30 text-editor-accent' : 'text-gray-500 hover:text-white bg-editor-active/30'}`}
+                className={`cursor-pointer border px-1.5 py-0.5 ${!diffStaged ? 'border-editor-accent bg-editor-accent/20 text-editor-accent' : 'border-editor-border bg-editor-bg text-gray-500 hover:bg-editor-hover hover:text-white'}`}
                 onClick={() => diffFile && handleViewDiff(diffFile, false)}
               >
                 工作区
               </span>
               <span
-                className={`px-1.5 py-0.5 rounded cursor-pointer ${diffStaged ? 'bg-editor-accent/30 text-editor-accent' : 'text-gray-500 hover:text-white bg-editor-active/30'}`}
+                className={`cursor-pointer border px-1.5 py-0.5 ${diffStaged ? 'border-editor-accent bg-editor-accent/20 text-editor-accent' : 'border-editor-border bg-editor-bg text-gray-500 hover:bg-editor-hover hover:text-white'}`}
                 onClick={() => diffFile && handleViewDiff(diffFile, true)}
               >
                 暂存区

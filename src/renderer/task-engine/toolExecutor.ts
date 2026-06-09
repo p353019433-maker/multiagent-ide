@@ -1,7 +1,7 @@
 /**
- * Agent tool executor — the big dispatch that runs a single tool call.
+ * Task tool executor — the big dispatch that runs a single tool call.
  *
- * Extracted from ChatPanel verbatim (behavior-preserving). All host
+ * Extracted from TaskPanel verbatim (behavior-preserving). All host
  * capabilities the tools need are injected via ToolContext so this module has
  * no React or component coupling and can be tested in isolation.
  */
@@ -10,7 +10,7 @@ import { classifyCommand } from '@shared/command-policy';
 import type { ToolCall } from '@shared/types';
 import { applyEdit } from './applyEdit';
 
-/** Action kinds for the approval gate (mirrors ChatPanel's pendingApproval). */
+/** Action kinds for the approval gate (mirrors TaskPanel's pendingApproval). */
 export type GateAction =
   | 'write'
   | 'edit'
@@ -100,7 +100,7 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'list_directory': {
       const dirPath = resolvePath(args.path as string);
       const nodes = await window.api.fs.readDirectory(dirPath);
-      return nodes.map((n: any) => `${n.isDirectory ? '📁' : '📄'} ${n.name}`).join('\n');
+      return nodes.map((n: any) => `${n.isDirectory ? '[dir]' : '[file]'} ${n.name}`).join('\n');
     }
     case 'search_files': {
       if (!rootPath) throw new Error('未打开工作区');

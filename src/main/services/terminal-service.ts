@@ -147,7 +147,7 @@ export class TerminalService {
   /**
    * Shell-free execution: runs `file` with an argument array directly (no shell
    * interpretation). Use this whenever any argument is untrusted (e.g. file
-   * names coming from the agent) to avoid command injection.
+   * names coming from model/tool input) to avoid command injection.
    */
   runFile(
     cwd: string,

@@ -1,5 +1,5 @@
 /**
- * GitHub API service for Agent tools and IDE features.
+ * GitHub API service for task tools and IDE features.
  * Uses the GitHub REST API with a personal access token.
  */
 export class GitHubService {
@@ -15,7 +15,7 @@ export class GitHubService {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'ai-code-ide/1.0',
+        'User-Agent': 'code-ide/1.0',
         ...(options.headers || {}),
       },
     });
@@ -122,7 +122,7 @@ export class GitHubService {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github.v3.diff',
         'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'ai-code-ide/1.0',
+        'User-Agent': 'code-ide/1.0',
       },
     });
     if (!res.ok) throw new Error(`GitHub API ${res.status}`);

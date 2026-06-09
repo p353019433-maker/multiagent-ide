@@ -11,11 +11,6 @@ const budgets = [
     maxKiB: 3400,
   },
   {
-    name: 'syntax highlighter runtime',
-    match: /^vendor-syntax-.*\.js$/,
-    maxKiB: 160,
-  },
-  {
     name: 'markdown renderer',
     match: /^vendor-markdown-.*\.js$/,
     maxKiB: 220,

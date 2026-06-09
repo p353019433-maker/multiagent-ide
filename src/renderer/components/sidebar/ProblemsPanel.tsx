@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
+import { AlertCircle, AlertTriangle, Info, RefreshCw, type LucideIcon } from 'lucide-react';
 
 interface Problem {
   file: string;
@@ -10,6 +11,12 @@ interface Problem {
   message: string;
   rule?: string;
 }
+
+const PROBLEM_META: Record<Problem['severity'], { Icon: LucideIcon; className: string }> = {
+  error: { Icon: AlertCircle, className: 'text-red-400' },
+  warning: { Icon: AlertTriangle, className: 'text-yellow-400' },
+  info: { Icon: Info, className: 'text-blue-400' },
+};
 
 export default function ProblemsPanel() {
   const { rootPath } = useWorkspace();
@@ -49,58 +56,60 @@ export default function ProblemsPanel() {
 
   return (
     <div className="h-full flex flex-col bg-editor-sidebar">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border">
+      <div className="flex h-8 items-center justify-between border-b border-editor-border px-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
             问题
           </span>
-          <span className="text-[11px] text-gray-600">
+          <span className="font-mono text-[10px] text-gray-600">
             {errors.length} 错 {warnings.length} 警
           </span>
         </div>
         <button
           onClick={refresh}
           disabled={loading}
-          className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
+          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-40"
           title="刷新"
+          aria-label="刷新问题"
         >
-          {loading ? '⏳' : '🔄'}
+          <RefreshCw size={14} strokeWidth={1.8} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto selectable">
         {loading && problems.length === 0 && (
-          <p className="text-xs text-gray-500 text-center mt-4">分析中...</p>
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+            分析中...
+          </div>
         )}
         {!loading && problems.length === 0 && (
-          <p className="text-xs text-gray-500 text-center mt-4">未发现问题 ✓</p>
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+            未发现问题
+          </div>
         )}
 
-        {problems.map((p, i) => (
-          <div
-            key={i}
-            className="flex items-start gap-2 px-3 py-[3px] cursor-pointer hover:bg-editor-hover text-xs border-b border-editor-border/30"
-            onClick={() => handleClick(p)}
-          >
-            <span className={
-              p.severity === 'error' ? 'text-red-400 flex-shrink-0 mt-0.5' :
-              p.severity === 'warning' ? 'text-yellow-400 flex-shrink-0 mt-0.5' :
-              'text-blue-400 flex-shrink-0 mt-0.5'
-            }>
-              {p.severity === 'error' ? '✕' : p.severity === 'warning' ? '⚠' : 'ℹ'}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-editor-text truncate">{p.message}</div>
-              <div className="text-[10px] text-gray-600 font-mono truncate">
-                {p.file ? `${p.file.split('/').pop()}#${p.line}` : ''}
-                {p.rule ? ` · ${p.rule}` : ''}
+        {problems.map((p, i) => {
+          const { Icon, className } = PROBLEM_META[p.severity];
+          return (
+            <div
+              key={i}
+              className="flex cursor-pointer items-start gap-2 border-b border-editor-border/30 px-3 py-[3px] text-xs hover:bg-editor-hover"
+              onClick={() => handleClick(p)}
+            >
+              <Icon size={13} strokeWidth={1.8} className={`mt-0.5 flex-shrink-0 ${className}`} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-editor-text">{p.message}</div>
+                <div className="truncate font-mono text-[10px] text-gray-600">
+                  {p.file ? `${p.file.split('/').pop()}#${p.line}` : ''}
+                  {p.rule ? ` · ${p.rule}` : ''}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {lastCheck && (
-          <p className="text-[10px] text-gray-700 text-center py-2">
+          <p className="border-t border-editor-border px-3 py-2 text-[10px] text-gray-700">
             上次检查 {lastCheck}
           </p>
         )}

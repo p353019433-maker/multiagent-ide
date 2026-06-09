@@ -1,6 +1,6 @@
 /**
- * Agent engine hook — owns the multi-turn agent loop, tool execution, retry,
- * self-heal, checkpoints, and streaming state. Extracted from ChatPanel
+ * Task engine hook — owns the multi-turn task loop, tool execution, retry,
+ * self-heal, checkpoints, and streaming state. Extracted from TaskPanel
  * (behavior-preserving). Host-specific decisions (approval) are injected via
  * deps so this hook stays focused on orchestration.
  */
@@ -10,16 +10,16 @@ import { v4 as uuid } from 'uuid';
 import type {
   ChatMessage as ChatMessageType,
   ToolCall,
-  AgentToolExecution,
+  TaskToolExecution,
   Checkpoint,
   Artifact,
 } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
-import { resolveWorkspacePath, classifyToolError, compactMessages } from './agentUtils';
+import { resolveWorkspacePath, classifyToolError, compactMessages } from './taskUtils';
 import type { GateActionFn } from './useApproval';
 
-export interface AgentEngineDeps {
+export interface TaskEngineDeps {
   activeProviderId: string | null;
   activeModel: string | null;
   rootPath: string | null;
@@ -31,7 +31,7 @@ export interface AgentEngineDeps {
 
 const MAX_ITERATIONS = 25;
 
-export function useAgentEngine(deps: AgentEngineDeps) {
+export function useTaskEngine(deps: TaskEngineDeps) {
   const { activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction, onFileChanged } = deps;
 
   // Keep refs for values consumed inside async callbacks (runTurn, chatStream)
@@ -45,12 +45,12 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
-  const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
+  const [toolExecutions, setToolExecutions] = useState<TaskToolExecution[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
   // Guard against state updates after unmount (e.g. when the component is
-  // torn down while a long-running agent turn is still in flight).
+  // torn down while a long-running task turn is still in flight).
   const mountedRef = useRef(true);
   React.useEffect(() => {
     return () => { mountedRef.current = false; };
@@ -150,7 +150,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
     const results: { toolCallId: string; content: string; isError?: boolean }[] = [];
 
     for (const tc of toolCalls) {
-      const execution: AgentToolExecution = {
+      const execution: TaskToolExecution = {
         id: tc.id,
         name: tc.name,
         arguments: tc.arguments,
@@ -182,7 +182,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   };
 
   /**
-   * Run one user turn: the streaming agent loop with tool execution, stuck-loop
+   * Run one user turn: the streaming task loop with tool execution, stuck-loop
    * detection, auto-lint self-heal, and end-of-turn checkpoint creation.
    */
   const runTurn = async (convId: string, apiMessages: ChatMessageType[], turnLabel = '') => {
@@ -195,7 +195,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
     let loopMessages = compactMessages([...apiMessages]);
     let iterations = 0;
-    // Track repeated identical tool calls to detect a stuck agent.
+    // Track repeated identical tool calls to detect a stuck task.
     let lastToolSignature = '';
     let repeatCount = 0;
     // Auto-lint self-heal runs at most once per turn.
@@ -210,35 +210,48 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         const result = await new Promise<any>((resolve, reject) => {
           let content = '';
           const toolCalls: ToolCall[] = [];
+          let settled = false;
+          let unsubToken = () => {};
+          let unsubTool = () => {};
+          let unsubComplete = () => {};
+          let unsubError = () => {};
+          const cleanup = () => {
+            unsubToken();
+            unsubTool();
+            unsubComplete();
+            unsubError();
+          };
+          const settle = (fn: (value: any) => void, value: any) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            fn(value);
+          };
 
-          const unsubToken = window.api.ai.onStreamToken((token) => {
+          unsubToken = window.api.ai.onStreamToken((token) => {
             content += token;
             safeSetStreamContent(content);
           });
-          const unsubTool = window.api.ai.onStreamToolCall((tc) => {
+          unsubTool = window.api.ai.onStreamToolCall((tc) => {
             toolCalls.push(tc);
           });
-          const unsubComplete = window.api.ai.onStreamComplete((res) => {
-            unsubToken();
-            unsubTool();
-            unsubComplete();
-            unsubError();
-            resolve({ ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
+          unsubComplete = window.api.ai.onStreamComplete((res) => {
+            settle(resolve, { ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
           });
-          const unsubError = window.api.ai.onStreamError((err) => {
-            unsubToken();
-            unsubTool();
-            unsubComplete();
-            unsubError();
-            reject(new Error(err));
+          unsubError = window.api.ai.onStreamError((err) => {
+            settle(reject, new Error(err));
           });
 
-          window.api.ai.chatStream(activeProviderIdRef.current!, loopMessages, {
-            model: activeModelRef.current!,
-            tools: BUILTIN_TOOLS,
-            systemPrompt: buildSystemPrompt(),
-            workspaceRoot: rootPathRef.current || undefined,
-          });
+          void window.api.ai
+            .chatStream(activeProviderIdRef.current!, loopMessages, {
+              model: activeModelRef.current!,
+              tools: BUILTIN_TOOLS,
+              systemPrompt: buildSystemPrompt(),
+              workspaceRoot: rootPathRef.current || undefined,
+            })
+            .catch((err) => {
+              settle(reject, err instanceof Error ? err : new Error(String(err)));
+            });
         });
 
         const assistantMsg: ChatMessageType = {
@@ -252,9 +265,9 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         safeSetStreamContent('');
 
         if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
-          // The agent thinks it's done. Before stopping, run a self-heal lint
+          // The task runner thinks it's done. Before stopping, run a self-heal lint
           // pass on the files it edited and, if there are errors, feed them back
-          // once so the agent can fix them automatically.
+          // once so the model can fix them automatically.
           if (!selfHealAttempted && turnEditedFiles.current.size > 0 && rootPath) {
             selfHealAttempted = true;
             const edited = Array.from(turnEditedFiles.current);
@@ -291,7 +304,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
           addMessage(convId, {
             id: uuid(),
             role: 'assistant',
-            content: '⚠️ 检测到 Agent 重复执行相同操作且无进展，已自动停止。',
+            content: '[warning] 检测到重复执行相同操作且无进展，已自动停止。',
             timestamp: Date.now(),
           });
           break;
@@ -313,7 +326,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         const errorMsg: ChatMessageType = {
           id: uuid(),
           role: 'assistant',
-          content: `❌ 错误：${err.message}`,
+          content: `[error] ${err.message}`,
           timestamp: Date.now(),
         };
         addMessage(convId, errorMsg);
@@ -325,7 +338,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       addMessage(convId, {
         id: uuid(),
         role: 'assistant',
-        content: `⚠️ 已达到最大 ${MAX_ITERATIONS} 轮工具调用上限，自动停止。如需继续可再发一条消息。`,
+        content: `[warning] 已达到最大 ${MAX_ITERATIONS} 轮工具调用上限，自动停止。如需继续可再发一条消息。`,
         timestamp: Date.now(),
       });
     }
@@ -354,9 +367,8 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   };
 
   /**
-   * Build an Antigravity-style verifiable deliverable for a turn that changed
-   * files: a markdown report listing the changed files, the post-change lint /
-   * type verification result, and a git diff stat. Persisted under
+   * Build a verifiable report for a turn that changed files: changed files,
+   * post-change lint/type results, and a git diff stat. Persisted under
    * .ide/artifacts/ so it survives and can be opened in the editor.
    */
   const generateArtifact = async (label: string, files: string[]) => {
@@ -367,8 +379,8 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       if (check) {
         verified = !check.hasErrors;
         lintSection = check.hasErrors
-          ? '❌ **验证未通过**\n\n```\n' + check.output.slice(0, 2000) + '\n```'
-          : '✅ **验证通过**（ESLint + tsc 无错误）';
+          ? '**验证未通过**\n\n```\n' + check.output.slice(0, 2000) + '\n```'
+          : '**验证通过**（ESLint + tsc 无错误）';
       }
     }
 
@@ -423,7 +435,10 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
   /** Revert all file changes captured in a checkpoint. */
   const revertCheckpoint = async (cp: Checkpoint) => {
-    if (!confirm(`回滚 ${cp.files.length} 个文件到「${cp.label}」之前的状态？`)) return;
+    let reverted = 0;
+    let failed = 0;
+    const snapshotPathsToDelete: string[] = [];
+
     for (const f of cp.files) {
       try {
         if (f.before === null) {
@@ -436,20 +451,26 @@ export function useAgentEngine(deps: AgentEngineDeps) {
           const content = await window.api.fs.readFile(snapPath);
           await window.api.fs.writeFile(f.path, content);
           await onFileChanged?.(f.path, content);
-          // Clean up the snapshot file after a successful revert.
-          await window.api.fs.delete(snapPath).catch(() => {});
+          snapshotPathsToDelete.push(snapPath);
         } else {
           // Legacy: before content stored inline (older checkpoints).
           await window.api.fs.writeFile(f.path, f.before);
           await onFileChanged?.(f.path, f.before);
         }
+        reverted += 1;
       } catch {
-        // best-effort; continue reverting the rest
+        failed += 1;
       }
     }
-    safeSetCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
-    window.dispatchEvent(new CustomEvent('files-reverted'));
-    alert(`已回滚 ${cp.files.length} 个文件`);
+
+    if (failed === 0) {
+      await Promise.all(snapshotPathsToDelete.map((path) => window.api.fs.delete(path).catch(() => {})));
+      safeSetCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
+    }
+    if (reverted > 0) {
+      window.dispatchEvent(new CustomEvent('files-reverted'));
+    }
+    return { reverted, failed };
   };
 
   return {

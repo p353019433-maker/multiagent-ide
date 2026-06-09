@@ -12,6 +12,15 @@ export class GitService {
     });
   }
 
+  private async gitOrThrow(cwd: string, args: string[]): Promise<string> {
+    const { stdout, stderr, exitCode } = await this.git(cwd, args);
+    if (exitCode !== 0) {
+      const output = (stderr || stdout || `exit code ${exitCode}`).trim();
+      throw new Error(`git ${args.join(' ')} failed: ${output}`);
+    }
+    return stdout;
+  }
+
   async status(cwd: string): Promise<string> {
     try {
       const { stdout } = await this.git(cwd, ['status', '--short', '--branch']);
@@ -48,39 +57,39 @@ export class GitService {
   // ── Mutation operations ──
 
   async stage(cwd: string, files: string[]): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['add', '--', ...files]);
-    return exitCode === 0 ? `已暂存 ${files.length} 个文件` : stderr || stdout;
+    await this.gitOrThrow(cwd, ['add', '--', ...files]);
+    return `已暂存 ${files.length} 个文件`;
   }
 
   async unstage(cwd: string, files: string[]): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['reset', 'HEAD', '--', ...files]);
-    return exitCode === 0 ? `已取消暂存 ${files.length} 个文件` : stderr || stdout;
+    await this.gitOrThrow(cwd, ['reset', 'HEAD', '--', ...files]);
+    return `已取消暂存 ${files.length} 个文件`;
   }
 
   async stageAll(cwd: string): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['add', '-A']);
-    return exitCode === 0 ? '已暂存所有变更' : stderr || stdout;
+    await this.gitOrThrow(cwd, ['add', '-A']);
+    return '已暂存所有变更';
   }
 
   async commit(cwd: string, message: string): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['commit', '-m', message]);
-    return exitCode === 0 ? stdout || '提交成功' : stderr || stdout;
+    const stdout = await this.gitOrThrow(cwd, ['commit', '-m', message]);
+    return stdout || '提交成功';
   }
 
   async push(cwd: string, remote?: string, branch?: string): Promise<string> {
     const args = ['push'];
     if (remote) args.push(remote);
     if (branch) args.push(branch);
-    const { stdout, stderr, exitCode } = await this.git(cwd, args);
-    return exitCode === 0 ? stdout || '推送成功' : stderr || stdout;
+    const stdout = await this.gitOrThrow(cwd, args);
+    return stdout || '推送成功';
   }
 
   async pull(cwd: string, remote?: string, branch?: string): Promise<string> {
     const args = ['pull'];
     if (remote) args.push(remote);
     if (branch) args.push(branch);
-    const { stdout, stderr, exitCode } = await this.git(cwd, args);
-    return exitCode === 0 ? stdout || '拉取成功' : stderr || stdout;
+    const stdout = await this.gitOrThrow(cwd, args);
+    return stdout || '拉取成功';
   }
 
   async branchList(cwd: string): Promise<string> {
@@ -89,13 +98,13 @@ export class GitService {
   }
 
   async branchSwitch(cwd: string, name: string): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['checkout', name]);
-    return exitCode === 0 ? `已切换到分支 ${name}` : stderr || stdout;
+    await this.gitOrThrow(cwd, ['checkout', name]);
+    return `已切换到分支 ${name}`;
   }
 
   async branchCreate(cwd: string, name: string): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['checkout', '-b', name]);
-    return exitCode === 0 ? `已创建并切换到分支 ${name}` : stderr || stdout;
+    await this.gitOrThrow(cwd, ['checkout', '-b', name]);
+    return `已创建并切换到分支 ${name}`;
   }
 
   /** Get current branch name */
@@ -192,7 +201,7 @@ export class GitService {
 
   /** Prune stale worktree entries from repo metadata. */
   async worktreePrune(cwd: string): Promise<string> {
-    const { stdout } = await this.git(cwd, ['worktree', 'prune']);
+    const stdout = await this.gitOrThrow(cwd, ['worktree', 'prune']);
     return stdout || '已清理过期 worktree 记录';
   }
 

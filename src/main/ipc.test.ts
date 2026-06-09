@@ -58,14 +58,12 @@ describe('IPC worktree path policy', () => {
     handlers.clear();
     const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ide-ipc-'));
     root = path.join(base, 'repo');
-    allowedWorktree = path.join(base, 'repo_wt', 'agent-1');
-    outside = path.join(base, 'elsewhere', 'agent-1');
+    allowedWorktree = path.join(base, 'repo_wt', 'task-1');
+    outside = path.join(base, 'elsewhere', 'task-1');
     await fs.mkdir(root, { recursive: true });
-    await fs.mkdir(path.dirname(allowedWorktree), { recursive: true });
-    await fs.mkdir(path.dirname(outside), { recursive: true });
   });
 
-  it('allows worktrees inside the sibling <repo>_wt directory', async () => {
+  it('allows worktrees inside the sibling <repo>_wt directory even before the parent exists', async () => {
     const gitService = {
       worktreeAdd: vi.fn(async (_cwd: string, p: string) => {
         await fs.mkdir(p, { recursive: true });
@@ -76,13 +74,13 @@ describe('IPC worktree path policy', () => {
     await authorizeRoot(root);
 
     const worktreeAdd = handlers.get('git:worktreeAdd')!;
-    const res = await worktreeAdd(appEvent, root, allowedWorktree, 'agent-1');
+    const res = await worktreeAdd(appEvent, root, allowedWorktree, 'task-1');
 
     expect(res.success).toBe(true);
     expect(gitService.worktreeAdd).toHaveBeenCalledWith(
       expect.any(String),
       expect.stringContaining('repo_wt'),
-      'agent-1',
+      'task-1',
       undefined
     );
   });
@@ -93,7 +91,7 @@ describe('IPC worktree path policy', () => {
     await authorizeRoot(root);
 
     const worktreeAdd = handlers.get('git:worktreeAdd')!;
-    await expect(worktreeAdd(appEvent, root, outside, 'agent-1')).rejects.toThrow(/路径必须位于/);
+    await expect(worktreeAdd(appEvent, root, outside, 'task-1')).rejects.toThrow(/路径必须位于/);
     expect(gitService.worktreeAdd).not.toHaveBeenCalled();
   });
 });
@@ -129,6 +127,33 @@ describe('IPC store key policy', () => {
 
     expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'providers')).toThrow(/拒绝访问通用 secret/);
     expect(handlers.get('store:decryptAndGet')!(appEvent, 'github_token')).toBeNull();
+    expect(handlers.get('store:decryptAndGet')!(appEvent, 'apiKey:abc')).toBeNull();
+    expect(handlers.get('store:decryptAndGet')!(appEvent, 'apikey_legacy')).toBeNull();
+  });
+});
+
+describe('IPC file path policy', () => {
+  let root: string;
+
+  beforeEach(async () => {
+    handlers.clear();
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ide-ipc-file-'));
+    root = path.join(base, 'repo');
+    await fs.mkdir(root, { recursive: true });
+  });
+
+  it('allows writing nested new files inside an authorized workspace', async () => {
+    const fileService = { writeFile: vi.fn() };
+    const fileWatcherService = { ignoreNext: vi.fn() };
+    registerIpc(deps({ fileService, fileWatcherService }));
+    await authorizeRoot(root);
+
+    const nestedFile = path.join(root, '.ide', 'history', 'snapshot.snap');
+    await handlers.get('fs:writeFile')!(appEvent, nestedFile, 'snapshot');
+
+    const canonicalNestedFile = path.join(await fs.realpath(root), '.ide', 'history', 'snapshot.snap');
+    expect(fileWatcherService.ignoreNext).toHaveBeenCalledWith(canonicalNestedFile);
+    expect(fileService.writeFile).toHaveBeenCalledWith(canonicalNestedFile, 'snapshot');
   });
 });
 

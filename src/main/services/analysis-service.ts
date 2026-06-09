@@ -2,7 +2,7 @@
  * Analysis service — lint diagnostics and symbol extraction.
  *
  * Extracted from index.ts. All shell execution goes through TerminalService.runFile
- * (argument arrays, no shell) so agent-supplied file names can't inject commands.
+ * (argument arrays, no shell) so tool-supplied file names can't inject commands.
  */
 
 import path from 'path';
@@ -51,7 +51,7 @@ export class AnalysisService {
     return results.join('\n') || '未发现问题';
   }
 
-  /** Structured diagnostic check for the agent self-heal loop (scoped to edited files). */
+  /** Structured diagnostic check for the task self-heal loop (scoped to edited files). */
   async checkLint(cwd: string, files?: string[]): Promise<{ hasErrors: boolean; output: string }> {
     const targetFiles = (files || []).filter(isSafePath);
     let output = '';

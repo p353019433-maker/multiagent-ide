@@ -1,5 +1,5 @@
 /**
- * Approval hook — owns the mode-aware approval gate extracted from ChatPanel.
+ * Approval hook — owns the mode-aware approval gate extracted from TaskPanel.
  *
  * Three modes (see command-policy):
  *  - readonly: every write/command/external action needs manual approval
@@ -51,6 +51,8 @@ const AUTO_ACCEPT_MS = 5000;
 export function useApproval() {
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>(DEFAULT_APPROVAL_MODE);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const pendingApprovalRef = useRef<PendingApproval | null>(null);
+  pendingApprovalRef.current = pendingApproval;
 
   // Ref so the gate (called outside render, deep in tool execution) reads the
   // current mode without stale-closure issues.
@@ -58,6 +60,14 @@ export function useApproval() {
   approvalModeRef.current = approvalMode;
 
   const autoApproveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
+      pendingApprovalRef.current?.resolve(false);
+      pendingApprovalRef.current = null;
+    };
+  }, []);
 
   // Load persisted mode once.
   useEffect(() => {
@@ -81,7 +91,12 @@ export function useApproval() {
   ): Promise<boolean> => {
     const countdown = opts?.countdown ?? true;
     return new Promise((resolve) => {
-      setPendingApproval({
+      if (autoApproveTimeout.current) {
+        clearTimeout(autoApproveTimeout.current);
+        autoApproveTimeout.current = null;
+      }
+      pendingApprovalRef.current?.resolve(false);
+      const pending: PendingApproval = {
         toolCallId,
         filePath,
         action,
@@ -90,13 +105,17 @@ export function useApproval() {
         countdown,
         dangerReason: opts?.dangerReason,
         resolve,
-      });
+      };
+      pendingApprovalRef.current = pending;
+      setPendingApproval(pending);
       if (countdown) {
         // Auto-accept after the countdown — user can reject before that.
         autoApproveTimeout.current = setTimeout(() => {
           setPendingApproval((prev) => {
             if (prev?.toolCallId === toolCallId) {
               prev.resolve(true);
+              autoApproveTimeout.current = null;
+              pendingApprovalRef.current = null;
               return null;
             }
             return prev;
@@ -123,12 +142,14 @@ export function useApproval() {
   const handleApprove = () => {
     if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
     pendingApproval?.resolve(true);
+    pendingApprovalRef.current = null;
     setPendingApproval(null);
   };
 
   const handleReject = () => {
     if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
     pendingApproval?.resolve(false);
+    pendingApprovalRef.current = null;
     setPendingApproval(null);
   };
 
