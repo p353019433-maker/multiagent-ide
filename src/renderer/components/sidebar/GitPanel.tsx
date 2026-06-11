@@ -9,7 +9,7 @@ interface GitChange {
 }
 
 const ACTION_BUTTON_CLASS =
-  'flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-40';
+  'flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground disabled:opacity-40';
 const FIELD_CLASS =
   'w-full border border-editor-border bg-editor-bg px-2 py-1 text-xs font-mono text-editor-text placeholder-gray-600 focus:border-editor-accent focus:outline-none';
 
@@ -176,7 +176,7 @@ export default function GitPanel() {
     if (s === 'A' || s === 'A ') return { label: 'A', color: 'text-green-400' };
     if (s === 'D' || s === ' D') return { label: 'D', color: 'text-red-500' };
     if (s === 'MM' || s === 'AM') return { label: s, color: 'text-yellow-400' };
-    return { label: s, color: 'text-gray-500' };
+    return { label: s, color: 'text-muted-foreground' };
   };
 
   return (
@@ -184,9 +184,9 @@ export default function GitPanel() {
       {/* Header */}
       <div className="flex h-8 items-center justify-between border-b border-editor-border px-3">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Git</span>
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">Git</span>
           {branch && (
-            <span className="font-mono text-[10px] text-editor-accent" title="当前分支">
+            <span className="font-mono text-10 text-editor-accent" title="当前分支">
               {branch}
             </span>
           )}
@@ -218,8 +218,8 @@ export default function GitPanel() {
           <button
             key={v}
             onClick={() => setView(v)}
-            className={`flex-1 py-1.5 text-[11px] text-center ${
-              view === v ? 'text-white border-b-2 border-editor-accent' : 'text-gray-500 hover:text-gray-300'
+            className={`flex-1 py-1.5 text-11 text-center ${
+              view === v ? 'text-foreground border-b-2 border-editor-accent' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {v === 'changes' ? '变更' : v === 'diff' ? '差异' : '日志'}
@@ -265,7 +265,7 @@ export default function GitPanel() {
               {/* Branch quick switcher */}
               {creatingBranch && (
                 <div className="mt-1.5 flex items-center gap-1">
-                  <GitBranchPlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
+                  <GitBranchPlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
                   <input
                     ref={branchInputRef}
                     value={branchDraft}
@@ -295,10 +295,10 @@ export default function GitPanel() {
                     <button
                       key={br}
                       onClick={() => handleSwitchBranch(br)}
-                      className={`border px-1.5 py-0.5 font-mono text-[10px] ${
+                      className={`border px-1.5 py-0.5 font-mono text-10 ${
                         br === branch
                           ? 'border-editor-accent bg-editor-accent/20 text-editor-accent'
-                          : 'border-editor-border bg-editor-bg text-gray-400 hover:bg-editor-hover hover:text-white'
+                          : 'border-editor-border bg-editor-bg text-muted-foreground hover:bg-editor-hover hover:text-foreground'
                       }`}
                       title={`切换到 ${br}`}
                     >
@@ -311,7 +311,7 @@ export default function GitPanel() {
 
             {/* Status message */}
             {statusMsg && (
-              <div className="px-3 py-1 text-[11px] text-gray-400 border-b border-editor-border/50 font-mono">
+              <div className="px-3 py-1 text-11 text-muted-foreground border-b border-editor-border/50 font-mono">
                 {statusMsg}
               </div>
             )}
@@ -319,7 +319,7 @@ export default function GitPanel() {
             {/* Staged changes */}
             {stagedChanges.length > 0 && (
               <div>
-                <div className="px-3 py-1 text-[11px] font-semibold text-green-400">
+                <div className="px-3 py-1 text-11 font-semibold text-green-400">
                   已暂存 ({stagedChanges.length})
                 </div>
                 {stagedChanges.map((c, i) => {
@@ -330,14 +330,14 @@ export default function GitPanel() {
                       className="flex items-center gap-2 px-3 py-[3px] hover:bg-editor-hover text-xs group"
                     >
                       <span
-                        className={`${sl.color} font-mono text-[11px] cursor-pointer flex-shrink-0`}
+                        className={`${sl.color} font-mono text-11 cursor-pointer flex-shrink-0`}
                         onClick={() => handleUnstage(c.path)}
                         title="取消暂存"
                       >
                         {sl.label}
                       </span>
                       <span
-                        className="text-editor-text truncate font-mono text-[11px] flex-1 cursor-pointer"
+                        className="text-editor-text truncate font-mono text-11 flex-1 cursor-pointer"
                         onClick={() => handleViewDiff(c.path, true)}
                       >
                         {c.path}
@@ -352,7 +352,7 @@ export default function GitPanel() {
             {changes.length > 0 && (
               <div>
                 {stagedChanges.length > 0 && (
-                  <div className="px-3 py-1 text-[11px] font-semibold text-yellow-400">
+                  <div className="px-3 py-1 text-11 font-semibold text-yellow-400">
                     未暂存 ({changes.length})
                   </div>
                 )}
@@ -364,14 +364,14 @@ export default function GitPanel() {
                       className="flex items-center gap-2 px-3 py-[3px] hover:bg-editor-hover text-xs group"
                     >
                       <span
-                        className={`${sl.color} font-mono text-[11px] cursor-pointer flex-shrink-0`}
+                        className={`${sl.color} font-mono text-11 cursor-pointer flex-shrink-0`}
                         onClick={() => handleStage(c.path)}
                         title="暂存"
                       >
                         {sl.label}
                       </span>
                       <span
-                        className="text-editor-text truncate font-mono text-[11px] flex-1 cursor-pointer"
+                        className="text-editor-text truncate font-mono text-11 flex-1 cursor-pointer"
                         onClick={() => handleViewDiff(c.path, false)}
                       >
                         {c.path}
@@ -383,7 +383,7 @@ export default function GitPanel() {
             )}
 
             {stagedChanges.length === 0 && changes.length === 0 && !statusMsg && (
-              <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+              <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
                 工作区干净
               </div>
             )}
@@ -408,7 +408,7 @@ export default function GitPanel() {
                   <button
                     onClick={handleCommit}
                     disabled={!commitMsg.trim()}
-                    className="px-2 py-0.5 text-[11px] bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="px-2 py-0.5 text-11 bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     提交
                   </button>
@@ -420,33 +420,33 @@ export default function GitPanel() {
 
         {view === 'diff' && (
           <div>
-            <div className="flex items-center gap-2 px-3 py-1 border-b border-editor-border/50 text-[11px]">
+            <div className="flex items-center gap-2 px-3 py-1 border-b border-editor-border/50 text-11">
               <span
-                className={`cursor-pointer border px-1.5 py-0.5 ${!diffStaged ? 'border-editor-accent bg-editor-accent/20 text-editor-accent' : 'border-editor-border bg-editor-bg text-gray-500 hover:bg-editor-hover hover:text-white'}`}
+                className={`cursor-pointer border px-1.5 py-0.5 ${!diffStaged ? 'border-editor-accent bg-editor-accent/20 text-editor-accent' : 'border-editor-border bg-editor-bg text-muted-foreground hover:bg-editor-hover hover:text-foreground'}`}
                 onClick={() => diffFile && handleViewDiff(diffFile, false)}
               >
                 工作区
               </span>
               <span
-                className={`cursor-pointer border px-1.5 py-0.5 ${diffStaged ? 'border-editor-accent bg-editor-accent/20 text-editor-accent' : 'border-editor-border bg-editor-bg text-gray-500 hover:bg-editor-hover hover:text-white'}`}
+                className={`cursor-pointer border px-1.5 py-0.5 ${diffStaged ? 'border-editor-accent bg-editor-accent/20 text-editor-accent' : 'border-editor-border bg-editor-bg text-muted-foreground hover:bg-editor-hover hover:text-foreground'}`}
                 onClick={() => diffFile && handleViewDiff(diffFile, true)}
               >
                 暂存区
               </span>
               {diffFile && (
-                <span className="text-gray-600 ml-auto truncate font-mono text-[10px]">
+                <span className="text-muted-foreground ml-auto truncate font-mono text-10">
                   {diffFile}
                 </span>
               )}
             </div>
-            <pre className="text-[11px] font-mono text-editor-text p-3 whitespace-pre-wrap leading-relaxed">
+            <pre className="text-11 font-mono text-editor-text p-3 whitespace-pre-wrap leading-relaxed">
               {diff || '没有差异'}
             </pre>
           </div>
         )}
 
         {view === 'log' && (
-          <pre className="text-[11px] font-mono text-editor-text p-3 whitespace-pre-wrap leading-relaxed">
+          <pre className="text-11 font-mono text-editor-text p-3 whitespace-pre-wrap leading-relaxed">
             {log || '加载中...'}
           </pre>
         )}

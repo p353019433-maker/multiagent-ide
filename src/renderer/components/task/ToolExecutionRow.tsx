@@ -26,7 +26,7 @@ export default function ToolExecutionRow({ execution }: Props) {
   }[execution.status];
 
   const statusColor = {
-    pending: 'text-gray-400',
+    pending: 'text-muted-foreground',
     running: 'text-yellow-400',
     success: 'text-green-400',
     error: 'text-red-400',
@@ -41,17 +41,17 @@ export default function ToolExecutionRow({ execution }: Props) {
         className="grid min-h-7 cursor-pointer grid-cols-[64px_minmax(0,1fr)_minmax(0,120px)_auto_auto] items-center gap-2 hover:bg-editor-hover"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className={`border-r border-editor-border/70 px-2 font-mono text-[10px] ${statusColor}`}>
+        <span className={`border-r border-editor-border/70 px-2 font-mono text-10 ${statusColor}`}>
           {statusMark}
         </span>
         <span className="min-w-0 truncate font-mono text-editor-accent">{execution.name}</span>
-        <span className="hidden min-w-0 truncate text-[11px] text-gray-600 sm:block">
+        <span className="hidden min-w-0 truncate text-11 text-muted-foreground sm:block">
           {argKeys.join(', ')}
         </span>
-        <span className={`px-2 text-[11px] ${statusColor}`}>
+        <span className={`px-2 text-11 ${statusColor}`}>
           {STATUS_NAMES[execution.status] || execution.status}
         </span>
-        <span className="pr-2 text-gray-600">
+        <span className="pr-2 text-muted-foreground">
           {expanded ? <ChevronDown size={13} strokeWidth={1.8} /> : <ChevronRight size={13} strokeWidth={1.8} />}
         </span>
       </div>
@@ -59,26 +59,26 @@ export default function ToolExecutionRow({ execution }: Props) {
       {expanded && (
         <div className="border-t border-editor-border bg-editor-bg">
           <div>
-            <div className="border-b border-editor-border px-3 py-1 font-mono text-[10px] text-gray-600">
+            <div className="border-b border-editor-border px-3 py-1 font-mono text-10 text-muted-foreground">
               PARAMS
             </div>
-            <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-3 py-2 pl-[76px] font-mono text-[11px] text-gray-300">
+            <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-3 py-2 pl-[76px] font-mono text-11 text-foreground">
               {JSON.stringify(execution.arguments, null, 2).slice(0, 500)}
             </pre>
           </div>
           {execution.result && (
             <div>
-              <div className="border-b border-editor-border px-3 py-1 font-mono text-[10px] text-gray-600">
+              <div className="border-b border-editor-border px-3 py-1 font-mono text-10 text-muted-foreground">
                 RESULT
               </div>
-              <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-3 py-2 pl-[76px] font-mono text-[11px] text-gray-300">
+              <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-3 py-2 pl-[76px] font-mono text-11 text-foreground">
                 {execution.result.slice(0, 1000)}
               </pre>
             </div>
           )}
           {execution.error && (
             <div>
-              <div className="border-b border-editor-border px-3 py-1 font-mono text-[10px] text-red-500">
+              <div className="border-b border-editor-border px-3 py-1 font-mono text-10 text-red-500">
                 ERROR
               </div>
               <div className="border-b border-editor-border px-3 py-2 pl-[76px] text-red-400">

@@ -24,8 +24,8 @@ interface Props {
 function titleButtonClass(active: boolean): string {
   return `flex h-8 w-8 items-center justify-center border-l border-editor-border border-b-2 transition-colors duration-75 ${
     active
-      ? 'border-b-editor-accent bg-editor-bg text-white'
-      : 'border-b-transparent text-gray-500 hover:bg-editor-hover hover:text-gray-200'
+      ? 'border-b-editor-accent bg-editor-bg text-foreground'
+      : 'border-b-transparent text-muted-foreground hover:bg-editor-hover hover:text-foreground'
   }`;
 }
 
@@ -45,28 +45,28 @@ export default function TitleBar({
   return (
     <div className="grid h-8 grid-cols-[minmax(0,1fr)_minmax(150px,420px)_minmax(0,1fr)] items-center bg-editor-sidebar border-b border-editor-border drag-region">
       <div className="flex min-w-0 items-center gap-1.5 px-2 no-drag sm:px-3">
-        <span className="text-[12px] font-medium text-editor-text">Code IDE</span>
+        <span className="text-xs font-medium text-editor-text">Code IDE</span>
         {rootName && (
           <>
-            <ChevronRight size={13} strokeWidth={1.8} className="flex-shrink-0 text-gray-700" />
-            <span className="truncate text-[11px] text-gray-500">{rootName}</span>
+            <ChevronRight size={13} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
+            <span className="truncate text-11 text-muted-foreground">{rootName}</span>
           </>
         )}
       </div>
 
       <button
         onClick={onToggleSearch}
-        className={`no-drag hidden h-6 min-w-0 items-center gap-2 border px-2 text-[11px] transition-colors md:flex ${
+        className={`no-drag hidden h-6 min-w-0 items-center gap-2 border px-2 text-11 transition-colors md:flex ${
           showSearch
-            ? 'border-editor-accent bg-editor-bg text-white'
-            : 'border-editor-border bg-editor-bg text-gray-500 hover:bg-editor-hover hover:text-gray-300'
+            ? 'border-editor-accent bg-editor-bg text-foreground'
+            : 'border-editor-border bg-editor-bg text-muted-foreground hover:bg-editor-hover hover:text-foreground'
         }`}
         title="搜索文件和命令 (Cmd+Shift+F)"
         aria-label="搜索文件和命令"
       >
         <Search size={14} strokeWidth={1.8} />
         <span className="truncate">{rootName ? `搜索 ${rootName}` : '搜索工作区'}</span>
-        <span className="hidden flex-shrink-0 font-mono text-[10px] text-gray-600 lg:inline">
+        <span className="hidden flex-shrink-0 font-mono text-10 text-muted-foreground lg:inline">
           Cmd Shift F
         </span>
       </button>

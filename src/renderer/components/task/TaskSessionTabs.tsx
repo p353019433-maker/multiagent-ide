@@ -15,7 +15,7 @@ const DRAWER_HEADER_CLASS =
   'flex h-8 flex-shrink-0 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3';
 const DRAWER_ACTION_BAR_CLASS =
   'flex h-10 flex-shrink-0 items-center justify-end gap-2 border-t border-editor-border bg-editor-sidebar px-3';
-const DRAWER_BUTTON_CLASS = 'h-7 border px-3 text-[11px] disabled:opacity-50';
+const DRAWER_BUTTON_CLASS = 'h-7 border px-3 text-11 disabled:opacity-50';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -162,11 +162,11 @@ export default function TaskSessionTabs({
           onClick={() => onSelect(conv.id)}
           className={`group flex min-w-[96px] max-w-[180px] cursor-pointer items-center gap-1 border-r border-editor-border border-b-2 px-2 ${
             conv.id === activeId
-              ? 'bg-editor-bg text-white ' + (conv.worktree ? 'border-b-yellow-500' : 'border-b-editor-accent')
-              : 'border-b-transparent text-gray-400 hover:bg-editor-hover'
+              ? 'bg-editor-bg text-foreground ' + (conv.worktree ? 'border-b-yellow-500' : 'border-b-editor-accent')
+              : 'border-b-transparent text-muted-foreground hover:bg-editor-hover'
           }`}
         >
-          {conv.worktree && <span className="text-[10px] flex-shrink-0 group-hover:hidden text-yellow-500">WT</span>}
+          {conv.worktree && <span className="text-10 flex-shrink-0 group-hover:hidden text-yellow-500">WT</span>}
           {conv.worktree && (
             <div className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
               <button
@@ -197,11 +197,11 @@ export default function TaskSessionTabs({
               onClick={(e) => e.stopPropagation()}
               autoFocus
               spellCheck={false}
-              className="w-full border border-editor-accent bg-editor-bg px-1 py-0 text-[11px] text-white outline-none"
+              className="w-full border border-editor-accent bg-editor-bg px-1 py-0 text-11 text-foreground outline-none"
             />
           ) : (
             <span
-              className="text-[11px] font-mono truncate select-none"
+              className="text-11 font-mono truncate select-none"
               onDoubleClick={() => { setEditingId(conv.id); setDraft(conv.title); }}
             >
               {conv.title || '新任务'}
@@ -210,7 +210,7 @@ export default function TaskSessionTabs({
           {conversations.length > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
-              className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-gray-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+              className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
               title="关闭任务"
             >
               <X size={11} strokeWidth={1.8} />
@@ -222,7 +222,7 @@ export default function TaskSessionTabs({
 
     {operationNotice && (
       <div
-        className={`border-b px-3 py-1.5 text-[11px] ${
+        className={`border-b px-3 py-1.5 text-11 ${
           operationNotice.tone === 'success'
             ? 'border-emerald-900/70 text-emerald-300'
             : 'border-red-900/80 text-red-300'
@@ -237,17 +237,17 @@ export default function TaskSessionTabs({
       <div className={`${DRAWER_CLASS} max-w-[760px]`}>
         <div className={DRAWER_HEADER_CLASS}>
           <div className="flex min-w-0 items-center gap-2">
-            <GitMerge size={14} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            <GitMerge size={14} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
+            <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
               合并预览
             </span>
-            <span className="truncate font-mono text-[11px] text-gray-400">
+            <span className="truncate font-mono text-11 text-muted-foreground">
               {mergeTargetWorktree.branch} → {mergeTargetWorktree.baseBranch}
             </span>
           </div>
           <button
             onClick={() => setMergeTarget(null)}
-            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
             title="关闭"
             aria-label="关闭合并预览"
           >
@@ -257,11 +257,11 @@ export default function TaskSessionTabs({
 
         <div className="min-h-0 flex-1 overflow-auto">
           {mergeLoading ? (
-            <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">加载 diff...</div>
+            <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">加载 diff...</div>
           ) : mergeError ? (
             <div className="border-b border-editor-border px-3 py-2 text-xs text-red-400">{mergeError}</div>
           ) : (
-            <pre className="whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-gray-300">
+            <pre className="whitespace-pre-wrap px-3 py-2 font-mono text-11 leading-relaxed text-foreground">
               {mergeDiff || '没有差异'}
             </pre>
           )}
@@ -282,13 +282,13 @@ export default function TaskSessionTabs({
           </button>
           <button
             onClick={() => handleMergeConfirm('rebase')}
-            className={`${DRAWER_BUTTON_CLASS} border-editor-border bg-editor-active text-white hover:bg-editor-hover`}
+            className={`${DRAWER_BUTTON_CLASS} border-editor-border bg-editor-active text-foreground hover:bg-editor-hover`}
           >
             Rebase
           </button>
           <button
             onClick={() => setMergeTarget(null)}
-            className={`${DRAWER_BUTTON_CLASS} border-editor-border bg-editor-bg text-gray-300 hover:bg-editor-hover hover:text-white`}
+            className={`${DRAWER_BUTTON_CLASS} border-editor-border bg-editor-bg text-foreground hover:bg-editor-hover hover:text-foreground`}
           >
             取消
           </button>
@@ -301,13 +301,13 @@ export default function TaskSessionTabs({
         <div className={DRAWER_HEADER_CLASS}>
           <div className="flex min-w-0 items-center gap-2">
             <Trash2 size={14} strokeWidth={1.8} className="flex-shrink-0 text-red-400" />
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
               清理 worktree
             </span>
           </div>
           <button
             onClick={() => setCleanupTarget(null)}
-            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
             title="关闭"
             disabled={cleanupLoading}
             aria-label="关闭清理面板"
@@ -316,20 +316,20 @@ export default function TaskSessionTabs({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 text-xs text-gray-300">
+        <div className="min-h-0 flex-1 text-xs text-foreground">
           <div className="border-b border-red-900/70 px-3 py-2 text-red-300">
             将删除隔离工作树目录和分支。确认前请确保需要保留的改动已经合并或另行保存。
           </div>
-          <dl className="font-mono text-[11px]">
+          <dl className="font-mono text-11">
             <div className="grid min-h-8 grid-cols-[72px_minmax(0,1fr)] border-b border-editor-border">
-              <dt className="border-r border-editor-border px-3 py-2 text-gray-500">branch</dt>
-              <dd className="truncate px-3 py-2 text-gray-300" title={cleanupTargetWorktree.branch}>
+              <dt className="border-r border-editor-border px-3 py-2 text-muted-foreground">branch</dt>
+              <dd className="truncate px-3 py-2 text-foreground" title={cleanupTargetWorktree.branch}>
               {cleanupTargetWorktree.branch}
               </dd>
             </div>
             <div className="grid min-h-8 grid-cols-[72px_minmax(0,1fr)] border-b border-editor-border">
-              <dt className="border-r border-editor-border px-3 py-2 text-gray-500">path</dt>
-              <dd className="truncate px-3 py-2 text-gray-300" title={cleanupTargetWorktree.path}>
+              <dt className="border-r border-editor-border px-3 py-2 text-muted-foreground">path</dt>
+              <dd className="truncate px-3 py-2 text-foreground" title={cleanupTargetWorktree.path}>
               {cleanupTargetWorktree.path}
               </dd>
             </div>
@@ -347,7 +347,7 @@ export default function TaskSessionTabs({
           <button
             onClick={() => setCleanupTarget(null)}
             disabled={cleanupLoading}
-            className={`${DRAWER_BUTTON_CLASS} border-editor-border bg-editor-bg text-gray-300 hover:bg-editor-hover hover:text-white`}
+            className={`${DRAWER_BUTTON_CLASS} border-editor-border bg-editor-bg text-foreground hover:bg-editor-hover hover:text-foreground`}
           >
             取消
           </button>
