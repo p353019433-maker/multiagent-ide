@@ -6,7 +6,12 @@
  *  - auto:     reads run freely; workspace writes auto-accept after a short
  *              preview; shell commands run unless they match a danger pattern,
  *              in which case they require manual approval regardless of tier
- *  - full:     everything runs with no prompts (the original behavior)
+ *  - full:     everything runs with no prompts EXCEPT external/irreversible
+ *              operations (GitHub writes, remote API), which still need an
+ *              explicit manual approval unless the user has opted in to
+ *              `allowExternalInFull`. The opt-in flag exists to preserve the
+ *              "trust myself" intent of `full` mode without making external
+ *              actions irreversibly silent.
  */
 
 export type ApprovalMode = 'readonly' | 'auto' | 'full';
@@ -80,11 +85,18 @@ export type ApprovalDecision = 'allow' | 'auto' | 'manual';
 export function decideApproval(
   mode: ApprovalMode,
   kind: 'read' | 'write' | 'command' | 'external',
-  opts?: { dangerous?: boolean }
+  opts?: { dangerous?: boolean; allowExternalInFull?: boolean }
 ): ApprovalDecision {
   if (kind === 'read') return 'allow';
 
-  if (mode === 'full') return 'allow';
+  if (mode === 'full') {
+    // external/irreversible ops (GitHub writes, remote API calls) still require
+    // explicit confirmation in `full` mode unless the user has explicitly opted
+    // in via `allowExternalInFull`. This keeps the "trust myself" intent of
+    // `full` while preventing silent irreversible actions.
+    if (kind === 'external' && !opts?.allowExternalInFull) return 'manual';
+    return 'allow';
+  }
 
   if (mode === 'readonly') return 'manual';
 

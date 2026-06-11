@@ -37,4 +37,14 @@ describe('decideApproval', () => {
     expect(decideApproval('full', 'write')).toBe('allow');
     expect(decideApproval('full', 'command', { dangerous: true })).toBe('allow');
   });
+  it('full gates external/irreversible ops unless explicitly opted in', () => {
+    // Default: external ops in full mode still require manual approval.
+    expect(decideApproval('full', 'external')).toBe('manual');
+    expect(decideApproval('full', 'external', { dangerous: true })).toBe('manual');
+    // Opt-in: caller passes `allowExternalInFull: true` to skip the gate.
+    expect(decideApproval('full', 'external', { allowExternalInFull: true })).toBe('allow');
+    expect(decideApproval('full', 'external', { allowExternalInFull: true, dangerous: true })).toBe('allow');
+    // Other kinds are unaffected by the new opt.
+    expect(decideApproval('full', 'write', { allowExternalInFull: true })).toBe('allow');
+  });
 });

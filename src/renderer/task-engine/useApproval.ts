@@ -59,6 +59,14 @@ export function useApproval() {
   const approvalModeRef = useRef<ApprovalMode>(DEFAULT_APPROVAL_MODE);
   approvalModeRef.current = approvalMode;
 
+  // Sub-flag: even in `full` mode, external/irreversible operations (GitHub
+  // writes, remote API calls) default to manual approval. Setting this to true
+  // restores the "trust myself" intent for external ops. Persisted alongside
+  // approvalMode so the user's choice survives restarts.
+  const [allowExternalInFull, setAllowExternalInFull] = useState<boolean>(false);
+  const allowExternalInFullRef = useRef<boolean>(false);
+  allowExternalInFullRef.current = allowExternalInFull;
+
   const autoApproveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -74,11 +82,19 @@ export function useApproval() {
     window.api.store.get('approvalMode').then((m) => {
       if (m === 'readonly' || m === 'auto' || m === 'full') setApprovalMode(m);
     });
+    window.api.store.get('allowExternalInFull').then((v) => {
+      if (v === true) setAllowExternalInFull(true);
+    });
   }, []);
 
   const changeApprovalMode = (m: ApprovalMode) => {
     setApprovalMode(m);
     window.api.store.set('approvalMode', m);
+  };
+
+  const changeAllowExternalInFull = (v: boolean) => {
+    setAllowExternalInFull(v);
+    window.api.store.set('allowExternalInFull', v);
   };
 
   const requestApproval = (
@@ -131,7 +147,10 @@ export function useApproval() {
    * blocks for manual approval. Returns true if the action may proceed.
    */
   const gateAction: GateActionFn = (toolCallId, label, kind, before, after, action, opts) => {
-    const decision = decideApproval(approvalModeRef.current, kind, { dangerous: opts?.dangerous });
+    const decision = decideApproval(approvalModeRef.current, kind, {
+      dangerous: opts?.dangerous,
+      allowExternalInFull: allowExternalInFullRef.current,
+    });
     if (decision === 'allow') return Promise.resolve(true);
     return requestApproval(toolCallId, label, action, before, after, {
       countdown: decision === 'auto',
@@ -156,6 +175,8 @@ export function useApproval() {
   return {
     approvalMode,
     changeApprovalMode,
+    allowExternalInFull,
+    changeAllowExternalInFull,
     pendingApproval,
     gateAction,
     handleApprove,

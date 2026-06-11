@@ -92,6 +92,7 @@ const ALLOWED_STORE_KEYS = new Set([
   'activeProviderId',
   'activeModel',
   'approvalMode',
+  'allowExternalInFull',
   'embeddingConfig',
   'rerankConfig',
   'conversationIndex',
