@@ -53,6 +53,13 @@ export default {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
       },
+      // IDE 字号规范（不要再用任意值 text-[NNpx]）：
+      // text-10 徽标/快捷键提示 · text-11 状态栏/元信息 · text-xs(12px) UI 默认 · text-13 正文/编辑器侧
+      fontSize: {
+        10: '10px',
+        11: '11px',
+        13: '13px',
+      },
     },
   },
   plugins: [],

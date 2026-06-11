@@ -31,7 +31,7 @@ export default function StatusBar() {
   }, [rootPath]);
 
   return (
-    <div className="flex h-6 flex-shrink-0 items-center justify-between border-t border-editor-border bg-editor-sidebar px-2 text-[11px] text-gray-500">
+    <div className="flex h-6 flex-shrink-0 items-center justify-between border-t border-editor-border bg-editor-sidebar px-2 text-11 text-muted-foreground">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex min-w-0 items-center gap-1.5" title={rootPath || '未打开文件夹'}>
           <Folder size={13} strokeWidth={1.8} />

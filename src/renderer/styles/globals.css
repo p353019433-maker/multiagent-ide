@@ -48,6 +48,16 @@
   }
 }
 
+/* 键盘可达性：仅键盘聚焦时显示主题色焦点环（鼠标点击不显示） */
+:focus-visible {
+  outline: 1px solid hsl(var(--ring));
+  outline-offset: -1px;
+}
+/* Monaco 自带焦点管理，避免双重描边 */
+.monaco-container :focus-visible {
+  outline: none;
+}
+
 /* Allow text selection in editor and task output */
 .selectable {
   user-select: text;

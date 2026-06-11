@@ -19,8 +19,8 @@ export default function TaskMessage({ message }: Props) {
 
   return (
     <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-      <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-[10px] leading-5 text-gray-600">
-        <div className={isUser ? 'text-editor-accent' : 'text-gray-500'}>{roleLabel}</div>
+      <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-muted-foreground">
+        <div className={isUser ? 'text-editor-accent' : 'text-muted-foreground'}>{roleLabel}</div>
         <div>{timeLabel}</div>
       </div>
 
@@ -41,7 +41,7 @@ export default function TaskMessage({ message }: Props) {
         {isUser ? (
           <p className="whitespace-pre-wrap text-editor-text">{message.content}</p>
         ) : (
-          <div className="max-w-none text-gray-300">
+          <div className="max-w-none text-foreground">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -69,7 +69,7 @@ export default function TaskMessage({ message }: Props) {
                   const match = /language-(\w+)/.exec(className || '');
                   if (match) {
                     return (
-                      <pre className="my-2 overflow-x-auto border border-editor-border bg-editor-bg p-2 text-[12px]">
+                      <pre className="my-2 overflow-x-auto border border-editor-border bg-editor-bg p-2 text-xs">
                         <code className={`language-${match[1]}`}>
                           {String(children).replace(/\n$/, '')}
                         </code>
@@ -78,7 +78,7 @@ export default function TaskMessage({ message }: Props) {
                   }
                   return (
                     <code
-                      className="border border-editor-border bg-editor-bg px-1 py-0.5 font-mono text-[12px] text-gray-300"
+                      className="border border-editor-border bg-editor-bg px-1 py-0.5 font-mono text-xs text-foreground"
                       {...rest}
                     >
                       {children}
@@ -95,10 +95,10 @@ export default function TaskMessage({ message }: Props) {
         {message.toolCalls?.length ? (
           <div className="mt-2 border-t border-editor-border pt-1">
             {message.toolCalls.map((tc) => (
-              <div key={tc.id} className="flex min-h-5 items-center gap-2 text-[11px] text-gray-500">
-                <span className="w-9 font-mono text-[10px] text-gray-600">STEP</span>
+              <div key={tc.id} className="flex min-h-5 items-center gap-2 text-11 text-muted-foreground">
+                <span className="w-9 font-mono text-10 text-muted-foreground">STEP</span>
                 <span className="truncate font-mono text-editor-accent">{tc.name}</span>
-                <span className="min-w-0 truncate text-gray-600">
+                <span className="min-w-0 truncate text-muted-foreground">
                   {Object.keys(tc.arguments).join(', ')}
                 </span>
               </div>

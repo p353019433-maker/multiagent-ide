@@ -72,7 +72,7 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
         <button
           onClick={goBack}
           disabled={navIndex <= 0}
-          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-30"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground disabled:opacity-30"
           title="后退"
           aria-label="后退"
         >
@@ -81,7 +81,7 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
         <button
           onClick={goForward}
           disabled={navIndex >= navHistory.length - 1}
-          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-30"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground disabled:opacity-30"
           title="前进"
           aria-label="前进"
         >
@@ -89,7 +89,7 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
         </button>
         <button
           onClick={() => navigate(inputUrl)}
-          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
           title="刷新"
           aria-label="刷新预览"
         >
@@ -106,14 +106,14 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
             placeholder="地址"
             spellCheck={false}
             ref={inputRef}
-            className="flex-1 border border-editor-border bg-editor-sidebar px-2 py-0.5 font-mono text-[12px] text-editor-text focus:border-editor-accent focus:outline-none"
+            className="flex-1 border border-editor-border bg-editor-sidebar px-2 py-0.5 font-mono text-xs text-editor-text focus:border-editor-accent focus:outline-none"
           />
         </div>
 
         {/* Close */}
         <button
           onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-red-400"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-red-400"
           title="关闭"
           aria-label="关闭浏览器"
         >
@@ -137,10 +137,10 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
             }}
           />
           {loadFailed && (
-            <div className="absolute inset-0 flex items-center justify-center bg-editor-bg text-center text-sm text-gray-400">
+            <div className="absolute inset-0 flex items-center justify-center bg-editor-bg text-center text-sm text-muted-foreground">
               <div>
                 <p>无法在预览面板中加载该页面</p>
-                <p className="mt-1 text-xs text-gray-500">目标页面可能禁止 iframe 嵌入。</p>
+                <p className="mt-1 text-xs text-muted-foreground">目标页面可能禁止 iframe 嵌入。</p>
               </div>
             </div>
           )}
@@ -148,14 +148,14 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
       ) : (
         <div className="flex-1 bg-editor-bg">
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-            <div className="border-r border-editor-border bg-editor-sidebar px-2 py-2 font-mono text-[10px] leading-5 text-gray-600">
+            <div className="border-r border-editor-border bg-editor-sidebar px-2 py-2 font-mono text-10 leading-5 text-muted-foreground">
               READY
             </div>
             <button
               onClick={() => inputRef.current?.focus()}
               className="flex min-h-9 items-center gap-2 bg-editor-bg px-3 text-left text-editor-text hover:bg-editor-hover"
             >
-              <Globe size={15} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
+              <Globe size={15} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
               <span>地址栏</span>
             </button>
           </div>

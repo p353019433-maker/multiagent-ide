@@ -58,17 +58,17 @@ export default function ProblemsPanel() {
     <div className="h-full flex flex-col bg-editor-sidebar">
       <div className="flex h-8 items-center justify-between border-b border-editor-border px-3">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
             问题
           </span>
-          <span className="font-mono text-[10px] text-gray-600">
+          <span className="font-mono text-10 text-muted-foreground">
             {errors.length} 错 {warnings.length} 警
           </span>
         </div>
         <button
           onClick={refresh}
           disabled={loading}
-          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-40"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground disabled:opacity-40"
           title="刷新"
           aria-label="刷新问题"
         >
@@ -78,12 +78,12 @@ export default function ProblemsPanel() {
 
       <div className="flex-1 overflow-y-auto selectable">
         {loading && problems.length === 0 && (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
             分析中...
           </div>
         )}
         {!loading && problems.length === 0 && (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
             未发现问题
           </div>
         )}
@@ -99,7 +99,7 @@ export default function ProblemsPanel() {
               <Icon size={13} strokeWidth={1.8} className={`mt-0.5 flex-shrink-0 ${className}`} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-editor-text">{p.message}</div>
-                <div className="truncate font-mono text-[10px] text-gray-600">
+                <div className="truncate font-mono text-10 text-muted-foreground">
                   {p.file ? `${p.file.split('/').pop()}#${p.line}` : ''}
                   {p.rule ? ` · ${p.rule}` : ''}
                 </div>
@@ -109,7 +109,7 @@ export default function ProblemsPanel() {
         })}
 
         {lastCheck && (
-          <p className="border-t border-editor-border px-3 py-2 text-[10px] text-gray-700">
+          <p className="border-t border-editor-border px-3 py-2 text-10 text-muted-foreground">
             上次检查 {lastCheck}
           </p>
         )}

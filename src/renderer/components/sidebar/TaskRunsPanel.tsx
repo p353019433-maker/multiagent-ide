@@ -5,7 +5,7 @@ import type { OrchestrationSession } from '@shared/types';
 import { GitMerge, Play, Plus, Trash2, X } from 'lucide-react';
 
 const ICON_BUTTON_CLASS =
-  'inline-flex h-6 items-center justify-center gap-1 px-2 text-[11px] text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-40';
+  'inline-flex h-6 items-center justify-center gap-1 px-2 text-11 text-muted-foreground hover:bg-editor-active hover:text-foreground disabled:opacity-40';
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   pending: '等待中',
@@ -152,10 +152,10 @@ export default function TaskRunsPanel() {
       <div className="border-b border-editor-border">
         <div className="flex min-h-8 items-center justify-between gap-2 px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
               任务运行
             </span>
-            <span className="font-mono text-[10px] text-gray-600">
+            <span className="font-mono text-10 text-muted-foreground">
               {orchestrationSessions.length} RUNS
             </span>
           </div>
@@ -169,7 +169,7 @@ export default function TaskRunsPanel() {
               <Plus size={13} strokeWidth={1.8} />
             </button>
             <button
-              className="inline-flex h-6 items-center justify-center gap-1 bg-editor-accent px-2 text-[11px] text-white hover:opacity-90 disabled:opacity-40"
+              className="inline-flex h-6 items-center justify-center gap-1 bg-editor-accent px-2 text-11 text-primary-foreground hover:opacity-90 disabled:opacity-40"
               onClick={handleOrchestrate}
               disabled={isOrchestrating || !goal.trim()}
               title="运行并行任务"
@@ -182,11 +182,11 @@ export default function TaskRunsPanel() {
         </div>
 
         <div className="grid grid-cols-[52px_minmax(0,1fr)] border-t border-editor-border">
-          <label className="flex h-8 items-center border-r border-editor-border px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+          <label className="flex h-8 items-center border-r border-editor-border px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground">
             目标
           </label>
           <input
-            className="h-8 min-w-0 bg-editor-bg px-2 text-xs text-editor-text outline-none placeholder:text-gray-600 focus:bg-editor-active"
+            className="h-8 min-w-0 bg-editor-bg px-2 text-xs text-editor-text outline-none placeholder:text-muted-foreground focus:bg-editor-active"
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             placeholder="任务目标"
@@ -199,18 +199,18 @@ export default function TaskRunsPanel() {
               key={idx}
               className="grid min-h-8 grid-cols-[28px_minmax(0,1fr)_28px] items-center border-b border-editor-border last:border-b-0"
             >
-              <span className="border-r border-editor-border px-2 font-mono text-[10px] text-gray-600">
+              <span className="border-r border-editor-border px-2 font-mono text-10 text-muted-foreground">
                 {idx + 1}
               </span>
               <input
-                className="h-8 min-w-0 bg-transparent px-2 text-xs text-editor-text outline-none placeholder:text-gray-600 focus:bg-editor-bg"
+                className="h-8 min-w-0 bg-transparent px-2 text-xs text-editor-text outline-none placeholder:text-muted-foreground focus:bg-editor-bg"
                 value={task}
                 onChange={(e) => handleSubTaskChange(idx, e.target.value)}
                 placeholder="子任务"
               />
               {subTasks.length > 1 ? (
                 <button
-                  className="flex h-8 w-7 flex-shrink-0 items-center justify-center text-gray-500 hover:bg-editor-active hover:text-red-400"
+                  className="flex h-8 w-7 flex-shrink-0 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-red-400"
                   onClick={() => handleRemoveSubTask(idx)}
                   title="删除子任务"
                   aria-label={`删除子任务 ${idx + 1}`}
@@ -227,10 +227,10 @@ export default function TaskRunsPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex min-h-8 items-center justify-between border-b border-editor-border px-3">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
             运行记录
           </span>
-          <span className="font-mono text-[10px] text-gray-600">
+          <span className="font-mono text-10 text-muted-foreground">
             {runningSessionCount} ACTIVE
           </span>
         </div>
@@ -246,7 +246,7 @@ export default function TaskRunsPanel() {
           </div>
         )}
         {orchestrationSessions.length === 0 ? (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
             无运行记录
           </div>
         ) : (
@@ -257,11 +257,11 @@ export default function TaskRunsPanel() {
                 className="border-b border-editor-border bg-editor-sidebar px-3 py-2"
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                     {session.goal}
                   </span>
                   <span
-                    className={`text-[10px] uppercase tracking-wide ${
+                    className={`text-10 uppercase tracking-wide ${
                       session.status === 'completed'
                         ? 'text-green-400'
                         : session.status === 'failed'
@@ -285,19 +285,19 @@ export default function TaskRunsPanel() {
                               ? 'bg-red-400'
                               : task.status === 'running'
                               ? 'bg-blue-400 animate-pulse'
-                              : 'bg-gray-500'
+                              : 'bg-muted-foreground'
                           }`}
                         />
-                        <span className="min-w-0 flex-1 truncate text-gray-300">
+                        <span className="min-w-0 flex-1 truncate text-foreground">
                           {idx + 1}. {task.description}
                         </span>
-                        <span className="text-[10px] text-gray-500">
+                        <span className="text-10 text-muted-foreground">
                           {TASK_STATUS_LABEL[task.status] || task.status}
                         </span>
                       </div>
-                      {task.error && <div className="text-red-400 text-[10px] ml-3 mt-1">{task.error}</div>}
+                      {task.error && <div className="text-red-400 text-10 ml-3 mt-1">{task.error}</div>}
                       {task.editedFiles && task.editedFiles.length > 0 && (
-                        <div className="ml-3 mt-1 text-[10px] text-gray-400">
+                        <div className="ml-3 mt-1 text-10 text-muted-foreground">
                           修改了 {task.editedFiles.length} 个文件：
                           <div className="truncate opacity-70">
                             {task.editedFiles.map(f => f.split(/[/\\]/).pop()).join(', ')}

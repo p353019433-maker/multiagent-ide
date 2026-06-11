@@ -31,7 +31,7 @@ function ReadinessIcon({ status }: { status: ReadinessStatus }) {
   if (status === 'blocked') {
     return <CircleAlert size={14} strokeWidth={1.8} className="text-yellow-400" />;
   }
-  return <CircleDot size={14} strokeWidth={1.8} className="text-gray-500" />;
+  return <CircleDot size={14} strokeWidth={1.8} className="text-muted-foreground" />;
 }
 
 export default function EditorArea({ readiness, onReadinessAction }: Props) {
@@ -192,8 +192,8 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
                 key={file.path}
                 className={`group flex h-8 min-w-[128px] max-w-[240px] items-center gap-2 border-r border-editor-border px-2.5 text-xs cursor-pointer transition-colors focus:outline-none focus:ring-1 focus:ring-editor-accent ${
                   isActive
-                    ? 'bg-editor-bg text-white border-t-2 border-t-editor-accent'
-                    : 'bg-editor-sidebar text-gray-400 hover:bg-editor-hover'
+                    ? 'bg-editor-bg text-foreground border-t-2 border-t-editor-accent'
+                    : 'bg-editor-sidebar text-muted-foreground hover:bg-editor-hover'
                 }`}
                 onClick={() => setActiveFile(file.path)}
                 onKeyDown={(event) => {
@@ -206,11 +206,11 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
                 aria-selected={isActive}
                 tabIndex={0}
               >
-                <FileText size={14} strokeWidth={1.7} className="flex-shrink-0 text-gray-500" />
+                <FileText size={14} strokeWidth={1.7} className="flex-shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate">{name}</span>
                 {file.isDirty && <span className="text-editor-accent">●</span>}
                 <button
-                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-gray-500 transition-colors hover:bg-editor-active hover:text-white"
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-editor-active hover:text-foreground"
                   title={`关闭 ${name}`}
                   aria-label={`关闭 ${name}`}
                   onClick={(e) => {
@@ -233,9 +233,9 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
           style={{ display: activeFile ? 'block' : 'none' }}
         />
         {!activeFile && (
-          <div className="h-full overflow-hidden bg-editor-bg text-gray-500">
+          <div className="h-full overflow-hidden bg-editor-bg text-muted-foreground">
             <div className="mx-auto mt-20 w-full max-w-[520px] px-8">
-              <div className="flex h-8 items-center gap-2 border-b border-editor-border text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+              <div className="flex h-8 items-center gap-2 border-b border-editor-border text-10 font-semibold uppercase tracking-wide text-muted-foreground">
                 <PanelLeft size={14} strokeWidth={1.8} />
                 工作台
               </div>
@@ -249,13 +249,13 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
                     <span>打开文件夹</span>
                   </button>
                 ) : (
-                  <div className="flex h-8 min-w-0 items-center gap-2 text-sm text-gray-400">
+                  <div className="flex h-8 min-w-0 items-center gap-2 text-sm text-muted-foreground">
                     <FolderOpen size={15} strokeWidth={1.8} />
                     <span className="truncate">{rootName}</span>
                   </div>
                 )}
               </div>
-              <div className="flex h-10 items-center gap-2 border-b border-editor-border text-sm text-gray-500">
+              <div className="flex h-10 items-center gap-2 border-b border-editor-border text-sm text-muted-foreground">
                 <FileText size={15} strokeWidth={1.8} />
                 <span>没有活动编辑器</span>
               </div>
@@ -267,17 +267,17 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
                       key={item.id}
                       onClick={() => onReadinessAction(item.actionId)}
                       className={`grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-2 border-b border-editor-border px-0 text-left text-xs transition-colors last:border-b-0 hover:bg-editor-hover ${
-                        isNext ? 'text-editor-text' : 'text-gray-500'
+                        isNext ? 'text-editor-text' : 'text-muted-foreground'
                       }`}
                     >
                       <ReadinessIcon status={item.status} />
                       <span className="min-w-0">
                         <span className="block truncate">{item.label}</span>
-                        <span className="block truncate font-mono text-[10px] text-gray-600">
+                        <span className="block truncate font-mono text-10 text-muted-foreground">
                           {STATUS_LABEL[item.status]}
                         </span>
                       </span>
-                      <span className={`text-right text-[11px] ${isNext ? 'text-editor-accent' : 'text-gray-600'}`}>
+                      <span className={`text-right text-11 ${isNext ? 'text-editor-accent' : 'text-muted-foreground'}`}>
                         {item.actionLabel}
                       </span>
                     </button>

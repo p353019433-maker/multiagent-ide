@@ -27,7 +27,7 @@ function isSafeName(name: string): boolean {
 
 function WorkspaceRequiredState() {
   return (
-    <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+    <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
       未打开文件夹
     </div>
   );
@@ -102,8 +102,8 @@ export default function Sidebar() {
               onClick={() => setActiveTab(tab.id)}
               className={`relative flex h-10 w-full items-center justify-center transition-colors ${
                 activeTab === tab.id
-                  ? 'text-white bg-editor-active'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-editor-hover'
+                  ? 'text-foreground bg-editor-active'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-editor-hover'
               }`}
               title={tab.label}
             >
@@ -120,11 +120,11 @@ export default function Sidebar() {
         <div className="px-3 py-2 border-b border-editor-border">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">
+              <div className="text-11 font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
                 {activeLabel}
               </div>
               {rootName && activeTab === 'explorer' && (
-                <div className="mt-0.5 truncate text-[11px] text-gray-600">{rootName}</div>
+                <div className="mt-0.5 truncate text-11 text-muted-foreground">{rootName}</div>
               )}
             </div>
             <div className="flex items-center gap-0.5">
@@ -132,7 +132,7 @@ export default function Sidebar() {
                 <>
                   <button
                     onClick={() => startCreate('file')}
-                    className="flex h-6 w-6 items-center justify-center text-gray-400 transition-colors duration-75 hover:bg-editor-active hover:text-white"
+                    className="flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors duration-75 hover:bg-editor-active hover:text-foreground"
                     title="新建文件"
                     aria-label="新建文件"
                   >
@@ -140,7 +140,7 @@ export default function Sidebar() {
                   </button>
                   <button
                     onClick={() => startCreate('folder')}
-                    className="flex h-6 w-6 items-center justify-center text-gray-400 transition-colors duration-75 hover:bg-editor-active hover:text-white"
+                    className="flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors duration-75 hover:bg-editor-active hover:text-foreground"
                     title="新建文件夹"
                     aria-label="新建文件夹"
                   >
@@ -151,7 +151,7 @@ export default function Sidebar() {
               {activeTab === 'explorer' && (
                 <button
                   onClick={openFolder}
-                  className="flex h-6 w-6 items-center justify-center text-gray-400 transition-colors duration-75 hover:bg-editor-active hover:text-white"
+                  className="flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors duration-75 hover:bg-editor-active hover:text-foreground"
                   title="打开文件夹"
                   aria-label="打开文件夹"
                 >
@@ -169,9 +169,9 @@ export default function Sidebar() {
                 {pendingCreate && (
                   <div className="flex h-7 items-center gap-2 px-3 text-xs text-editor-text">
                     {pendingCreate === 'file' ? (
-                      <FilePlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
+                      <FilePlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
                     ) : (
-                      <FolderPlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
+                      <FolderPlus size={13} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
                     )}
                     <input
                       ref={createInputRef}
@@ -193,7 +193,7 @@ export default function Sidebar() {
                       }}
                       placeholder={pendingCreate === 'file' ? '文件名' : '文件夹名'}
                       spellCheck={false}
-                      className="min-w-0 flex-1 border border-editor-accent bg-editor-bg px-1 py-0.5 font-mono text-[11px] text-editor-text outline-none"
+                      className="min-w-0 flex-1 border border-editor-accent bg-editor-bg px-1 py-0.5 font-mono text-11 text-editor-text outline-none"
                     />
                   </div>
                 )}
@@ -206,7 +206,7 @@ export default function Sidebar() {
               </div>
             ) : (
               <div className="text-left">
-                <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+                <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
                   未打开文件夹
                 </div>
                 <button

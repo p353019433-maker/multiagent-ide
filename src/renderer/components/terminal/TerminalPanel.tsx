@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Eraser, X } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
   cwd: string;
@@ -14,6 +15,16 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
   const fitRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const [terminalUnavailable, setTerminalUnavailable] = useState('');
+  const { theme } = useTheme();
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+
+  // 主题切换时同步 xterm 调色板（xterm v5 支持运行时更新 options）
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = { ...theme.terminal };
+    }
+  }, [theme]);
 
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || termRef.current) return;
@@ -32,28 +43,7 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
     const term = new Terminal({
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-      theme: {
-        background: '#1f2024',
-        foreground: '#e8eaed',
-        cursor: '#ffffff',
-        selectionBackground: '#264f78',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-        brightBlack: '#666666',
-        brightRed: '#f14c4c',
-        brightGreen: '#23d18b',
-        brightYellow: '#f5f543',
-        brightBlue: '#3b8eea',
-        brightMagenta: '#d670d6',
-        brightCyan: '#29b8db',
-        brightWhite: '#e5e5e5',
-      },
+      theme: { ...themeRef.current.terminal },
       cursorBlink: true,
       allowProposedApi: true,
     });
@@ -123,7 +113,7 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
   return (
     <div className="flex flex-col h-full bg-editor-bg border-t border-editor-border">
       <div className="flex h-8 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
           终端
         </span>
         <div className="flex items-center gap-1">
@@ -131,7 +121,7 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
             onClick={() => {
               termRef.current?.clear();
             }}
-            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
             title="清屏"
             aria-label="清屏"
           >
@@ -139,7 +129,7 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
           </button>
           <button
             onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
             title="关闭终端"
             aria-label="关闭终端"
           >
@@ -150,7 +140,7 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
 
       <div className="relative flex-1 overflow-hidden">
         {terminalUnavailable && (
-          <div className="absolute inset-0 flex items-start border-t border-editor-border bg-editor-bg px-3 py-3 font-mono text-[12px] text-gray-500">
+          <div className="absolute inset-0 flex items-start border-t border-editor-border bg-editor-bg px-3 py-3 font-mono text-xs text-muted-foreground">
             {terminalUnavailable}
           </div>
         )}

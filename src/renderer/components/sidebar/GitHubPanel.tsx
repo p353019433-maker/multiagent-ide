@@ -3,7 +3,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { RefreshCw, Save } from 'lucide-react';
 
 const ACTION_BUTTON_CLASS =
-  'flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white disabled:opacity-40';
+  'flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground disabled:opacity-40';
 
 export default function GitHubPanel() {
   const { rootPath } = useWorkspace();
@@ -80,10 +80,10 @@ export default function GitHubPanel() {
     return (
       <div className="h-full flex flex-col bg-editor-sidebar">
         <div className="flex h-8 items-center border-b border-editor-border px-3">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">GitHub</span>
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">GitHub</span>
         </div>
         <form onSubmit={handleSaveToken}>
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
             未配置访问令牌
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)_72px] border-b border-editor-border">
@@ -94,11 +94,11 @@ export default function GitHubPanel() {
               type="password"
               name="github-token"
               autoComplete="new-password"
-              className="h-8 min-w-0 bg-editor-bg px-2 font-mono text-xs text-editor-text outline-none placeholder:text-gray-600 focus:bg-editor-active"
+              className="h-8 min-w-0 bg-editor-bg px-2 font-mono text-xs text-editor-text outline-none placeholder:text-muted-foreground focus:bg-editor-active"
             />
             <button
               type="submit"
-              className="inline-flex h-8 items-center justify-center gap-1 border-l border-editor-border bg-editor-accent px-2 text-xs text-white hover:opacity-90"
+              className="inline-flex h-8 items-center justify-center gap-1 border-l border-editor-border bg-editor-accent px-2 text-xs text-primary-foreground hover:opacity-90"
             >
               <Save size={13} strokeWidth={1.8} />
               保存
@@ -113,9 +113,9 @@ export default function GitHubPanel() {
     <div className="h-full flex flex-col bg-editor-sidebar">
       <div className="flex h-8 items-center justify-between border-b border-editor-border px-3">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">GitHub</span>
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">GitHub</span>
           {repoInfo && (
-            <span className="text-[10px] text-editor-accent font-mono truncate max-w-[150px]">
+            <span className="text-10 text-editor-accent font-mono truncate max-w-[150px]">
               {repoInfo.owner}/{repoInfo.repo}
             </span>
           )}
@@ -136,8 +136,8 @@ export default function GitHubPanel() {
           <button
             key={v}
             onClick={() => setView(v)}
-            className={`flex-1 py-1.5 text-[11px] text-center ${
-              view === v ? 'text-white border-b-2 border-editor-accent' : 'text-gray-500 hover:text-gray-300'
+            className={`flex-1 py-1.5 text-11 text-center ${
+              view === v ? 'text-foreground border-b-2 border-editor-accent' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {v === 'issues' ? 'Issue' : v === 'prs' ? 'PR' : 'CI'}
@@ -151,7 +151,7 @@ export default function GitHubPanel() {
         )}
 
         {!repoInfo && !error && (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
             未检测到 GitHub 仓库（需要 git remote origin）
           </div>
         )}
@@ -167,11 +167,11 @@ export default function GitHubPanel() {
             </div>
             <div className="flex items-center gap-1 mt-0.5">
               {issue.labels?.map((l: string) => (
-                <span key={l} className="bg-editor-active px-1 py-0.5 text-[9px] text-gray-400">
+                <span key={l} className="bg-editor-active px-1 py-0.5 text-10 text-muted-foreground">
                   {l}
                 </span>
               ))}
-              <span className="text-[10px] text-gray-600 ml-auto">
+              <span className="text-10 text-muted-foreground ml-auto">
                 {new Date(issue.updated_at).toLocaleDateString('zh-CN')}
               </span>
             </div>
@@ -186,9 +186,9 @@ export default function GitHubPanel() {
           >
             <div className="text-xs text-editor-text font-mono truncate">
               #{pr.number} {pr.title}
-              {pr.draft && <span className="ml-1 text-[10px] text-gray-500">Draft</span>}
+              {pr.draft && <span className="ml-1 text-10 text-muted-foreground">Draft</span>}
             </div>
-            <div className="text-[10px] text-gray-600">
+            <div className="text-10 text-muted-foreground">
               {pr.head} → {pr.base} · {pr.user}
             </div>
           </div>
@@ -205,30 +205,30 @@ export default function GitHubPanel() {
                 run.conclusion === 'success' ? 'text-green-400' :
                 run.conclusion === 'failure' ? 'text-red-400' :
                 run.status === 'in_progress' ? 'text-yellow-400' :
-                'text-gray-500'
+                'text-muted-foreground'
               }>
                 {run.conclusion === 'success' ? '✓' :
                  run.conclusion === 'failure' ? '✕' :
                  run.status === 'in_progress' ? '⟳' : '•'}
               </span>
-              <span className="text-[11px] text-editor-text truncate font-mono">
+              <span className="text-11 text-editor-text truncate font-mono">
                 {run.name}
               </span>
             </div>
-            <div className="text-[10px] text-gray-600 ml-4">
+            <div className="text-10 text-muted-foreground ml-4">
               {run.branch} · {new Date(run.created_at).toLocaleDateString('zh-CN')}
             </div>
           </div>
         ))}
 
         {view === 'issues' && issues.length === 0 && !loading && repoInfo && (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">无 open issues</div>
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">无 open issues</div>
         )}
         {view === 'prs' && prs.length === 0 && !loading && repoInfo && (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">无 open PR</div>
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">无 open PR</div>
         )}
         {view === 'actions' && workflows.length === 0 && !loading && repoInfo && (
-          <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">无 CI 记录</div>
+          <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">无 CI 记录</div>
         )}
       </div>
     </div>

@@ -50,7 +50,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[160px] border border-editor-border bg-editor-sidebar py-1 text-[13px]"
+      className="fixed z-50 min-w-[160px] border border-editor-border bg-editor-sidebar py-1 text-13"
       style={{ left: position.left, top: position.top }}
     >
       {items.map((item, i) =>

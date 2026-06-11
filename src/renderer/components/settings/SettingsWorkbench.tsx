@@ -64,17 +64,17 @@ const THEME_DISPLAY_NAME: Record<ThemeName, string> = {
 };
 
 const FIELD_CLASS =
-  'h-8 w-full border border-editor-border bg-editor-bg px-2 text-sm text-white outline-none focus:border-editor-accent';
+  'h-8 w-full border border-editor-border bg-editor-bg px-2 text-sm text-foreground outline-none focus:border-editor-accent';
 const SECONDARY_BUTTON_CLASS =
-  'h-7 px-3 text-xs border border-editor-border text-gray-300 hover:bg-editor-active disabled:opacity-40';
+  'h-7 px-3 text-xs border border-editor-border text-foreground hover:bg-editor-active disabled:opacity-40';
 const PRIMARY_BUTTON_CLASS =
-  'h-7 px-3 text-xs bg-editor-accent text-white hover:opacity-90 disabled:opacity-40';
+  'h-7 px-3 text-xs bg-editor-accent text-primary-foreground hover:opacity-90 disabled:opacity-40';
 const SECTION_HEADER_CLASS =
-  'flex h-8 items-center border-b border-editor-border bg-editor-sidebar px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-500';
+  'flex h-8 items-center border-b border-editor-border bg-editor-sidebar px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground';
 const SETTING_ROW_CLASS =
   'grid min-h-10 grid-cols-1 border-b border-editor-border lg:grid-cols-[180px_minmax(0,1fr)]';
 const SETTING_LABEL_CLASS =
-  'border-b border-editor-border px-3 py-2 text-xs text-gray-500 lg:border-b-0 lg:border-r';
+  'border-b border-editor-border px-3 py-2 text-xs text-muted-foreground lg:border-b-0 lg:border-r';
 const SETTING_VALUE_CLASS = 'min-w-0 px-3 py-1.5';
 
 const createApiKeyRef = () => `apiKey:${uuid()}`;
@@ -217,13 +217,13 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
       }}
     >
       <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
-        <div id="settings-title" className="text-[12px] font-medium text-editor-text">
+        <div id="settings-title" className="text-xs font-medium text-editor-text">
           设置
         </div>
         <button
           ref={closeButtonRef}
           onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
           title="关闭设置"
           aria-label="关闭设置"
         >
@@ -233,7 +233,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <aside className="w-full flex-shrink-0 border-b border-editor-border bg-editor-sidebar lg:w-52 lg:border-b-0 lg:border-r">
-          <div className="flex h-8 items-center border-b border-editor-border px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+          <div className="flex h-8 items-center border-b border-editor-border px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground">
             首选项
           </div>
           <div className="flex overflow-x-auto lg:block">
@@ -242,8 +242,8 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                 key={item.id}
                 className={`flex h-8 flex-shrink-0 items-center border-r border-editor-border px-3 text-left text-xs transition-colors lg:w-full lg:border-b lg:border-r-0 ${
                   tab === item.id
-                    ? 'bg-editor-active text-white'
-                    : 'text-gray-400 hover:bg-editor-hover hover:text-gray-300'
+                    ? 'bg-editor-active text-foreground'
+                    : 'text-muted-foreground hover:bg-editor-hover hover:text-foreground'
                 }`}
                 onClick={() => setTab(item.id)}
               >
@@ -255,11 +255,11 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="flex h-8 items-center justify-between border-b border-editor-border bg-editor-bg px-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
               {activeNavLabel}
             </span>
             {tab === 'providers' && (
-              <span className="font-mono text-[10px] text-gray-600">
+              <span className="font-mono text-10 text-muted-foreground">
                 {providers.length} SERVICES
               </span>
             )}
@@ -274,11 +274,11 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                     key={p.id}
                     className="grid min-h-10 grid-cols-1 items-center border-b border-editor-border sm:grid-cols-[160px_minmax(0,1fr)_96px] lg:grid-cols-[180px_minmax(0,1fr)_96px]"
                   >
-                    <div className="border-b border-editor-border px-3 py-2 text-sm text-white sm:border-b-0 sm:border-r">
+                    <div className="border-b border-editor-border px-3 py-2 text-sm text-foreground sm:border-b-0 sm:border-r">
                       {p.name}
                     </div>
                     <div className="min-w-0 px-3 py-2">
-                      <span className="truncate font-mono text-[11px] text-gray-500">
+                      <span className="truncate font-mono text-11 text-muted-foreground">
                         {p.defaultModel}
                       </span>
                     </div>
@@ -299,7 +299,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                   </div>
                 ))
               ) : (
-                <div className="border-b border-editor-border px-3 py-2 text-xs text-gray-500">
+                <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
                   未配置模型服务
                 </div>
               )}
@@ -311,10 +311,10 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                   onClick={() => handleAddPreset(preset)}
                   className="grid min-h-10 w-full grid-cols-1 items-center border-b border-editor-border text-left transition-colors hover:bg-editor-hover sm:grid-cols-[160px_minmax(0,1fr)] lg:grid-cols-[180px_minmax(0,1fr)]"
                 >
-                  <span className="border-b border-editor-border px-3 py-2 text-sm text-white sm:border-b-0 sm:border-r">
+                  <span className="border-b border-editor-border px-3 py-2 text-sm text-foreground sm:border-b-0 sm:border-r">
                     {preset.name}
                   </span>
-                  <span className="min-w-0 truncate px-3 py-2 font-mono text-[11px] text-gray-500">
+                  <span className="min-w-0 truncate px-3 py-2 font-mono text-11 text-muted-foreground">
                     {preset.baseURL}
                   </span>
                 </button>
@@ -323,10 +323,10 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                 onClick={handleAddCustom}
                 className="grid min-h-10 w-full grid-cols-1 items-center border-b border-editor-border text-left transition-colors hover:bg-editor-hover sm:grid-cols-[160px_minmax(0,1fr)] lg:grid-cols-[180px_minmax(0,1fr)]"
               >
-                <span className="border-b border-editor-border px-3 py-2 text-sm text-white sm:border-b-0 sm:border-r">
+                <span className="border-b border-editor-border px-3 py-2 text-sm text-foreground sm:border-b-0 sm:border-r">
                   自定义接口
                 </span>
-                <span className="min-w-0 truncate px-3 py-2 text-[11px] text-gray-500">
+                <span className="min-w-0 truncate px-3 py-2 text-11 text-muted-foreground">
                   兼容 OpenAI API 的服务端点
                 </span>
               </button>
@@ -339,7 +339,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                 <button
                   type="button"
                   onClick={() => { setEditing(null); setTestResult(null); }}
-                  className="mr-2 flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-hover hover:text-white"
+                  className="mr-2 flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-hover hover:text-foreground"
                   title="返回服务列表"
                   aria-label="返回服务列表"
                 >
@@ -387,7 +387,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                     placeholder="sk-..."
                     className={FIELD_CLASS}
                   />
-                  <p className="mt-1 text-[11px] text-gray-600">加密存储在本机上</p>
+                  <p className="mt-1 text-11 text-muted-foreground">加密存储在本机上</p>
                 </div>
               </div>
 
@@ -511,12 +511,12 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                 </button>
                 {reindexMsg && (
                   <span
-                    className={`min-w-0 truncate text-[11px] ${
+                    className={`min-w-0 truncate text-11 ${
                       reindexState === 'error'
                         ? 'text-red-400'
                         : reindexState === 'done'
                         ? 'text-green-400'
-                        : 'text-gray-400'
+                        : 'text-muted-foreground'
                     }`}
                   >
                     {reindexMsg}
@@ -538,8 +538,8 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                       onClick={() => setThemeName(t.name)}
                       className={`h-8 border px-3 text-xs transition-colors ${
                         themeName === t.name
-                          ? 'border-editor-accent bg-editor-active text-white'
-                          : 'border-editor-border text-gray-400 hover:border-gray-500'
+                          ? 'border-editor-accent bg-editor-active text-foreground'
+                          : 'border-editor-border text-muted-foreground hover:border-muted-foreground'
                       }`}
                     >
                       <span
@@ -555,15 +555,15 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
               <div className={SECTION_HEADER_CLASS}>编辑器</div>
               <div className={SETTING_ROW_CLASS}>
                 <span className={SETTING_LABEL_CLASS}>字号</span>
-                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-gray-500`}>14px</span>
+                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-muted-foreground`}>14px</span>
               </div>
               <div className={SETTING_ROW_CLASS}>
                 <span className={SETTING_LABEL_CLASS}>缩进宽度</span>
-                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-gray-500`}>2</span>
+                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-muted-foreground`}>2</span>
               </div>
               <div className={SETTING_ROW_CLASS}>
                 <span className={SETTING_LABEL_CLASS}>自动换行</span>
-                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-gray-500`}>开启</span>
+                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-muted-foreground`}>开启</span>
               </div>
             </div>
           )}

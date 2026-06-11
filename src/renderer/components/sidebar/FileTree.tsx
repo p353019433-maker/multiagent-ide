@@ -223,7 +223,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
     <div>
       <div
         className={`flex h-6 items-center gap-1 px-2 cursor-pointer text-sm transition-colors hover:bg-editor-hover focus:bg-editor-active focus:outline-none ${
-          isActive ? 'bg-editor-active text-white' : 'text-editor-text'
+          isActive ? 'bg-editor-active text-foreground' : 'text-editor-text'
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleClick}
@@ -239,7 +239,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         aria-selected={isActive}
         tabIndex={0}
       >
-        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-gray-500">
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-muted-foreground">
           {node.isDirectory && (
             expanded ? (
               <ChevronDown size={13} strokeWidth={1.8} />
@@ -254,7 +254,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         {renaming ? (
           <input
             ref={renameInputRef}
-            className="min-w-0 flex-1 border border-editor-accent bg-editor-active px-1 py-0 text-[13px] text-editor-text outline-none"
+            className="min-w-0 flex-1 border border-editor-accent bg-editor-active px-1 py-0 text-13 text-editor-text outline-none"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -265,7 +265,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="truncate text-[13px]">{node.name}</span>
+          <span className="truncate text-13">{node.name}</span>
         )}
       </div>
 
@@ -275,7 +275,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
           style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
         >
           <span className="text-xs w-4 text-center flex-shrink-0" />
-          <span className="flex h-4 w-5 flex-shrink-0 items-center justify-center text-gray-500">
+          <span className="flex h-4 w-5 flex-shrink-0 items-center justify-center text-muted-foreground">
             {creating === 'file' ? (
               <File size={15} strokeWidth={1.7} />
             ) : (
@@ -284,7 +284,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
           </span>
           <input
             ref={createInputRef}
-            className="min-w-0 flex-1 border border-editor-accent bg-editor-active px-1 py-0 text-[13px] text-editor-text outline-none"
+            className="min-w-0 flex-1 border border-editor-accent bg-editor-active px-1 py-0 text-13 text-editor-text outline-none"
             value={newName}
             placeholder={creating === 'file' ? '文件名.ts' : '文件夹名'}
             onChange={(e) => setNewName(e.target.value)}
@@ -316,13 +316,13 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
           <span className="min-w-0 flex-1 truncate text-red-300">删除 {node.name}？</span>
           <button
             onClick={handleDeleteConfirm}
-            className="border border-red-700 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-editor-hover"
+            className="border border-red-700 px-1.5 py-0.5 text-11 text-red-300 hover:bg-editor-hover"
           >
             删除
           </button>
           <button
             onClick={() => setPendingDelete(false)}
-            className="border border-editor-border px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-editor-hover hover:text-white"
+            className="border border-editor-border px-1.5 py-0.5 text-11 text-muted-foreground hover:bg-editor-hover hover:text-foreground"
           >
             取消
           </button>
@@ -360,7 +360,7 @@ function getFileIcon(
   if (isDirectory) {
     return {
       Icon: expanded ? FolderOpen : Folder,
-      color: expanded ? 'text-editor-accent' : 'text-gray-500',
+      color: expanded ? 'text-editor-accent' : 'text-muted-foreground',
     };
   }
 
@@ -377,11 +377,11 @@ function getFileIcon(
     md: { Icon: FileText, color: 'text-blue-300' },
     html: { Icon: Globe, color: 'text-orange-400' },
     css: { Icon: Palette, color: 'text-violet-400' },
-    yaml: { Icon: Braces, color: 'text-gray-400' },
-    yml: { Icon: Braces, color: 'text-gray-400' },
-    toml: { Icon: Braces, color: 'text-gray-400' },
+    yaml: { Icon: Braces, color: 'text-muted-foreground' },
+    yml: { Icon: Braces, color: 'text-muted-foreground' },
+    toml: { Icon: Braces, color: 'text-muted-foreground' },
     sh: { Icon: Terminal, color: 'text-green-400' },
     sql: { Icon: Database, color: 'text-cyan-400' },
   };
-  return icons[ext] || { Icon: File, color: 'text-gray-500' };
+  return icons[ext] || { Icon: File, color: 'text-muted-foreground' };
 }

@@ -128,15 +128,15 @@ export default function DiffPreview({
     <div className="flex flex-col h-full bg-editor-bg border-t border-editor-border">
       <div className="flex h-8 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
         <div className="flex min-w-0 items-center gap-2 text-xs">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">差异</span>
-          <span className="text-gray-500 truncate max-w-[200px]">
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">差异</span>
+          <span className="text-muted-foreground truncate max-w-[200px]">
             {filePath.split('/').pop() || filePath}
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2">
           {statusText && (
             <span
-              className={`truncate text-[11px] ${
+              className={`truncate text-11 ${
                 statusTone === 'danger' ? 'text-red-400' : 'text-yellow-400'
               }`}
             >
