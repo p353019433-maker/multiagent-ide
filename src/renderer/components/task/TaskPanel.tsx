@@ -40,7 +40,7 @@ function ReadinessIcon({ status }: { status: ReadinessStatus }) {
   if (status === 'blocked') {
     return <CircleAlert size={13} strokeWidth={1.8} className="text-yellow-400" />;
   }
-  return <CircleDot size={13} strokeWidth={1.8} className="text-gray-500" />;
+  return <CircleDot size={13} strokeWidth={1.8} className="text-muted-foreground" />;
 }
 
 export default function TaskPanel({ readiness, onReadinessAction }: Props) {
@@ -74,7 +74,16 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   const projectRules = useRef<{ file: string; content: string } | null>(null);
 
   // Approval gate (mode + pending-approval state + decision logic).
-  const { approvalMode, changeApprovalMode, pendingApproval, gateAction, handleApprove, handleReject } =
+  const {
+    approvalMode,
+    changeApprovalMode,
+    allowExternalInFull,
+    changeAllowExternalInFull,
+    pendingApproval,
+    gateAction,
+    handleApprove,
+    handleReject,
+  } =
     useApproval();
 
   // Active conversation + its effective workspace root (worktree path when the
@@ -344,15 +353,15 @@ ${suffix.slice(0, 500)}${editsCtx}
     <div className="flex h-full flex-col bg-editor-sidebar border-l border-editor-border">
       <div className="flex h-8 flex-shrink-0 items-center justify-between gap-2 border-b border-editor-border px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+          <span className="text-11 font-semibold uppercase tracking-wide text-muted-foreground">
             任务工作台
           </span>
-          <span className="font-mono text-[10px] text-gray-600">
+          <span className="font-mono text-10 text-muted-foreground">
             {messages.length} 记录
           </span>
           {activeWorktree && (
             <span
-              className="min-w-0 truncate font-mono text-[10px] text-yellow-500"
+              className="min-w-0 truncate font-mono text-10 text-yellow-500"
               title={activeWorktree.path}
             >
               WT {activeWorktree.branch}
@@ -363,7 +372,7 @@ ${suffix.slice(0, 500)}${editsCtx}
           {providers.length > 0 && (
             <>
               <select
-                className="h-6 max-w-[110px] border border-editor-border bg-editor-active px-1.5 text-[11px] text-editor-text outline-none"
+                className="h-6 max-w-[110px] border border-editor-border bg-editor-active px-1.5 text-11 text-editor-text outline-none"
                 value={activeProviderId || ''}
                 onChange={(e) => setActiveProvider(e.target.value)}
                 title="模型服务"
@@ -377,7 +386,7 @@ ${suffix.slice(0, 500)}${editsCtx}
               </select>
               {activeProvider && (
                 <select
-                  className="h-6 max-w-[140px] border border-editor-border bg-editor-active px-1.5 text-[11px] text-editor-text outline-none"
+                  className="h-6 max-w-[140px] border border-editor-border bg-editor-active px-1.5 text-11 text-editor-text outline-none"
                   value={activeModel || ''}
                   onChange={(e) => setActiveModel(e.target.value)}
                   title="模型"
@@ -394,7 +403,7 @@ ${suffix.slice(0, 500)}${editsCtx}
           )}
           <button
             onClick={() => newConversation()}
-            className="flex h-6 w-6 items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+            className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
             title="新建任务"
             aria-label="新建任务"
           >
@@ -422,15 +431,20 @@ ${suffix.slice(0, 500)}${editsCtx}
         />
       )}
 
-      <ApprovalModeStrip mode={approvalMode} onChange={changeApprovalMode} />
+      <ApprovalModeStrip
+        mode={approvalMode}
+        allowExternalInFull={allowExternalInFull}
+        onChange={changeApprovalMode}
+        onChangeAllowExternal={changeAllowExternalInFull}
+      />
 
       <div className="flex-1 overflow-y-auto selectable">
         {!hasRuntimeRows && (
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-            <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-[10px] leading-5 text-gray-600">
+            <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-muted-foreground">
               READY
             </div>
-            <div className="bg-editor-sidebar px-3 py-2 text-xs text-gray-500">
+            <div className="bg-editor-sidebar px-3 py-2 text-xs text-muted-foreground">
               {readiness.canRunAgent ? '无活动任务' : '等待就绪'}
             </div>
           </div>
@@ -449,7 +463,7 @@ ${suffix.slice(0, 500)}${editsCtx}
 
         {isStreaming && streamContent && (
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-            <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-[10px] leading-5 text-editor-accent">
+            <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-editor-accent">
               RUN
             </div>
             <div className="whitespace-pre-wrap bg-editor-sidebar px-3 py-2 text-editor-text">
@@ -471,11 +485,11 @@ ${suffix.slice(0, 500)}${editsCtx}
 
       <div className="border-t border-editor-border bg-editor-bg">
         <div className="flex min-h-7 items-center justify-between border-b border-editor-border px-3">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
             运行请求
           </span>
           {pendingImages.length > 0 && (
-            <span className="font-mono text-[10px] text-gray-600">
+            <span className="font-mono text-10 text-muted-foreground">
               {pendingImages.length} IMG
             </span>
           )}
@@ -494,7 +508,7 @@ ${suffix.slice(0, 500)}${editsCtx}
         {!activeProviderId || !activeModel ? (
           <div className="px-3 py-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-xs text-gray-400">模型服务未就绪</span>
+              <span className="text-xs text-muted-foreground">模型服务未就绪</span>
               <button
                 onClick={() => onReadinessAction('openSettings')}
                 className="h-7 border border-editor-border px-2 text-xs text-editor-accent hover:bg-editor-hover"
@@ -507,11 +521,11 @@ ${suffix.slice(0, 500)}${editsCtx}
                 <button
                   key={item.id}
                   onClick={() => onReadinessAction(item.actionId)}
-                  className="grid min-h-8 w-full grid-cols-[18px_minmax(0,1fr)_52px] items-center gap-2 border-b border-editor-border py-1 text-left text-[11px] text-gray-500 transition-colors last:border-b-0 hover:bg-editor-hover"
+                  className="grid min-h-8 w-full grid-cols-[18px_minmax(0,1fr)_52px] items-center gap-2 border-b border-editor-border py-1 text-left text-11 text-muted-foreground transition-colors last:border-b-0 hover:bg-editor-hover"
                 >
                   <ReadinessIcon status={item.status} />
                   <span className="min-w-0 truncate">{item.label}</span>
-                  <span className="text-right font-mono text-[10px] text-gray-600">
+                  <span className="text-right font-mono text-10 text-muted-foreground">
                     {STATUS_LABEL[item.status]}
                   </span>
                 </button>
@@ -531,7 +545,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                     />
                     <button
                       onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
-                      className="absolute -right-px -top-px h-4 w-4 bg-red-600 text-[10px] leading-none text-white opacity-0 group-hover:opacity-100"
+                      className="absolute -right-px -top-px h-4 w-4 bg-red-600 text-10 leading-none text-white opacity-0 group-hover:opacity-100"
                       title="移除附件"
                     >
                       ✕
@@ -552,7 +566,7 @@ ${suffix.slice(0, 500)}${editsCtx}
             />
             <div className="mt-2 flex items-center justify-between gap-2">
               <label
-                className="flex h-7 w-8 cursor-pointer items-center justify-center text-gray-400 hover:bg-editor-active hover:text-white"
+                className="flex h-7 w-8 cursor-pointer items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
                 title="附加图片"
                 aria-label="附加图片"
               >
@@ -581,7 +595,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                 <button
                   onClick={handleRunTask}
                   disabled={!input.trim() && pendingImages.length === 0}
-                  className="flex h-7 w-8 items-center justify-center bg-editor-accent text-white hover:opacity-90 disabled:opacity-40"
+                  className="flex h-7 w-8 items-center justify-center bg-editor-accent text-primary-foreground hover:opacity-90 disabled:opacity-40"
                   title="运行任务"
                   aria-label="运行任务"
                 >
