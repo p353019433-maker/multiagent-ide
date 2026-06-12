@@ -25,6 +25,7 @@ declare global {
           query: string
         ) => Promise<{ path: string; line: number; preview: string }[]>;
         findFiles: (rootPath: string, pattern: string) => Promise<string[]>;
+        listFiles: (rootPath: string) => Promise<string[]>;
         getFileInfo: (
           path: string
         ) => Promise<{ size: number; modified: string; isDirectory: boolean }>;

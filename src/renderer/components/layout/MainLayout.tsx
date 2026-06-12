@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import Sidebar from '../sidebar/Sidebar';
 import EditorArea from '../editor/EditorArea';
 import TaskPanel from '../task/TaskPanel';
@@ -7,8 +7,13 @@ import SearchPanel from '../search/SearchPanel';
 import BrowserPreview from '../editor/BrowserPreview';
 import TitleBar from './TitleBar';
 import StatusBar from './StatusBar';
+import CommandPalette, { type PaletteCommand } from '../palette/CommandPalette';
+import { onOpenPalette, openPalette, type PaletteMode } from '../palette/paletteEvents';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTaskWorkspace } from '../../context/TaskContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useEditorActions } from '../../context/EditorContext';
+import { THEMES } from '../../theme';
 import { getAuxPanelWidth, normalizeWorkbenchPanels } from './layoutState';
 import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
 import type { SettingsTab } from '../settings/SettingsWorkbench';
@@ -16,9 +21,11 @@ import type { SettingsTab } from '../settings/SettingsWorkbench';
 interface Props {
   onOpenSettings: (tab?: SettingsTab) => void;
   settingsVersion: number;
+  /** 模态层（如设置页）打开时禁用全局快捷键与命令面板 */
+  shortcutsDisabled?: boolean;
 }
 
-export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
+export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsDisabled }: Props) {
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [taskPanelWidth, setTaskPanelWidth] = useState(380);
   const [searchWidth, setSearchWidth] = useState(320);
@@ -29,8 +36,11 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
   const [showSearch, setShowSearch] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
+  const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const dragging = useRef<'sidebar' | 'task' | 'search' | 'terminal' | null>(null);
   const { rootPath, openFolder } = useWorkspace();
+  const { themeName, setThemeName } = useTheme();
+  const { saveActiveFile } = useEditorActions();
   const { providers, activeProviderId, activeModel } = useTaskWorkspace();
   const [embeddingConfig, setEmbeddingConfig] = useState<{
     providerId?: string | null;
@@ -222,18 +232,133 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
     return () => window.removeEventListener('preview-url', handlePreviewUrl);
   }, [isCompact]);
 
+  const handleOpenPalette = useCallback((mode: PaletteMode) => {
+    setPaletteMode((prev) => (prev === mode ? null : mode));
+  }, []);
+
+  const closePalette = useCallback(() => setPaletteMode(null), []);
+
+  // Monaco 等处通过 CustomEvent 唤起命令面板
+  useEffect(() => {
+    if (shortcutsDisabled) return;
+    return onOpenPalette(handleOpenPalette);
+  }, [handleOpenPalette, shortcutsDisabled]);
+
+  // 模态层（设置页）打开时收起命令面板，避免叠层
+  useEffect(() => {
+    if (shortcutsDisabled) setPaletteMode(null);
+  }, [shortcutsDisabled]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shortcutsDisabled) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.shiftKey && e.key === 'f') {
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (e.shiftKey && key === 'f') {
         e.preventDefault();
         handleToggleSearch();
+      } else if (!e.shiftKey && key === 'p') {
+        e.preventDefault();
+        handleOpenPalette('files');
+      } else if ((e.shiftKey && key === 'p') || (!e.shiftKey && key === 'k')) {
+        e.preventDefault();
+        handleOpenPalette('commands');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleSearch]);
+  }, [handleToggleSearch, handleOpenPalette, shortcutsDisabled]);
+
+  // 命令面板命令表
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const themeCommands = Object.values(THEMES).map((t) => ({
+      id: `theme-${t.name}`,
+      label: `主题：${t.display}`,
+      hint: themeName === t.name ? '当前' : undefined,
+      keywords: `theme color ${t.name}`,
+      run: () => setThemeName(t.name),
+    }));
+    return [
+      {
+        id: 'quick-open',
+        label: '转到文件…',
+        hint: 'Cmd P',
+        keywords: 'quick open goto file',
+        run: () => openPalette('files'),
+      },
+      {
+        id: 'save-file',
+        label: '保存当前文件',
+        hint: 'Cmd S',
+        keywords: 'save file write',
+        run: () => {
+          void saveActiveFile();
+        },
+      },
+      {
+        id: 'open-folder',
+        label: '打开文件夹…',
+        keywords: 'open folder workspace',
+        run: () => {
+          void openFolder();
+        },
+      },
+      {
+        id: 'toggle-task',
+        label: showTaskPanel ? '收起 AI 任务面板' : '打开 AI 任务面板',
+        keywords: 'task panel agent chat ai',
+        run: handleToggleTaskPanel,
+      },
+      {
+        id: 'toggle-terminal',
+        label: showTerminal ? '收起终端' : '打开终端',
+        keywords: 'terminal shell',
+        run: handleToggleTerminal,
+      },
+      {
+        id: 'toggle-search',
+        label: showSearch ? '收起文本搜索' : '打开文本搜索',
+        hint: 'Cmd Shift F',
+        keywords: 'search find text grep',
+        run: handleToggleSearch,
+      },
+      {
+        id: 'toggle-browser',
+        label: showBrowser ? '收起浏览器预览' : '打开浏览器预览',
+        keywords: 'browser preview web',
+        run: handleToggleBrowser,
+      },
+      {
+        id: 'open-settings',
+        label: '打开设置',
+        keywords: 'settings preferences providers model',
+        run: () => onOpenSettings('providers'),
+      },
+      {
+        id: 'open-index-settings',
+        label: '打开索引设置',
+        keywords: 'settings index embedding',
+        run: () => onOpenSettings('index'),
+      },
+      ...themeCommands,
+    ];
+  }, [
+    themeName,
+    setThemeName,
+    saveActiveFile,
+    openFolder,
+    showTaskPanel,
+    showTerminal,
+    showSearch,
+    showBrowser,
+    handleToggleTaskPanel,
+    handleToggleTerminal,
+    handleToggleSearch,
+    handleToggleBrowser,
+    onOpenSettings,
+  ]);
 
   return (
     <div className="flex flex-col h-full bg-editor-bg">
@@ -243,6 +368,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
         onToggleTerminal={handleToggleTerminal}
         onToggleSearch={handleToggleSearch}
         onToggleBrowser={handleToggleBrowser}
+        onOpenQuickOpen={() => handleOpenPalette('files')}
         showTaskPanel={showTaskPanel}
         showTerminal={showTerminal}
         showSearch={showSearch}
@@ -324,6 +450,15 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
         </div>
       </div>
       <StatusBar />
+
+      {paletteMode && (
+        <CommandPalette
+          key={paletteMode}
+          initialMode={paletteMode}
+          commands={paletteCommands}
+          onClose={closePalette}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import { useTheme } from '../../context/ThemeContext';
+import { applyMonacoTheme, defineMonacoThemes, monacoThemeName } from '../../monacoTheme';
 
 type MonacoModule = typeof import('monaco-editor');
 
@@ -32,8 +34,12 @@ export default function DiffPreview({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const diffEditorRef = useRef<import('monaco-editor').editor.IStandaloneDiffEditor | null>(null);
+  const monacoRef = useRef<MonacoModule | null>(null);
   const acceptRef = useRef(onAccept);
   const rejectRef = useRef(onReject);
+  const { themeName } = useTheme();
+  const themeNameRef = useRef(themeName);
+  themeNameRef.current = themeName;
 
   useEffect(() => {
     acceptRef.current = onAccept;
@@ -55,31 +61,11 @@ export default function DiffPreview({
       originalModel = monaco.editor.createModel(original, lang);
       modifiedModel = monaco.editor.createModel(modified, lang);
 
-      monaco.editor.defineTheme('workbench-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-          { token: 'comment', foreground: '9aa0a6' },
-          { token: 'keyword', foreground: '8ab4f8' },
-          { token: 'string', foreground: 'fde293' },
-          { token: 'function', foreground: '81c995' },
-          { token: 'variable', foreground: 'e8eaed' },
-          { token: 'number', foreground: 'f28b82' },
-          { token: 'type', foreground: '8ab4f8' },
-        ],
-        colors: {
-          'editor.background': '#1f2024',
-          'editor.foreground': '#e8eaed',
-          'editor.lineHighlightBackground': '#ffffff08',
-          'editorLineNumber.foreground': '#5f6368',
-          'editor.selectionBackground': '#4285f444',
-          'editorIndentGuide.background': '#ffffff10',
-          'editorIndentGuide.activeBackground': '#ffffff30',
-        },
-      });
+      monacoRef.current = monaco;
+      defineMonacoThemes(monaco);
 
       diffEditor = monaco.editor.createDiffEditor(containerRef.current, {
-        theme: 'workbench-dark',
+        theme: monacoThemeName(themeNameRef.current),
         fontSize: 12,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         readOnly: true,
@@ -119,8 +105,15 @@ export default function DiffPreview({
       originalModel?.dispose();
       modifiedModel?.dispose();
       diffEditorRef.current = null;
+      monacoRef.current = null;
     };
   }, [visible, filePath, original, modified, language]);
+
+  // 主题切换时跟随（不重建 diff editor）
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (monaco) applyMonacoTheme(monaco, themeName);
+  }, [themeName]);
 
   if (!visible) return null;
 

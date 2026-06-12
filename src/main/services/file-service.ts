@@ -147,6 +147,43 @@ export class FileService {
     return results;
   }
 
+  /**
+   * 列出工作区全部文件（绝对路径），供 Quick Open 模糊匹配。
+   * 跳过忽略目录与点目录；点文件按 ALLOWED_DOT_FILES 白名单保留。
+   */
+  async listFiles(rootPath: string, limit = 20000): Promise<string[]> {
+    const results: string[] = [];
+    let dirCount = 0;
+    const started = Date.now();
+    const shouldStop = () =>
+      results.length >= limit || dirCount >= MAX_SEARCH_DIRS || Date.now() - started > MAX_SEARCH_MS;
+
+    const walk = async (dir: string): Promise<void> => {
+      if (shouldStop()) return;
+      dirCount++;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (shouldStop()) return;
+        if (IGNORED_DIRS.has(entry.name) || entry.isSymbolicLink()) continue;
+        if (entry.name.startsWith('.') && !ALLOWED_DOT_FILES.has(entry.name)) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else {
+          results.push(full);
+        }
+      }
+    };
+
+    await walk(rootPath);
+    return results;
+  }
+
   async findFiles(rootPath: string, pattern: string): Promise<string[]> {
     const results: string[] = [];
     const regex = globToRegex(pattern);

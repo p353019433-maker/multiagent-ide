@@ -29,3 +29,38 @@ describe('FileService search bounds', () => {
     }
   });
 });
+
+describe('FileService.listFiles', () => {
+  it('递归列出文件，跳过忽略目录/点目录，保留白名单点文件', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-list-'));
+    try {
+      await write('src/a.ts', 'a');
+      await write('src/nested/b.ts', 'b');
+      await write('.gitignore', 'node_modules');
+      await write('.secret/hidden.ts', 'x');
+      await write('node_modules/pkg/c.ts', 'c');
+      await write('dist/bundle.js', 'd');
+
+      const files = await new FileService().listFiles(dir);
+      const rels = files.map((f) => path.relative(dir, f)).sort();
+
+      expect(rels).toEqual(['.gitignore', 'src/a.ts', 'src/nested/b.ts']);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('limit 生效', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-list-limit-'));
+    try {
+      await write('a.ts', 'a');
+      await write('b.ts', 'b');
+      await write('c.ts', 'c');
+
+      const files = await new FileService().listFiles(dir, 2);
+      expect(files.length).toBe(2);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});

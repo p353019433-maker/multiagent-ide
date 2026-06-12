@@ -24,10 +24,31 @@ export interface TerminalPalette {
   brightWhite: string;
 }
 
+/** Monaco 语法高亮 token 配色（hex，带 #） */
+export interface SyntaxPalette {
+  comment: string;
+  keyword: string;
+  string: string;
+  func: string;
+  variable: string;
+  number: string;
+  type: string;
+}
+
+/** Monaco 编辑器 chrome 配色（hex，可带透明度） */
+export interface EditorPalette {
+  foreground: string;
+  lineHighlight: string;
+  lineNumber: string;
+  selection: string;
+  indentGuide: string;
+  indentGuideActive: string;
+}
+
 export interface ThemeConfig {
   name: ThemeName;
   display: string;
-  editorTheme: string; // Monaco theme
+  editorTheme: 'vs' | 'vs-dark' | 'hc-black'; // Monaco base theme
   colors: {
     bg: string;
     sidebar: string;
@@ -38,6 +59,8 @@ export interface ThemeConfig {
     text: string;
     dimText: string;
   };
+  syntax: SyntaxPalette;
+  editor: EditorPalette;
   terminal: TerminalPalette;
 }
 
@@ -97,6 +120,24 @@ export const THEMES: Record<ThemeName, ThemeConfig> = {
       text: '#d7dce2',
       dimText: commonDimText,
     },
+    // 与旧的 workbench-dark 完全一致，避免视觉回归
+    syntax: {
+      comment: '#9aa0a6',
+      keyword: '#8ab4f8',
+      string: '#fde293',
+      func: '#81c995',
+      variable: '#e8eaed',
+      number: '#f28b82',
+      type: '#8ab4f8',
+    },
+    editor: {
+      foreground: '#e8eaed',
+      lineHighlight: '#ffffff08',
+      lineNumber: '#5f6368',
+      selection: '#4285f444',
+      indentGuide: '#ffffff10',
+      indentGuideActive: '#ffffff30',
+    },
     terminal: {
       background: '#1f2024',
       foreground: '#e8eaed',
@@ -119,6 +160,24 @@ export const THEMES: Record<ThemeName, ThemeConfig> = {
       text: '#333333',
       dimText: '#999999',
     },
+    // 取 VS Code Light+ 的经典配色
+    syntax: {
+      comment: '#008000',
+      keyword: '#0000ff',
+      string: '#a31515',
+      func: '#795e26',
+      variable: '#001080',
+      number: '#098658',
+      type: '#267f99',
+    },
+    editor: {
+      foreground: '#333333',
+      lineHighlight: '#00000008',
+      lineNumber: '#237893',
+      selection: '#add6ff',
+      indentGuide: '#00000012',
+      indentGuideActive: '#00000033',
+    },
     terminal: {
       background: '#ffffff',
       foreground: '#333333',
@@ -140,6 +199,24 @@ export const THEMES: Record<ThemeName, ThemeConfig> = {
       accent: '#fc0',
       text: '#ffffff',
       dimText: '#aaaaaa',
+    },
+    // 取 VS Code High Contrast 的经典配色
+    syntax: {
+      comment: '#7ca668',
+      keyword: '#569cd6',
+      string: '#ce9178',
+      func: '#dcdcaa',
+      variable: '#ffffff',
+      number: '#b5cea8',
+      type: '#4ec9b0',
+    },
+    editor: {
+      foreground: '#ffffff',
+      lineHighlight: '#ffffff0f',
+      lineNumber: '#ffffff',
+      selection: '#264f78',
+      indentGuide: '#ffffff20',
+      indentGuideActive: '#ffffff50',
     },
     terminal: {
       background: '#000000',
