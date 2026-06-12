@@ -105,6 +105,7 @@ export function installBrowserPreviewApi() {
       },
       searchFiles: async () => [],
       findFiles: async () => [],
+      listFiles: async () => Array.from(previewFileContents.keys()),
       getFileInfo: async (path) => ({
         size: previewFileContents.get(path)?.length ?? 0,
         modified: new Date(0).toISOString(),

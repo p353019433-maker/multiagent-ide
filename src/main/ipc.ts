@@ -211,6 +211,10 @@ function registerFileSystemIpc({ fileService, fileWatcherService, getMainWindow 
     assertAppOrigin(event);
     return fileService.findFiles(await assertAllowedRoot(rootPath), pattern);
   });
+  ipcMain.handle('fs:listFiles', async (event, rootPath: string) => {
+    assertAppOrigin(event);
+    return fileService.listFiles(await assertAllowedRoot(rootPath));
+  });
   ipcMain.handle('fs:getFileInfo', async (event, filePath: string) => {
     assertAppOrigin(event);
     return fileService.getFileInfo(await assertAllowedPath(filePath));

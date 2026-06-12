@@ -2,6 +2,9 @@ import React from 'react';
 import { CheckCircle2, CircleAlert, CircleDot, FileText, FolderOpen, PanelLeft, X } from 'lucide-react';
 import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { useTheme } from '../../context/ThemeContext';
+import { applyMonacoTheme, defineMonacoThemes, monacoThemeName } from '../../monacoTheme';
+import { openPalette } from '../palette/paletteEvents';
 import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 import {
   registerInlineCompletion,
@@ -38,6 +41,9 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
     useEditor();
   const { rootName } = useWorkspace();
+  const { themeName } = useTheme();
+  const themeNameRef = React.useRef(themeName);
+  themeNameRef.current = themeName;
   const containerRef = React.useRef<HTMLDivElement>(null);
   const monacoRef = React.useRef<MonacoModule | null>(null);
   const editorRef = React.useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
@@ -59,31 +65,10 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
 
       monacoRef.current = monaco;
 
-      monaco.editor.defineTheme('workbench-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-          { token: 'comment', foreground: '9aa0a6' },
-          { token: 'keyword', foreground: '8ab4f8' },
-          { token: 'string', foreground: 'fde293' },
-          { token: 'function', foreground: '81c995' },
-          { token: 'variable', foreground: 'e8eaed' },
-          { token: 'number', foreground: 'f28b82' },
-          { token: 'type', foreground: '8ab4f8' },
-        ],
-        colors: {
-          'editor.background': '#1f2024',
-          'editor.foreground': '#e8eaed',
-          'editor.lineHighlightBackground': '#ffffff08',
-          'editorLineNumber.foreground': '#5f6368',
-          'editor.selectionBackground': '#4285f444',
-          'editorIndentGuide.background': '#ffffff10',
-          'editorIndentGuide.activeBackground': '#ffffff30',
-        },
-      });
+      defineMonacoThemes(monaco);
 
       const editor = monaco.editor.create(containerRef.current, {
-        theme: 'workbench-dark',
+        theme: monacoThemeName(themeNameRef.current),
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         minimap: { enabled: true },
@@ -105,6 +90,13 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         saveRef.current();
       });
+      // 编辑器内也能唤起 Quick Open / 命令面板（Monaco 会吞掉全局 keydown）
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+        openPalette('files');
+      });
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+        openPalette('commands');
+      });
       setIsMonacoReady(true);
     });
 
@@ -120,6 +112,13 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
       setIsMonacoReady(false);
     };
   }, []);
+
+  // 主题切换时全局更新 Monaco（setTheme 对所有 editor 实例生效，含 diff editor）
+  React.useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco || !isMonacoReady) return;
+    applyMonacoTheme(monaco, themeName);
+  }, [themeName, isMonacoReady]);
 
   React.useEffect(() => {
     const monaco = monacoRef.current;
