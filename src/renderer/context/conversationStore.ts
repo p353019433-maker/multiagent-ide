@@ -89,7 +89,17 @@ export function createConversationPersister(backend: StoreBackend, delayMs = 400
     dirty.clear();
     removed.clear();
     pendingOrder = null;
-    await Promise.all(writes);
+    // Catch write failures (quota, IPC error, store corruption) so a single
+    // failed write doesn't surface as an unhandled promise rejection and crash
+    // the renderer.
+    try {
+      await Promise.all(writes);
+    } catch (err) {
+      // Best-effort: log and move on. A future flush() will retry the
+      // conversation; the UI may have unsaved changes on disk, but losing
+      // them is preferable to taking down the app.
+      console.error('[conversationStore] flush failed:', err);
+    }
   }
 
   return {

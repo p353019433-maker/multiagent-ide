@@ -16,6 +16,8 @@ export default function EditorArea() {
   const monacoRef = React.useRef<MonacoModule | null>(null);
   const editorRef = React.useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
   const modelsRef = React.useRef<Map<string, import('monaco-editor').editor.ITextModel>>(new Map());
+  // Track per-model content-change subscriptions so they're disposed with the model.
+  const modelDisposablesRef = React.useRef<Map<string, import('monaco-editor').IDisposable>>(new Map());
   const listenedModelsRef = React.useRef<Set<string>>(new Set());
   const saveRef = React.useRef(saveActiveFile);
   const [isMonacoReady, setIsMonacoReady] = React.useState(false);
@@ -61,6 +63,8 @@ export default function EditorArea() {
     return () => {
       disposed = true;
       editorRef.current?.dispose();
+      modelDisposablesRef.current.forEach((d) => d.dispose());
+      modelDisposablesRef.current.clear();
       modelsRef.current.forEach((m) => m.dispose());
       modelsRef.current.clear();
       listenedModelsRef.current.clear();
@@ -91,7 +95,7 @@ export default function EditorArea() {
     if (!listenedModelsRef.current.has(activeFile.path)) {
       listenedModelsRef.current.add(activeFile.path);
       const filePath = activeFile.path;
-      model.onDidChangeContent((e) => {
+      const disposable = model.onDidChangeContent((e) => {
         const m = modelsRef.current.get(filePath);
         if (m) updateFileContent(filePath, m.getValue());
         // Feed non-trivial inserts to the next-edit predictor.
@@ -99,6 +103,7 @@ export default function EditorArea() {
           if (c.text && c.text.trim().length > 1) recordEdit(c.text);
         }
       });
+      modelDisposablesRef.current.set(filePath, disposable);
     }
 
     if (editor.getModel() !== model) {
@@ -123,6 +128,8 @@ export default function EditorArea() {
     const openPaths = new Set(openFiles.map((f) => f.path));
     for (const [filePath, model] of modelsRef.current) {
       if (!openPaths.has(filePath)) {
+        modelDisposablesRef.current.get(filePath)?.dispose();
+        modelDisposablesRef.current.delete(filePath);
         model.dispose();
         modelsRef.current.delete(filePath);
         listenedModelsRef.current.delete(filePath);
