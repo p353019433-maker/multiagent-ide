@@ -56,10 +56,7 @@ function disposeInlineCompletionProvider() {
   _disposables = [];
 }
 
-export function registerAiInlineCompletion(monaco: MonacoModule) {
-  _monaco = monaco;
-  disposeInlineCompletionProvider();
-
+function installProvider(monaco: MonacoModule) {
   const provider: Monaco.languages.InlineCompletionsProvider = {
     provideInlineCompletions: async (
       model: Monaco.editor.ITextModel,
@@ -76,11 +73,18 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
       const now = Date.now();
       if (now - _lastRequestTime < cooldown) return { items: [] };
 
-      // Debounce: assign an ID and wait
+      // Debounce: assign an ID and wait. Listen for cancellation so we don't
+      // burn the full debounce window when the user has already moved on.
       const thisId = ++_pendingId;
-      await new Promise((resolve) => setTimeout(resolve, debounce));
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, debounce);
+        _token.onCancellationRequested(() => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
 
-      // If another request came in during debounce, skip this one
+      // If another request came in during debounce, or we were cancelled, skip.
       if (thisId !== _pendingId || _token.isCancellationRequested) return { items: [] };
 
       _lastRequestTime = Date.now();
@@ -144,6 +148,17 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
   _disposables = [d1];
 }
 
+export function registerAiInlineCompletion(monaco: MonacoModule) {
+  _monaco = monaco;
+  // If a config was queued before monaco was ready (common — ChatPanel sets
+  // the provider id during initial mount, before EditorArea lazy-loads
+  // monaco), register the provider immediately so inline completion works.
+  disposeInlineCompletionProvider();
+  if (_config.providerId) {
+    installProvider(monaco);
+  }
+}
+
 export function unregisterAiInlineCompletion() {
   disposeInlineCompletionProvider();
   _config = { providerId: null, model: null };
@@ -153,7 +168,16 @@ export function updateInlineCompletionConfig(config: ProviderConfig) {
   _config = config;
   if (!config.providerId) {
     unregisterAiInlineCompletion();
-  } else if (_disposables.length === 0 && _monaco) {
-    registerAiInlineCompletion(_monaco);
+    return;
+  }
+  // If monaco isn't ready yet, _config is queued; registerAiInlineCompletion
+  // (called later from EditorArea) will install the provider using the
+  // current _config value. Otherwise, (re)install right now.
+  if (_monaco && _disposables.length === 0) {
+    installProvider(_monaco);
+  } else if (_monaco && _disposables.length > 0) {
+    // Config changed but provider is already installed — re-install so the
+    // captured closure (debounce/cooldown via _config) takes the new values.
+    installProvider(_monaco);
   }
 }

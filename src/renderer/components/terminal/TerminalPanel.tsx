@@ -11,6 +11,10 @@ export default function TerminalPanel({ cwd }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  // Tracks whether the component is still mounted. The pty session is created
+  // asynchronously, so without this we'd leak a session if the panel unmounts
+  // before `terminal.create` resolves.
+  const mountedRef = useRef(true);
   const [visible, setVisible] = useState(true);
 
   const initTerminal = useCallback(async () => {
@@ -54,6 +58,13 @@ export default function TerminalPanel({ cwd }: Props) {
     fitRef.current = fitAddon;
 
     const id = await window.api.terminal.create(cwd);
+    // If the panel unmounted while we were creating the pty, tear down
+    // everything we just built so neither the term nor the pty leaks.
+    if (!mountedRef.current) {
+      if (id) window.api.terminal.close(id);
+      term.dispose();
+      return;
+    }
     if (!id) {
       term.writeln('\r\n⚠️  终端不可用（node-pty 未加载）');
       return;
@@ -101,12 +112,31 @@ export default function TerminalPanel({ cwd }: Props) {
     };
   }, [cwd]);
 
+  // Re-fit the terminal whenever it becomes visible again — xterm measures its
+  // dimensions from the DOM, and while hidden (display:none) those are zero.
   useEffect(() => {
+    if (!visible) return;
+    const fit = fitRef.current;
+    const term = termRef.current;
+    const sid = sessionIdRef.current;
+    if (!fit || !term) return;
+    try {
+      fit.fit();
+      if (sid) window.api.terminal.resize(sid, term.cols, term.rows);
+    } catch {
+      // term not ready yet — ResizeObserver will handle it once mounted
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    mountedRef.current = true;
     const cleanup = initTerminal();
     return () => {
+      mountedRef.current = false;
       cleanup?.then?.((fn) => fn?.());
       if (sessionIdRef.current) {
         window.api.terminal.close(sessionIdRef.current);
+        sessionIdRef.current = null;
       }
       termRef.current?.dispose();
       termRef.current = null;
@@ -122,11 +152,9 @@ export default function TerminalPanel({ cwd }: Props) {
         <div className="flex items-center gap-1">
           <button
             onClick={() => {
-              if (sessionIdRef.current) {
-                window.api.terminal.close(sessionIdRef.current);
-                sessionIdRef.current = null;
-                termRef.current?.clear();
-              }
+              // Clear only the visible buffer — do NOT close the pty session,
+              // which would kill the shell and leave the panel dead.
+              termRef.current?.clear();
             }}
             className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
             title="清屏"
@@ -134,7 +162,7 @@ export default function TerminalPanel({ cwd }: Props) {
             🗑
           </button>
           <button
-            onClick={() => setVisible(!visible)}
+            onClick={() => setVisible((v) => !v)}
             className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
             title={visible ? '收起终端' : '展开终端'}
           >
@@ -143,9 +171,16 @@ export default function TerminalPanel({ cwd }: Props) {
         </div>
       </div>
 
-      {visible && (
-        <div ref={containerRef} className="flex-1 p-1 overflow-hidden" />
-      )}
+      {/*
+        The terminal container is always mounted; visibility toggles via CSS.
+        Conditionally unmounting it would discard the DOM node xterm rendered
+        into, leaving a blank panel after collapse/expand.
+      */}
+      <div
+        ref={containerRef}
+        className="flex-1 p-1 overflow-hidden"
+        style={{ display: visible ? 'block' : 'none' }}
+      />
     </div>
   );
 }
