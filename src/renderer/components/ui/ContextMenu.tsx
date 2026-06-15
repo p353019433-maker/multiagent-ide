@@ -42,10 +42,10 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
     >
       {items.map((item, i) =>
         item.separator ? (
-          <div key={i} className="border-t border-editor-border mx-1 my-1" />
+          <div key={`sep:${i}`} className="border-t border-editor-border mx-1 my-1" />
         ) : (
           <button
-            key={i}
+            key={`${item.label}:${i}`}
             className={`w-full text-left px-3 py-1.5 text-editor-text hover:bg-editor-hover transition-colors ${
               item.disabled ? 'opacity-40 cursor-not-allowed' : ''
             }`}

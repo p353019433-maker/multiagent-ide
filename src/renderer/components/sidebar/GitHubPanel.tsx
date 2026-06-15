@@ -145,9 +145,9 @@ export default function GitHubPanel() {
           </div>
         )}
 
-        {view === 'issues' && issues.map((issue, i) => (
+        {view === 'issues' && issues.map((issue) => (
           <div
-            key={i}
+            key={issue.number}
             className="px-3 py-2 border-b border-editor-border/30 cursor-pointer hover:bg-editor-hover"
             onClick={() => window.open(issue.html_url, '_blank')}
           >
@@ -167,9 +167,9 @@ export default function GitHubPanel() {
           </div>
         ))}
 
-        {view === 'prs' && prs.map((pr, i) => (
+        {view === 'prs' && prs.map((pr) => (
           <div
-            key={i}
+            key={pr.number}
             className="px-3 py-2 border-b border-editor-border/30 cursor-pointer hover:bg-editor-hover"
             onClick={() => window.open(pr.html_url, '_blank')}
           >
@@ -183,9 +183,9 @@ export default function GitHubPanel() {
           </div>
         ))}
 
-        {view === 'actions' && workflows.map((run, i) => (
+        {view === 'actions' && workflows.map((run) => (
           <div
-            key={i}
+            key={run.id ?? run.html_url}
             className="px-3 py-2 border-b border-editor-border/30 cursor-pointer hover:bg-editor-hover"
             onClick={() => window.open(run.html_url, '_blank')}
           >
