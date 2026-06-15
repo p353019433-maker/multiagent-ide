@@ -2,6 +2,10 @@
  * GitHub API service for Agent tools and IDE features.
  * Uses the GitHub REST API with a personal access token.
  */
+
+/** Percent-encode a path/query segment that gets interpolated into a URL. */
+const enc = encodeURIComponent;
+
 export class GitHubService {
   private getToken(startsWith: string = ''): string | null {
     // Token is stored encrypted by the store service
@@ -30,7 +34,7 @@ export class GitHubService {
   // ── Issues ──
 
   async listIssues(token: string, owner: string, repo: string, state: 'open' | 'closed' | 'all' = 'open') {
-    const data = await this.fetch(token, `/repos/${owner}/${repo}/issues?state=${state}&per_page=30`);
+    const data = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/issues?state=${state}&per_page=30`);
     return (data || []).map((i: any) => ({
       number: i.number,
       title: i.title,
@@ -44,7 +48,7 @@ export class GitHubService {
   }
 
   async getIssue(token: string, owner: string, repo: string, number: number) {
-    const i = await this.fetch(token, `/repos/${owner}/${repo}/issues/${number}`);
+    const i = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/issues/${number}`);
     return {
       number: i.number,
       title: i.title,
@@ -57,7 +61,7 @@ export class GitHubService {
   }
 
   async createIssue(token: string, owner: string, repo: string, title: string, body: string = '', labels: string[] = []) {
-    const i = await this.fetch(token, `/repos/${owner}/${repo}/issues`, {
+    const i = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/issues`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, labels }),
@@ -66,7 +70,7 @@ export class GitHubService {
   }
 
   async listIssueComments(token: string, owner: string, repo: string, number: number) {
-    const data = await this.fetch(token, `/repos/${owner}/${repo}/issues/${number}/comments?per_page=30`);
+    const data = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/issues/${number}/comments?per_page=30`);
     return (data || []).map((c: any) => ({
       id: c.id,
       user: c.user.login,
@@ -76,7 +80,7 @@ export class GitHubService {
   }
 
   async addIssueComment(token: string, owner: string, repo: string, number: number, body: string) {
-    await this.fetch(token, `/repos/${owner}/${repo}/issues/${number}/comments`, {
+    await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/issues/${number}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body }),
@@ -86,7 +90,7 @@ export class GitHubService {
   // ── Pull Requests ──
 
   async listPRs(token: string, owner: string, repo: string, state: 'open' | 'closed' | 'all' = 'open') {
-    const data = await this.fetch(token, `/repos/${owner}/${repo}/pulls?state=${state}&per_page=20`);
+    const data = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/pulls?state=${state}&per_page=20`);
     return (data || []).map((pr: any) => ({
       number: pr.number,
       title: pr.title,
@@ -100,7 +104,7 @@ export class GitHubService {
   }
 
   async getPR(token: string, owner: string, repo: string, number: number) {
-    const pr = await this.fetch(token, `/repos/${owner}/${repo}/pulls/${number}`);
+    const pr = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/pulls/${number}`);
     return {
       number: pr.number,
       title: pr.title,
@@ -117,7 +121,7 @@ export class GitHubService {
   }
 
   async getPRDiff(token: string, owner: string, repo: string, number: number): Promise<string> {
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}`, {
+    const res = await fetch(`https://api.github.com/repos/${enc(owner)}/${enc(repo)}/pulls/${number}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github.v3.diff',
@@ -130,7 +134,7 @@ export class GitHubService {
   }
 
   async createPR(token: string, owner: string, repo: string, title: string, head: string, base: string, body: string = '') {
-    const pr = await this.fetch(token, `/repos/${owner}/${repo}/pulls`, {
+    const pr = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/pulls`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, head, base, body }),
@@ -141,7 +145,7 @@ export class GitHubService {
   // ── CI / Actions ──
 
   async listWorkflowRuns(token: string, owner: string, repo: string, branch?: string) {
-    let url = `/repos/${owner}/${repo}/actions/runs?per_page=10`;
+    let url = `/repos/${enc(owner)}/${enc(repo)}/actions/runs?per_page=10`;
     if (branch) url += `&branch=${encodeURIComponent(branch)}`;
     const data = await this.fetch(token, url);
     return (data.workflow_runs || []).map((r: any) => ({
@@ -158,10 +162,15 @@ export class GitHubService {
   // ── Search ──
 
   async searchCode(token: string, query: string, owner?: string, repo?: string) {
-    let q = query;
-    if (owner && repo) q += `+repo:${owner}/${repo}`;
-    else if (owner) q += `+user:${owner}`;
-    const data = await this.fetch(token, `/search/code?q=${encodeURIComponent(q)}&per_page=10`);
+    // Encode each piece individually and join with `+`, which is the GitHub
+    // search syntax for AND-combining qualifiers. The previous implementation
+    // called encodeURIComponent on the whole concatenated string, which turned
+    // the `+` into `%2B` and broke qualifier parsing.
+    const parts = [enc(query)];
+    if (owner && repo) parts.push(`repo:${enc(owner)}/${enc(repo)}`);
+    else if (owner) parts.push(`user:${enc(owner)}`);
+    const q = parts.join('+');
+    const data = await this.fetch(token, `/search/code?q=${q}&per_page=10`);
     return (data.items || []).map((item: any) => ({
       path: item.path,
       repo: item.repository.full_name,
@@ -172,7 +181,7 @@ export class GitHubService {
   // ── Repo info ──
 
   async getRepo(token: string, owner: string, repo: string) {
-    const r = await this.fetch(token, `/repos/${owner}/${repo}`);
+    const r = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}`);
     return {
       full_name: r.full_name,
       description: r.description,
@@ -197,7 +206,7 @@ export class GitHubService {
     body: string,
     comments?: { path: string; line: number; body: string }[]
   ) {
-    await this.fetch(token, `/repos/${owner}/${repo}/pulls/${number}/reviews`, {
+    await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/pulls/${number}/reviews`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event, body, comments }),
@@ -211,7 +220,7 @@ export class GitHubService {
     number: number,
     method: string = 'merge'
   ) {
-    return this.fetch(token, `/repos/${owner}/${repo}/pulls/${number}/merge`, {
+    return this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/pulls/${number}/merge`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ merge_method: method }),
@@ -229,7 +238,7 @@ export class GitHubService {
     body: string,
     draft: boolean = false
   ) {
-    const r = await this.fetch(token, `/repos/${owner}/${repo}/releases`, {
+    const r = await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/releases`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

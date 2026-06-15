@@ -1,17 +1,51 @@
 /**
  * Analysis service — lint diagnostics and symbol extraction.
  *
- * Extracted from index.ts. All shell execution goes through TerminalService.runFile
- * (argument arrays, no shell) so agent-supplied file names can't inject commands.
+ * Extracted from index.ts. On macOS and Linux, all shell execution goes
+ * through TerminalService.runFile with argument arrays (no shell), so
+ * agent-supplied file names can't inject commands.
+ *
+ * On Windows, runFile sets `shell: true` because npx/npm are .cmd shims
+ * that require shell resolution. The isSafePath() guard below is the only
+ * thing standing between a crafted file name and arbitrary cmd.exe
+ * execution, so it must be comprehensive.
  */
 
 import path from 'path';
 import type { TerminalService } from './terminal-service';
 import type { FileService } from './file-service';
 
-/** Reject paths containing shell metacharacters (defense-in-depth). */
+/**
+ * Reject paths containing shell metacharacters (defense-in-depth). This is
+ * the only filter between an attacker-controlled file name and a real shell
+ * on Windows, so it's intentionally strict.
+ */
 function isSafePath(f: string): boolean {
-  return !/[;&|`$<>(){}\[\]!*?"'\\\n\r]/.test(f);
+  return !/[;&|`$<>(){}\[\]!*?"'\\\n\r\t%^=+]/.test(f);
+}
+
+/**
+ * Parse a tsc diagnostic line of the form
+ *   `path/to/file.ts(line,col): error TS1234: message`.
+ * Returns null if the line isn't a diagnostic. We use this for both severity
+ * detection and per-file filtering so we don't fall back to fuzzy
+ * substring matching on the path.
+ */
+function parseTscDiagnostic(line: string): { file: string; severity: string; code: string; message: string } | null {
+  const m = line.match(/^(.+?)\((\d+),(\d+)\):\s+(error|warning|info)\s+(TS\d+):\s*(.*)$/);
+  if (!m) return null;
+  return { file: m[1], severity: m[4], code: m[5], message: m[6] };
+}
+
+/**
+ * Parse an ESLint compact-format line of the form
+ *   `path:line:col: error/warning - message [rule]`.
+ * Returns null if the line isn't a diagnostic.
+ */
+function parseEslintDiagnostic(line: string): { file: string; severity: string; message: string } | null {
+  const m = line.match(/^(.+?):(\d+):(\d+):\s+(error|warning)\s+-\s+(.*)$/);
+  if (!m) return null;
+  return { file: m[1], severity: m[4], message: m[5] };
 }
 
 export class AnalysisService {
@@ -54,14 +88,36 @@ export class AnalysisService {
   /** Structured diagnostic check for the agent self-heal loop (scoped to edited files). */
   async checkLint(cwd: string, files?: string[]): Promise<{ hasErrors: boolean; output: string }> {
     const targetFiles = (files || []).filter(isSafePath);
+    // Normalize "wanted" paths so a relative filePath like 'src/a.ts' matches
+    // the absolute path tsc prints. We compare on the full path and on the
+    // basename so a quoted-but-not-included basename also matches.
+    const wantedAbs = new Set(targetFiles.map((f) => path.resolve(cwd, f)));
+    const wantedBase = new Set(targetFiles.map((f) => path.basename(f)));
     let output = '';
     let hasErrors = false;
 
     try {
       const text = await this.eslint(cwd, targetFiles);
-      if (text && /error/i.test(text)) {
-        hasErrors = true;
-        output += text + '\n';
+      if (text) {
+        // Parse the compact format and keep only `error` severity diagnostics
+        // scoped to the wanted files (when given). The previous /error/i
+        // check fired on the word "error" appearing anywhere — including in
+        // a file name or rule id.
+        const errLines: string[] = [];
+        for (const line of text.split('\n')) {
+          const d = parseEslintDiagnostic(line);
+          if (!d) continue;
+          if (d.severity !== 'error') continue;
+          if (targetFiles.length > 0) {
+            const abs = path.resolve(cwd, d.file);
+            if (!wantedAbs.has(abs) && !wantedBase.has(path.basename(d.file))) continue;
+          }
+          errLines.push(line);
+        }
+        if (errLines.length) {
+          hasErrors = true;
+          output += errLines.join('\n') + '\n';
+        }
       }
     } catch {
       // eslint unavailable — ignore
@@ -69,15 +125,25 @@ export class AnalysisService {
 
     try {
       const text = await this.tsc(cwd);
-      if (text && /error TS\d+/i.test(text)) {
-        hasErrors = true;
-        // When specific files were edited, surface only their diagnostics.
-        if (files && files.length) {
-          const wanted = files.map((f) => path.basename(f));
-          const lines = text.split('\n').filter((l) => wanted.some((w) => l.includes(w)));
-          output += (lines.length ? lines.join('\n') : text).slice(0, 4000) + '\n';
-        } else {
-          output += text.slice(0, 4000) + '\n';
+      if (text) {
+        // Match on the structured `file.ts(line,col): error TS…: …` format
+        // rather than a substring-includes on the basename, which produced
+        // false matches across two files that share a basename and missed
+        // any diagnostic whose basename was absent.
+        const errLines: string[] = [];
+        for (const line of text.split('\n')) {
+          const d = parseTscDiagnostic(line);
+          if (!d) continue;
+          if (d.severity !== 'error') continue;
+          if (targetFiles.length > 0) {
+            const abs = path.resolve(cwd, d.file);
+            if (!wantedAbs.has(abs) && !wantedBase.has(path.basename(d.file))) continue;
+          }
+          errLines.push(line);
+        }
+        if (errLines.length) {
+          hasErrors = true;
+          output += (errLines.length ? errLines.join('\n') : text).slice(0, 4000) + '\n';
         }
       }
     } catch {
