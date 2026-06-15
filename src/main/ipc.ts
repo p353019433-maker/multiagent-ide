@@ -7,6 +7,7 @@
 import { ipcMain, dialog, safeStorage, BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
+import type { ChatMessage, ChatOptions, FimRequest } from '../shared/types';
 import type { FileService } from './services/file-service';
 import type { TerminalService } from './services/terminal-service';
 import type { StoreService } from './services/store-service';
@@ -230,9 +231,15 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
 }
 
 function registerAIIpc({ aiService }: IpcDeps): void {
+  // Cast `unknown` from the wire to the service's expected shape. The trust
+  // boundary is at preload's contextBridge — the renderer's structuredClone
+  // already serializes by JSON-compatible types. The `as unknown as` double
+  // hop is intentional: it forces TS to require an explicit re-assertion at
+  // every boundary, so a future schema drift in @shared/types is visible
+  // here rather than silently corrupting downstream calls.
   ipcMain.handle('ai:chat', (event, providerId: string, messages: unknown[], options: unknown) => {
     assertAppOrigin(event);
-    return aiService.chat(providerId, messages as any, options as any);
+    return aiService.chat(providerId, messages as unknown as ChatMessage[], options as unknown as ChatOptions);
   });
   ipcMain.handle('ai:chatStream', async (event, providerId: string, messages: unknown[], options: unknown) => {
     assertAppOrigin(event);
@@ -245,12 +252,18 @@ function registerAIIpc({ aiService }: IpcDeps): void {
         // Window was closed during streaming, ignore
       }
     };
-    await aiService.chatStream(senderId, providerId, messages as any, options as any, {
-      onToken: (token: string) => safeSend('ai:stream-token', token),
-      onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', toolCall),
-      onComplete: (result: unknown) => safeSend('ai:stream-complete', result),
-      onError: (error: string) => safeSend('ai:stream-error', error),
-    });
+    await aiService.chatStream(
+      senderId,
+      providerId,
+      messages as unknown as ChatMessage[],
+      options as unknown as ChatOptions,
+      {
+        onToken: (token: string) => safeSend('ai:stream-token', token),
+        onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', toolCall),
+        onComplete: (result: unknown) => safeSend('ai:stream-complete', result),
+        onError: (error: string) => safeSend('ai:stream-error', error),
+      }
+    );
   });
   ipcMain.handle('ai:abort', (event) => {
     assertAppOrigin(event);
@@ -262,7 +275,7 @@ function registerAIIpc({ aiService }: IpcDeps): void {
   });
   ipcMain.handle('ai:fimComplete', (event, req: unknown) => {
     assertAppOrigin(event);
-    return aiService.fimComplete(req as any);
+    return aiService.fimComplete(req as unknown as FimRequest);
   });
   ipcMain.handle('ai:supportsFim', (event, providerId: string, model: string) => {
     assertAppOrigin(event);
