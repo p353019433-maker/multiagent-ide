@@ -3,6 +3,8 @@
  * Uses the GitHub REST API with a personal access token.
  */
 
+import type { GitHubReviewComment } from '@shared/types';
+
 /** Percent-encode a path/query segment that gets interpolated into a URL. */
 const enc = encodeURIComponent;
 
@@ -204,7 +206,7 @@ export class GitHubService {
     number: number,
     event: string,
     body: string,
-    comments?: { path: string; line: number; body: string }[]
+    comments?: GitHubReviewComment[]
   ) {
     await this.fetch(token, `/repos/${enc(owner)}/${enc(repo)}/pulls/${number}/reviews`, {
       method: 'POST',

@@ -120,7 +120,13 @@ export class CodebaseSearchService {
     return this.index.findDefinition(name);
   }
 
-  /** Find references: word-boundary matches of the identifier across the workspace. */
+  /**
+   * Find references: returns the lines where `name` appears as a whole
+   * identifier. Implementation: full-text substring search for `name`
+   * (case-insensitive) to cheaply collect candidate lines, then a
+   * word-boundary regex pass to drop non-identifier matches (e.g. `name`
+   * inside `namespace`). Results are capped at 50.
+   */
   async findReferences(
     root: string,
     name: string
