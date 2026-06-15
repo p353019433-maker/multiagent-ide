@@ -8,22 +8,63 @@ import type { ChatMessage as ChatMessageType } from '@shared/types';
 
 /**
  * Resolve a tool-supplied path against the workspace root, rejecting any path
- * that escapes the workspace (absolute paths, `..` traversal).
+ * that escapes the workspace (absolute paths outside root, `..` traversal).
+ *
+ * The previous implementation special-cased inputs that started with the
+ * workspace root + "/", returning them verbatim. That allowed an absolute path
+ * like `/repo/../../etc/passwd` to bypass the `..` normalization. We now route
+ * every input through the same segment-based resolution so all inputs are
+ * normalized. The IPC layer (`assertAllowedPath` + `realpath`) is the
+ * authoritative containment check; this renderer-side check is defense in depth.
  */
 export function resolveWorkspacePath(rootPath: string | null, p: string): string {
   if (!rootPath) throw new Error('未打开工作区');
-  if (p.startsWith(rootPath + '/') || p === rootPath) return p;
-  if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) throw new Error('拒绝访问：路径超出工作区');
-  const segments = p.split(/[/\\]/);
+
+  // Treat backslashes as separators on all platforms (Windows-style input on a
+  // POSIX path, etc.) so a path like "..\..\etc\passwd" can't sneak past.
+  let segments = p.split(/[/\\]/).filter((s) => s.length > 0);
+
+  // Reject Windows drive-letter paths outright.
+  if (segments.length > 0 && /^[A-Za-z]:/.test(segments[0])) {
+    throw new Error('拒绝访问：路径超出工作区');
+  }
+
+  // If the input is an absolute POSIX path inside the workspace, strip the
+  // workspace prefix so the rest is treated like a relative path. If it's an
+  // absolute path outside the workspace, reject outright.
+  const rootSegments = rootPath.split(/[/\\]/).filter((s) => s.length > 0);
+  if (segments.length > 0 && p.startsWith('/')) {
+    if (rootSegments.length <= segments.length) {
+      let same = true;
+      for (let i = 0; i < rootSegments.length; i++) {
+        if (segments[i] !== rootSegments[i]) { same = false; break; }
+      }
+      if (same) {
+        // Path lies inside the workspace — drop the root prefix.
+        segments = segments.slice(rootSegments.length);
+      } else {
+        // Outside the workspace — there's no segment walk that would
+        // normalize it back inside, so reject.
+        throw new Error('拒绝访问：路径超出工作区');
+      }
+    } else {
+      throw new Error('拒绝访问：路径超出工作区');
+    }
+  }
+
   const resolved: string[] = [];
   for (const seg of segments) {
     if (seg === '..') {
-      if (resolved.length === 0) throw new Error('拒绝访问：检测到路径越界');
+      if (resolved.length === 0) {
+        // Walking above the workspace root via a relative path.
+        throw new Error('拒绝访问：检测到路径越界');
+      }
       resolved.pop();
-    } else if (seg !== '.' && seg !== '') {
+    } else if (seg !== '.') {
       resolved.push(seg);
     }
   }
+
   return rootPath + '/' + resolved.join('/');
 }
 
@@ -86,6 +127,19 @@ export function compactMessages(msgs: ChatMessageType[]): ChatMessageType[] {
   let trimmedTail = tail;
   while (trimmedTail.length && trimmedTail[0].role === 'tool') {
     trimmedTail = trimmedTail.slice(1);
+  }
+
+  // Likewise, a tail-leading assistant message may carry toolCalls whose
+  // tool_results were dropped into the summary. Stripping those toolCalls keeps
+  // the request well-formed (an assistant tool_use with no tool_result is a hard
+  // error on both OpenAI and Anthropic). Only do this for the first assistant;
+  // any later tool_calls in the tail are followed by their own tool results.
+  if (trimmedTail.length && trimmedTail[0].role === 'assistant' && trimmedTail[0].toolCalls?.length) {
+    const first = trimmedTail[0];
+    trimmedTail = [
+      { ...first, toolCalls: undefined },
+      ...trimmedTail.slice(1),
+    ];
   }
 
   return [summary, ...trimmedTail];

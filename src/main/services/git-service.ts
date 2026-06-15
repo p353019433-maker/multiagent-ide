@@ -1,5 +1,24 @@
 import { execFile } from 'child_process';
 
+/**
+ * A git ref/identifier passed straight into argv. Reject anything that could be
+ * parsed as an option (leading "-"), contains shell/control characters, or
+ * whitespace — git refs don't legitimately contain those. This is defense
+ * against argument injection (e.g. a malicious branch name "--upload-pack=...").
+ */
+function assertRef(value: string, label: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`无效的 git ${label}：空值`);
+  }
+  if (value.startsWith('-')) {
+    throw new Error(`无效的 git ${label}：不能以 "-" 开头（会被当作选项）`);
+  }
+  if (/[\s`$\\<>|;&*?!"'\n\r]/.test(value)) {
+    throw new Error(`无效的 git ${label}：包含非法字符`);
+  }
+  return value;
+}
+
 export class GitService {
   /** Run `git` in the given cwd and collect stdout. */
   private async git(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -67,16 +86,18 @@ export class GitService {
 
   async push(cwd: string, remote?: string, branch?: string): Promise<string> {
     const args = ['push'];
-    if (remote) args.push(remote);
-    if (branch) args.push(branch);
+    if (remote) args.push(assertRef(remote, 'remote'));
+    if (branch) args.push(assertRef(branch, 'branch'));
+    args.push('--'); // terminal options so a later value can't be a flag
     const { stdout, stderr, exitCode } = await this.git(cwd, args);
     return exitCode === 0 ? stdout || '推送成功' : stderr || stdout;
   }
 
   async pull(cwd: string, remote?: string, branch?: string): Promise<string> {
     const args = ['pull'];
-    if (remote) args.push(remote);
-    if (branch) args.push(branch);
+    if (remote) args.push(assertRef(remote, 'remote'));
+    if (branch) args.push(assertRef(branch, 'branch'));
+    args.push('--');
     const { stdout, stderr, exitCode } = await this.git(cwd, args);
     return exitCode === 0 ? stdout || '拉取成功' : stderr || stdout;
   }
@@ -87,12 +108,12 @@ export class GitService {
   }
 
   async branchSwitch(cwd: string, name: string): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['checkout', name]);
+    const { stdout, stderr, exitCode } = await this.git(cwd, ['checkout', assertRef(name, 'branch'), '--']);
     return exitCode === 0 ? `已切换到分支 ${name}` : stderr || stdout;
   }
 
   async branchCreate(cwd: string, name: string): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['checkout', '-b', name]);
+    const { stdout, stderr, exitCode } = await this.git(cwd, ['checkout', '-b', assertRef(name, 'branch'), '--']);
     return exitCode === 0 ? `已创建并切换到分支 ${name}` : stderr || stdout;
   }
 
@@ -112,8 +133,11 @@ export class GitService {
     baseBranch?: string
   ): Promise<{ success: boolean; message: string; path?: string }> {
     // git worktree add -b <branch> <path> [<base-commit>]
-    const args = ['worktree', 'add', '-b', branchName, worktreePath];
-    if (baseBranch) args.push(baseBranch);
+    // branchName is validated (no leading "-"); worktreePath is sanitized so it
+    // can't masquerade as a flag — actual filesystem containment is enforced by
+    // the IPC layer's assertAllowedPath before this is ever called.
+    const args = ['worktree', 'add', '-b', assertRef(branchName, 'branch'), '--', worktreePath];
+    if (baseBranch) args.push(assertRef(baseBranch, 'base branch'));
     const { stdout, stderr, exitCode } = await this.git(cwd, args);
     if (exitCode !== 0) return { success: false, message: stderr };
     return { success: true, message: stdout || `已创建 worktree ${branchName}`, path: worktreePath };
@@ -148,7 +172,7 @@ export class GitService {
 
   /** Remove a worktree and delete its directory. */
   async worktreeRemove(cwd: string, worktreePath: string): Promise<{ success: boolean; message: string }> {
-    const { stdout, stderr, exitCode } = await this.git(cwd, ['worktree', 'remove', worktreePath, '--force']);
+    const { stdout, stderr, exitCode } = await this.git(cwd, ['worktree', 'remove', '--force', '--', worktreePath]);
     if (exitCode !== 0) return { success: false, message: stderr };
     return { success: true, message: stdout || `已删除 worktree ${worktreePath}` };
   }
@@ -172,23 +196,24 @@ export class GitService {
         return { success: false, message: current.stderr || current.stdout || '无法读取当前分支' };
       }
       if (current.stdout.trim() !== targetBranch) {
-        const switched = await this.git(cwd, ['switch', targetBranch]);
+        const switched = await this.git(cwd, ['switch', assertRef(targetBranch, 'target branch'), '--']);
         if (switched.exitCode !== 0) {
           return { success: false, message: switched.stderr || switched.stdout || `无法切换到 ${targetBranch}` };
         }
       }
     }
 
+    const source = assertRef(sourceBranch, 'source branch');
     let args: string[];
     switch (method) {
       case 'squash':
-        args = ['merge', '--squash', sourceBranch];
+        args = ['merge', '--squash', source];
         break;
       case 'rebase':
-        args = ['rebase', sourceBranch];
+        args = ['rebase', source];
         break;
       default:
-        args = ['merge', sourceBranch];
+        args = ['merge', source];
     }
     const { stdout, stderr, exitCode } = await this.git(cwd, args);
     if (exitCode !== 0) return { success: false, message: stderr };
@@ -197,7 +222,9 @@ export class GitService {
 
   /** Get merge diff between two branches (what B has that A doesn't). */
   async worktreeMergeDiff(cwd: string, baseBranch: string, headBranch: string): Promise<string> {
-    const { stdout } = await this.git(cwd, ['diff', `${baseBranch}...${headBranch}`]);
+    const base = assertRef(baseBranch, 'base branch');
+    const head = assertRef(headBranch, 'head branch');
+    const { stdout } = await this.git(cwd, ['diff', `${base}...${head}`]);
     return stdout || '没有差异';
   }
 }
