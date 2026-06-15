@@ -40,8 +40,16 @@ export class AIService {
       if (safeStorage.isEncryptionAvailable()) {
         return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
       }
-    } catch {}
-    return encrypted;
+    } catch (e) {
+      throw new Error(
+        `无法读取 provider "${provider.name}" 的 API key：safeStorage 不可用 (${(e as Error).message})。` +
+          `请在支持系统密钥环的环境中运行（macOS / Windows / 已配置 secret-tool 的 Linux）。`
+      );
+    }
+    throw new Error(
+      `无法读取 provider "${provider.name}" 的 API key：系统未启用密钥环加密。` +
+        `已存在的加密 secret 必须先在支持加密的环境下解密。`
+    );
   }
 
   async testConnection(providerId: string): Promise<{ ok: boolean; error?: string }> {

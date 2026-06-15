@@ -107,6 +107,9 @@ export class FileService {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
         if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+        // Skip symlinks so a malicious in-workspace link cannot point the
+        // search outside the authorized root.
+        if (entry.isSymbolicLink()) continue;
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           await walk(full);

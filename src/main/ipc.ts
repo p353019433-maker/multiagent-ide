@@ -121,7 +121,18 @@ function registerFileSystemIpc({ fileService }: IpcDeps): void {
   });
   ipcMain.handle('fs:delete', async (event, targetPath: string) => {
     assertAppOrigin(event);
-    return fileService.delete(await assertAllowedPath(targetPath));
+    // Defense in depth: refuse to delete the root of any authorized workspace,
+    // and reject empty / excessively short targets. Recursive `rm` is forced
+    // by file-service, so a mistaken root target would wipe the entire
+    // workspace (or any other authorized root such as a worktree).
+    const safe = await assertAllowedPath(targetPath);
+    const realSafe = await canonical(safe);
+    for (const root of allowedRoots) {
+      if (realSafe === root) {
+        throw new Error('拒绝删除工作区根目录');
+      }
+    }
+    return fileService.delete(safe);
   });
   ipcMain.handle('fs:rename', async (event, oldPath: string, newPath: string) => {
     assertAppOrigin(event);
@@ -196,12 +207,15 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
   ipcMain.handle('store:set', (event, key: string, value: unknown) => { assertAppOrigin(event); return storeService.set(key, value); });
   ipcMain.handle('store:encryptAndStore', (event, key: string, value: string) => {
     assertAppOrigin(event);
-    if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(value);
-      storeService.set(key, encrypted.toString('base64'));
-      return true;
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error(
+        '系统未启用密钥环加密 (safeStorage 不可用)。为保护敏感字段，请仅在 macOS / Windows / ' +
+          '已配置 libsecret 的 Linux 上保存 secret。'
+      );
     }
-    return false;
+    const encrypted = safeStorage.encryptString(value);
+    storeService.set(key, encrypted.toString('base64'));
+    return true;
   });
   ipcMain.handle('store:decryptAndGet', (event, key: string) => {
     assertAppOrigin(event);
@@ -285,7 +299,25 @@ function registerGitIpc({ gitService }: IpcDeps): void {
     assertAppOrigin(event);
     const safeCwd = await assertAllowedRoot(cwd);
     const res = await gitService.worktreeAdd(safeCwd, path.resolve(p), name, base);
-    if (res.success && res.path) await allowRoot(res.path);
+    // Only trust the path git reports back if it is physically inside an
+    // already-authorized root. Without this check a malicious call like
+    // `worktreeAdd(cwd, '/tmp/evil', 'x')` would smuggle `/tmp/evil` into the
+    // allowedRoots set and grant the agent read/write access to it.
+    if (res.success && res.path) {
+      const real = await canonical(res.path);
+      let inside = false;
+      for (const root of allowedRoots) {
+        const rel = path.relative(root, real);
+        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+          inside = true;
+          break;
+        }
+      }
+      if (!inside) {
+        return { ...res, success: false, message: 'worktree 路径必须在已授权工作区之下' };
+      }
+      await allowRoot(real);
+    }
     return res;
   });
   ipcMain.handle('git:authorizeWorktrees', async (event, cwd: string) => {
