@@ -30,6 +30,12 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
+  // Latches for the rename/create flows. Pressing Enter on the input fires
+  // onKeyDown(Enter) and then onBlur; without this guard both call the
+  // confirm handler, so the second call races against the first (renames a
+  // path that no longer exists, or creates a duplicate file).
+  const renameInFlightRef = useRef(false);
+  const createInFlightRef = useRef(false);
 
   const { openFile, activeFilePath, closeFile } = useEditor();
   const { loadChildren, refreshTree, rootPath } = useWorkspace();
@@ -78,13 +84,21 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   }, [expanded, node, loadChildren]);
 
   const handleCreateConfirm = useCallback(async () => {
+    if (createInFlightRef.current) return;
     const cleanName = newName.trim();
-    if (!cleanName || !rootPath) return;
+    if (!cleanName || !rootPath) {
+      setCreating(null);
+      setNewName('');
+      return;
+    }
     if (!isSafeName(cleanName)) {
       window.alert('名称不能包含路径分隔符或 ..');
+      setCreating(null);
+      setNewName('');
       return;
     }
     const fullPath = node.path + '/' + cleanName;
+    createInFlightRef.current = true;
     try {
       if (creating === 'file') {
         await window.api.fs.createFile(fullPath);
@@ -99,13 +113,16 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
       if (creating === 'file') {
         openFile(fullPath);
       }
-    } catch (err) {
-      // was: // silently fail. Now logs to console so the failure shows up
-      // in DevTools without forcing the user-facing alert on every create.
+    } catch (err: any) {
+      // Surface the failure to the user — silent loss is hostile UX.
+      const verb = creating === 'file' ? '创建文件' : '创建文件夹';
+      window.alert(`${verb}失败：${err?.message || err}`);
       logAndIgnore(err, { where: 'FileTree.create', path: fullPath });
+    } finally {
+      createInFlightRef.current = false;
+      setCreating(null);
+      setNewName('');
     }
-    setCreating(null);
-    setNewName('');
   }, [newName, rootPath, node.path, creating, refreshTree, expanded, loadChildren, openFile]);
 
   const handleDelete = useCallback(async () => {
@@ -133,6 +150,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   }, [node.name]);
 
   const handleRenameConfirm = useCallback(async () => {
+    if (renameInFlightRef.current) return;
     if (!newName.trim() || newName.trim() === node.name || !rootPath) {
       setRenaming(false);
       return;
@@ -145,6 +163,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
     }
     const dir = node.path.substring(0, node.path.lastIndexOf('/'));
     const newPath = dir + '/' + cleanName;
+    renameInFlightRef.current = true;
     try {
       await window.api.fs.rename(node.path, newPath);
       closeFile(node.path);
@@ -156,8 +175,10 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
       }
     } catch (err: any) {
       window.alert(`重命名失败：${err.message}`);
+    } finally {
+      renameInFlightRef.current = false;
+      setRenaming(false);
     }
-    setRenaming(false);
   }, [newName, node.name, node.path, rootPath, closeFile, refreshTree, expanded, loadChildren]);
 
   const isDirectory = node.isDirectory;

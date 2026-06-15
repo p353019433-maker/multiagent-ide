@@ -10,6 +10,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -444,14 +445,16 @@ interface ChunkVector {
   vector: number[];
 }
 
-/** Stable non-crypto hash (FNV-1a) for chunk content keying. */
+/**
+ * sha-256 truncated to 16 hex chars for chunk content keying. The previous
+ * 32-bit FNV-1a hash was cheap but trivially collidable — a workspace with
+ * adversarial content could craft two distinct chunks with the same hash,
+ * causing the embedding/symbol index to serve stale vectors for code that
+ * has actually changed. 64 bits of sha-256 is still cheap on chunks ≤2KB
+ * and is collision-resistant for our use.
+ */
 function hashString(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16);
+  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
