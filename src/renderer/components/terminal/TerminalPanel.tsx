@@ -141,7 +141,7 @@ export default function TerminalPanel({ cwd }: Props) {
       termRef.current?.dispose();
       termRef.current = null;
     };
-  }, [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cwd, initTerminal]);
 
   return (
     <div className="flex flex-col h-full bg-editor-bg border-t border-editor-border">

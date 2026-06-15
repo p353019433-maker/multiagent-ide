@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useAI } from '../../context/AIContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
@@ -45,7 +45,10 @@ export default function ChatPanel() {
   // Active conversation + its effective workspace root (worktree path when the
   // session runs in an isolated worktree, else the open folder). Declared before
   // the agent engine so it can be passed in.
-  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const activeConversation = useMemo(
+    () => conversations.find((c) => c.id === activeConversationId),
+    [conversations, activeConversationId]
+  );
   const effectiveRootPath = activeConversation?.worktree?.path ?? rootPath;
   const messages = activeConversation?.messages || [];
 
