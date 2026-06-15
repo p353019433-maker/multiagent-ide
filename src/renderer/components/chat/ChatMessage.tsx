@@ -1,7 +1,11 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-async-light';
+// v15 of react-syntax-highlighter exposes the async-light Prism highlighter
+// as a named export from the package root. The previous deep import
+// (`react-syntax-highlighter/dist/esm/prism-async-light`) bypassed the
+// package's public API and broke under v15's exports map.
+import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { ChatMessage as ChatMessageType } from '@shared/types';
 
