@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { statSync } from 'fs';
 
 export interface FileNode {
   name: string;
@@ -168,7 +167,7 @@ export class FileService {
   }
 
   async getFileInfo(filePath: string): Promise<{ size: number; modified: string; isDirectory: boolean }> {
-    const st = statSync(filePath);
+    const st = await fs.stat(filePath);
     return {
       size: st.size,
       modified: st.mtime.toISOString(),

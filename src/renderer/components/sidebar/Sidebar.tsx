@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
 import { logAndIgnore } from '../../utils/logAndIgnore';
+import { isSafeName } from '../../utils/pathSafety';
 import FileTree from './FileTree';
 import GitPanel from './GitPanel';
 import ProblemsPanel from './ProblemsPanel';
@@ -9,10 +10,6 @@ import GitHubPanel from './GitHubPanel';
 import MultiAgentPanel from './MultiAgentPanel';
 
 type SidebarTab = 'explorer' | 'git' | 'github' | 'problems' | 'multiagent';
-
-function isSafeName(name: string): boolean {
-  return !!name && !name.includes('/') && !name.includes('\\') && name !== '.' && name !== '..';
-}
 
 export default function Sidebar() {
   const { rootPath, rootName, fileTree, openFolder, refreshTree } = useWorkspace();

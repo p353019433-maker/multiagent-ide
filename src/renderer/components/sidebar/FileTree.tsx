@@ -4,14 +4,11 @@ import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import ContextMenu from '../ui/ContextMenu';
 import { logAndIgnore } from '../../utils/logAndIgnore';
+import { isSafeName } from '../../utils/pathSafety';
 
 interface Props {
   nodes: FileNode[];
   depth: number;
-}
-
-function isSafeName(name: string): boolean {
-  return !!name && !name.includes('/') && !name.includes('\\') && name !== '.' && name !== '..';
 }
 
 export default function FileTree({ nodes, depth }: Props) {

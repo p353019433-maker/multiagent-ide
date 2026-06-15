@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { AgentToolExecution } from '@shared/types';
 
 interface Props {
@@ -15,6 +15,13 @@ const STATUS_NAMES: Record<string, string> = {
 
 export default function AgentToolView({ execution }: Props) {
   const [expanded, setExpanded] = useState(false);
+  // Cache the JSON stringification of arguments. Without this, every parent
+  // re-render (which happens once per streamed token via the agent engine)
+  // re-stringifies the entire object even when arguments haven't changed.
+  const argsPreview = useMemo(
+    () => JSON.stringify(execution.arguments, null, 2).slice(0, 500),
+    [execution.arguments]
+  );
 
   const statusIcon = {
     pending: '⏳',
@@ -51,7 +58,7 @@ export default function AgentToolView({ execution }: Props) {
           <div>
             <span className="text-gray-500">参数：</span>
             <code className="text-gray-300 text-[11px]">
-              {JSON.stringify(execution.arguments, null, 2).slice(0, 500)}
+              {argsPreview}
             </code>
           </div>
           {execution.result && (
