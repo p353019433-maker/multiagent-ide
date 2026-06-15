@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 
 interface Props {
   visible: boolean;
@@ -7,7 +7,14 @@ interface Props {
 }
 
 /**
- * Built-in browser preview using Electron's <webview> tag.
+ * Built-in browser preview. Uses a sandboxed <iframe> (NOT <webview>):
+ *   - <webview> requires `webviewTag: true` in webPreferences, which is
+ *     explicitly disabled in main/index.ts. The previous implementation was
+ *     dead code that would have opened an un-sandboxed web container the
+ *     moment that flag was flipped.
+ *   - iframe with `sandbox="allow-scripts allow-same-origin"` keeps the
+ *     preview functional but isolates it from the host Electron process.
+ *
  * Agent's preview_url tool opens pages here instead of system browser.
  */
 export default function BrowserPreview({ visible, onClose, initialUrl }: Props) {
@@ -17,14 +24,16 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
   const [loading, setLoading] = useState(false);
   const [navHistory, setNavHistory] = useState<string[]>([initialUrl || '']);
   const [navIndex, setNavIndex] = useState(0);
-  const webviewRef = useRef<any>(null);
 
   const navigate = useCallback((targetUrl: string) => {
     if (!targetUrl) return;
-    let formatted = targetUrl;
+    let formatted = targetUrl.trim();
     if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
       formatted = 'https://' + formatted;
     }
+    // Defense-in-depth: keep iframe src as a plain https/http URL, strip
+    // any control characters that some prompt-injection payloads attempt.
+    formatted = formatted.replace(/[\u0000-\u001f\u007f]/g, '');
     setUrl(formatted);
     setInputUrl(formatted);
     const newHistory = navHistory.slice(0, navIndex + 1);
@@ -53,38 +62,13 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
 
   // Listen for preview_url events from the renderer
   React.useEffect(() => {
-    const handler = (e: CustomEvent) => navigate(e.detail.url);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { url?: string } | undefined;
+      if (detail?.url) navigate(detail.url);
+    };
     window.addEventListener('preview-url', handler as EventListener);
     return () => window.removeEventListener('preview-url', handler as EventListener);
   }, [navigate]);
-
-  React.useEffect(() => {
-    const webview = webviewRef.current;
-    if (!webview) return;
-
-    const handleLoadStart = () => setLoading(true);
-    const handleLoadStop = () => setLoading(false);
-    const handlePageTitleUpdated = (e: { title?: string }) => {
-      if (e.title) setTitle(e.title);
-    };
-    const handleDidNavigate = (e: { url?: string }) => {
-      if (!e.url) return;
-      setUrl(e.url);
-      setInputUrl(e.url);
-    };
-
-    webview.addEventListener('did-start-loading', handleLoadStart);
-    webview.addEventListener('did-stop-loading', handleLoadStop);
-    webview.addEventListener('page-title-updated', handlePageTitleUpdated);
-    webview.addEventListener('did-navigate', handleDidNavigate);
-
-    return () => {
-      webview.removeEventListener('did-start-loading', handleLoadStart);
-      webview.removeEventListener('did-stop-loading', handleLoadStop);
-      webview.removeEventListener('page-title-updated', handlePageTitleUpdated);
-      webview.removeEventListener('did-navigate', handleDidNavigate);
-    };
-  }, [url]);
 
   if (!visible) return null;
 
@@ -137,14 +121,16 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
         </button>
       </div>
 
-      {/* Webview */}
+      {/* Iframe (sandboxed). Replaces the broken <webview> tag. */}
       {url ? (
-        <webview
-          ref={webviewRef}
+        <iframe
           src={url}
-          // @ts-ignore — webview is an Electron-specific tag
-          webpreferences="contextIsolation=yes"
-          style={{ flex: 1, background: '#fff' }}
+          sandbox="allow-scripts allow-same-origin"
+          referrerPolicy="no-referrer"
+          onLoad={() => setLoading(false)}
+          onLoadStart={() => setLoading(true)}
+          title={title}
+          style={{ flex: 1, border: 'none', background: '#fff' }}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">

@@ -42,20 +42,34 @@ export const APPROVAL_MODE_META: Record<
 const DANGEROUS_COMMAND_PATTERNS: { re: RegExp; reason: string }[] = [
   { re: /\brm\s+(-[a-z]*r[a-z]*|--recursive)\b/i, reason: '递归删除文件 (rm -r)' },
   { re: /\brm\s+(-[a-z]*f[a-z]*|--force)\b/i, reason: '强制删除文件 (rm -f)' },
-  { re: /\b(mkfs|fdisk|parted)\b/i, reason: '磁盘格式化/分区操作' },
+  { re: /\brm\s+-[a-z]*rf/i, reason: '强制递归删除 (rm -rf)' },
+  { re: /\b(mkfs|fdisk|parted|wipefs)\b/i, reason: '磁盘格式化/分区操作' },
   { re: /\bdd\s+.*\bof=/i, reason: '裸写磁盘 (dd of=)' },
   { re: /:\s*\(\s*\)\s*\{.*\|.*&\s*\}\s*;/, reason: 'fork bomb' },
   { re: /\bgit\s+push\b.*(--force\b|--force-with-lease\b|\s-f\b)/i, reason: '强制推送 (git push --force)' },
   { re: /\bgit\s+reset\s+--hard\b/i, reason: '硬重置丢弃改动 (git reset --hard)' },
   { re: /\bgit\s+clean\s+-[a-z]*f/i, reason: '清理未跟踪文件 (git clean -f)' },
-  { re: /\b(curl|wget)\b[\s\S]*\|\s*(sudo\s+)?(sh|bash|zsh)\b/i, reason: '下载并执行脚本 (curl | sh)' },
+  { re: /\bgit\s+branch\s+-D\b/i, reason: '强制删除分支 (git branch -D)' },
+  { re: /\bgit\s+stash\s+drop\b/i, reason: '丢弃 stash (git stash drop)' },
+  { re: /\bgit\s+update-ref\s+-d\b/i, reason: '删除 git ref (git update-ref -d)' },
+  { re: /\b(curl|wget|fetch)\b[\s\S]*\|\s*(sudo\s+)?(sh|bash|zsh|python|node|perl|ruby)\b/i, reason: '下载并执行脚本 (curl | sh)' },
   { re: /\bsudo\b/i, reason: '提权执行 (sudo)' },
-  { re: /\bchmod\s+(-R\s+)?(777|a\+rwx)\b/i, reason: '放开全部权限 (chmod 777)' },
-  { re: /\b(shutdown|reboot|halt|poweroff)\b/i, reason: '关机/重启' },
-  { re: />\s*\/dev\/(sd|nvme|disk)/i, reason: '写入裸设备' },
+  { re: /\bsu\s+-?\b/i, reason: '切换用户 (su)' },
+  { re: /\bchmod\s+(-R\s+)?(777|a\+rwx|o\+w)\b/i, reason: '放开全部权限 (chmod 777)' },
+  { re: /\bchown\s+-R\b/i, reason: '递归改文件属主 (chown -R)' },
+  { re: /\b(shutdown|reboot|halt|poweroff|init\s+0|init\s+6)\b/i, reason: '关机/重启' },
+  { re: />\s*\/dev\/(sd|nvme|disk|hd)/i, reason: '写入裸设备' },
   { re: /\bnpm\s+(i|install)\b.*(-g|--global)\b/i, reason: '全局安装包 (npm i -g)' },
+  { re: /\bnpm\s+publish\b/i, reason: '发布 npm 包 (npm publish)' },
   { re: /\b(killall|pkill)\b/i, reason: '批量结束进程' },
   { re: /\bgit\s+checkout\s+--\s+\./i, reason: '丢弃工作区改动 (git checkout -- .)' },
+  // /etc/, /System, ssh keys, AWS/GCP credentials — common exfil targets
+  { re: /\b(cat|less|more|head|tail|cp|mv|scp|rsync)\b[^\n]*(\/etc\/(?:passwd|shadow|sudoers)|~\/\.ssh|~\/\.aws|~\/\.config\/gcloud)/i, reason: '读取系统/凭据文件' },
+  // eval / source / exec with substitution — common injection sinks
+  { re: /\beval\s+/i, reason: 'eval 动态执行' },
+  { re: /\bsource\s+[^\n]*\$\(/i, reason: 'source + 命令替换' },
+  // Direct disk write bypassing the FS
+  { re: /\bdd\s+if=/i, reason: '裸读设备 (dd if=)' },
 ];
 
 export interface CommandRisk {
