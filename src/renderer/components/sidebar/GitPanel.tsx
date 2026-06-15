@@ -265,11 +265,11 @@ export default function GitPanel() {
                 <div className="px-3 py-1 text-[11px] font-semibold text-green-400">
                   已暂存 ({stagedChanges.length})
                 </div>
-                {stagedChanges.map((c, i) => {
+                {stagedChanges.map((c) => {
                   const sl = statusLabel(c.status);
                   return (
                     <div
-                      key={i}
+                      key={c.path}
                       className="flex items-center gap-2 px-3 py-[3px] hover:bg-editor-hover text-xs group"
                     >
                       <span
@@ -299,11 +299,11 @@ export default function GitPanel() {
                     未暂存 ({changes.length})
                   </div>
                 )}
-                {changes.map((c, i) => {
+                {changes.map((c) => {
                   const sl = statusLabel(c.status);
                   return (
                     <div
-                      key={i}
+                      key={c.path}
                       className="flex items-center gap-2 px-3 py-[3px] hover:bg-editor-hover text-xs group"
                     >
                       <span

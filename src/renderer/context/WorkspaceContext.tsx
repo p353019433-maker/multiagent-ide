@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import type { FileNode } from '@shared/types';
 
 interface WorkspaceContextValue {
@@ -45,13 +45,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const rootName = rootPath ? getFolderName(rootPath) : null;
 
-  return (
-    <WorkspaceContext.Provider
-      value={{ rootPath, rootName, fileTree, openFolder, refreshTree, loadChildren }}
-    >
-      {children}
-    </WorkspaceContext.Provider>
+  // Memo the value object so consumers (FileTree, GitPanel, GitHubPanel,
+  // ProblemsPanel, TerminalPanel, SearchPanel) only re-render when an actual
+  // field changes — not on every unrelated parent render.
+  const value = useMemo<WorkspaceContextValue>(
+    () => ({ rootPath, rootName, fileTree, openFolder, refreshTree, loadChildren }),
+    [rootPath, rootName, fileTree, openFolder, refreshTree, loadChildren]
   );
+
+  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
 export function useWorkspace() {

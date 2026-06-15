@@ -76,9 +76,9 @@ export default function ProblemsPanel() {
           <p className="text-xs text-gray-500 text-center mt-4">未发现问题 ✓</p>
         )}
 
-        {problems.map((p, i) => (
+        {problems.map((p) => (
           <div
-            key={i}
+            key={`${p.file}:${p.line}:${p.column}:${p.message}`}
             className="flex items-start gap-2 px-3 py-[3px] cursor-pointer hover:bg-editor-hover text-xs border-b border-editor-border/30"
             onClick={() => handleClick(p)}
           >

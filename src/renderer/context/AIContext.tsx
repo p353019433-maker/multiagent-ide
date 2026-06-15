@@ -415,34 +415,59 @@ Response:`;
     return session;
   }, [activeProviderId, activeModel, newWorktreeConversation, rootPath]);
 
-  return (
-    <AIContext.Provider
-      value={{
-        providers,
-        activeProviderId,
-        activeModel,
-        conversations,
-        activeConversationId,
-        orchestrationSessions,
-        setActiveProvider,
-        setActiveModel,
-        saveProvider,
-        deleteProvider,
-        testProvider,
-        newConversation,
-        newWorktreeConversation,
-        setActiveConversation,
-        deleteConversation,
-        addConversation,
-        addMessage,
-        updateMessage,
-        renameConversation,
-        orchestrate,
-      }}
-    >
-      {children}
-    </AIContext.Provider>
+  // Memo the value object so the whole subtree only re-renders when an
+  // actual field changes, not on every parent render. Without this, a
+  // streamToken in a sibling component (or any unrelated state change in
+  // App) re-renders every consumer of useAI() — TitleBar, SessionTabs,
+  // ChatPanel, SettingsModal, MultiAgentPanel.
+  const value = React.useMemo<AIContextValue>(
+    () => ({
+      providers,
+      activeProviderId,
+      activeModel,
+      conversations,
+      activeConversationId,
+      orchestrationSessions,
+      setActiveProvider,
+      setActiveModel,
+      saveProvider,
+      deleteProvider,
+      testProvider,
+      newConversation,
+      newWorktreeConversation,
+      setActiveConversation,
+      deleteConversation,
+      addConversation,
+      addMessage,
+      updateMessage,
+      renameConversation,
+      orchestrate,
+    }),
+    [
+      providers,
+      activeProviderId,
+      activeModel,
+      conversations,
+      activeConversationId,
+      orchestrationSessions,
+      setActiveProvider,
+      setActiveModel,
+      saveProvider,
+      deleteProvider,
+      testProvider,
+      newConversation,
+      newWorktreeConversation,
+      setActiveConversation,
+      deleteConversation,
+      addConversation,
+      addMessage,
+      updateMessage,
+      renameConversation,
+      orchestrate,
+    ]
   );
+
+  return <AIContext.Provider value={value}>{children}</AIContext.Provider>;
 }
 
 export function useAI() {
