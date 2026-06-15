@@ -111,6 +111,9 @@ export class IndexService {
       }
       for (const entry of entries) {
         if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+        // Never follow symlinks — a link pointing outside the workspace would
+        // let the indexer read & embed arbitrary files (e.g. /Users, /etc).
+        if (entry.isSymbolicLink() || entry.isFIFO() || entry.isSocket()) continue;
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           await walk(full);
@@ -344,6 +347,8 @@ export class IndexService {
       }
       for (const entry of entries) {
         if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+        // Never follow symlinks — see build() for rationale.
+        if (entry.isSymbolicLink() || entry.isFIFO() || entry.isSocket()) continue;
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           await walk(full);
