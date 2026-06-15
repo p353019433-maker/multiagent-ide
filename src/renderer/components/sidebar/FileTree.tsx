@@ -3,6 +3,7 @@ import type { FileNode } from '@shared/types';
 import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import ContextMenu from '../ui/ContextMenu';
+import { logAndIgnore } from '../../utils/logAndIgnore';
 
 interface Props {
   nodes: FileNode[];
@@ -101,8 +102,10 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
       if (creating === 'file') {
         openFile(fullPath);
       }
-    } catch (err: any) {
-      // silently fail
+    } catch (err) {
+      // was: // silently fail. Now logs to console so the failure shows up
+      // in DevTools without forcing the user-facing alert on every create.
+      logAndIgnore(err, { where: 'FileTree.create', path: fullPath });
     }
     setCreating(null);
     setNewName('');

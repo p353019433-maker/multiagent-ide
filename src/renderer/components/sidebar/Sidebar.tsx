@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
+import { logAndIgnore } from '../../utils/logAndIgnore';
 import FileTree from './FileTree';
 import GitPanel from './GitPanel';
 import ProblemsPanel from './ProblemsPanel';

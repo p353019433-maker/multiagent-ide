@@ -52,13 +52,17 @@ function createWindow() {
 // Services are created on app-ready; one terminal service is also referenced by
 // the shutdown hook below.
 let terminalService: TerminalService;
+// Hoisted so the `web-contents-created` handler below can reach it. The
+// service is constructed in app.whenReady; before then the handler is
+// a no-op (aiService is undefined).
+let aiService: AIService | undefined;
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   const fileService = new FileService();
   terminalService = new TerminalService();
   const storeService = new StoreService();
-  const aiService = new AIService(storeService);
+  aiService = new AIService(storeService);
   const gitService = new GitService();
   const webService = new WebService();
   const indexService = new IndexService();
@@ -85,6 +89,15 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
+  });
+});
+
+// Drop any in-flight AI streams for windows that close without an explicit
+// `ai:abort` invocation (e.g. user kills the renderer). Without this hook
+// the AbortController map grows unbounded across long sessions.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('destroyed', () => {
+    if (aiService) aiService.forgetSender(contents.id);
   });
 });
 

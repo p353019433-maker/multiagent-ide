@@ -236,14 +236,22 @@ export class TerminalService {
   }
 
   private pruneStaleBackgroundSessions(): void {
-    const MAX_AGE_MS = 30 * 60_000; // 30 minutes
+    const MAX_RUNNING_AGE_MS = 30 * 60_000; // 30 minutes for still-running
+    const MAX_EXITED_AGE_MS = 5 * 60_000;   // 5 minutes for finished sessions
     const now = Date.now();
     for (const [id, session] of this.bgSessions) {
-      if (session.running && now - session.startedAt > MAX_AGE_MS) {
+      if (session.running && now - session.startedAt > MAX_RUNNING_AGE_MS) {
         session.proc.kill();
         session.output += '\n[后台任务超时自动终止（30分钟）]';
         session.running = false;
         session.exitCode = -1;
+        this.bgSessions.delete(id);
+      } else if (!session.running && session.exitCode !== null && now - session.startedAt > MAX_EXITED_AGE_MS) {
+        // Previously, finished sessions were kept forever because the
+        // running check above was the only cleanup path. The completed
+        // sessions (up to 100KB output each) now accumulate in memory and
+        // are reclaimed 5 minutes after exit so callers still have time
+        // to call getBackgroundOutput.
         this.bgSessions.delete(id);
       }
     }
