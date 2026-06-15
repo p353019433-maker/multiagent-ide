@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { GitHubReviewComment } from '../shared/types';
 
 const api = {
   // Dialog
@@ -196,7 +197,7 @@ const api = {
       ipcRenderer.invoke('github:getRepo', token, owner, repo),
     parseRemote: (remoteUrl: string) =>
       ipcRenderer.invoke('github:parseRemote', remoteUrl),
-    createReview: (token: string, owner: string, repo: string, number: number, event: string, body?: string, comments?: any[]) =>
+    createReview: (token: string, owner: string, repo: string, number: number, event: string, body?: string, comments?: GitHubReviewComment[]) =>
       ipcRenderer.invoke('github:createReview', token, owner, repo, number, event, body, comments),
     mergePR: (token: string, owner: string, repo: string, number: number, method?: string) =>
       ipcRenderer.invoke('github:mergePR', token, owner, repo, number, method),

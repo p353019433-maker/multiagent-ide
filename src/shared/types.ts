@@ -145,6 +145,17 @@ export interface FimRequest {
 }
 
 // ============================================================
+// GitHub
+// ============================================================
+
+/** Inline review comment posted on a PR diff line. */
+export interface GitHubReviewComment {
+  path: string;
+  line: number;
+  body: string;
+}
+
+// ============================================================
 // File Tree
 // ============================================================
 

@@ -20,6 +20,16 @@ import type { CodebaseSearchService } from './services/codebase-search-service';
 
 const allowedRoots = new Set<string>();
 
+/**
+ * Allowlist of secret-store keys that may be decrypted through the
+ * `store:decryptAndGet` IPC channel. The general `store:get` channel can
+ * read any key (it returns whatever was stored, encrypted or not), but the
+ * *decrypt* path is intentionally narrower so a renderer-side bug can't be
+ * leveraged to dump every encrypted secret in the store. Add a key here
+ * only if a feature truly needs to read it back as plaintext.
+ */
+const DECRYPTABLE_SECRETS: ReadonlySet<string> = new Set(['github_token']);
+
 async function canonical(p: string): Promise<string> {
   const resolved = path.resolve(p);
   try {
@@ -220,7 +230,7 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
   });
   ipcMain.handle('store:decryptAndGet', (event, key: string) => {
     assertAppOrigin(event);
-    if (key !== 'github_token') throw new Error('拒绝读取通用 secret');
+    if (!DECRYPTABLE_SECRETS.has(key)) throw new Error('拒绝读取通用 secret');
     const encrypted = storeService.get(key) as string | undefined;
     if (!encrypted) return null;
     if (safeStorage.isEncryptionAvailable()) {
