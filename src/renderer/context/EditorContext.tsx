@@ -116,10 +116,18 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     setOpenFiles((prev) =>
       prev.map((f) => {
         if (f.path !== filePath) return f;
-        if (f.isDirty && f.content !== diskContent) {
-          return { ...f, originalContent: diskContent, isDirty: true };
-        }
-        return { ...f, content: diskContent, originalContent: diskContent, isDirty: false };
+        // isDirty is derived from `content !== originalContent`. If the user
+        // has unsaved local edits (content !== disk), we update originalContent
+        // to disk but keep the buffer intact — the file is still dirty because
+        // the buffer differs from the new original. If the buffer already
+        // matches disk, the file is not dirty.
+        const stillDirty = f.content !== diskContent;
+        return {
+          ...f,
+          content: f.content,           // keep the in-memory buffer
+          originalContent: diskContent, // anchor the dirty check to disk
+          isDirty: stillDirty,
+        };
       })
     );
   }, []);

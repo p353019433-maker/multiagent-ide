@@ -8,6 +8,7 @@
 
 import path from 'path';
 import { app } from 'electron';
+import crypto from 'crypto';
 import type { IndexService, CodebaseSearchHit } from './index-service';
 import type { AIService } from './ai-service';
 import type { FileService } from './file-service';
@@ -38,7 +39,15 @@ export class CodebaseSearchService {
 
   /** Per-workspace cache file for the embedding index. */
   private embedCacheFile(root: string): string {
-    const key = Buffer.from(root).toString('base64').replace(/[/+=]/g, '').slice(0, 40);
+    // Use sha-256 of the root as the cache key. The previous implementation
+    // took a 40-char slice of base64(root) which collides for any two roots
+    // that share the first ~30 base64 chars, leading to one workspace's
+    // cached vectors being read for another.
+    const key = crypto
+      .createHash('sha256')
+      .update(root)
+      .digest('base64')
+      .replace(/[/+=]/g, '');
     return path.join(app.getPath('userData'), 'codebase-index', `${key}.json`);
   }
 

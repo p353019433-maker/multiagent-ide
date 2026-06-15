@@ -374,15 +374,25 @@ Response:`;
     // Step 3: Start all agents in parallel
     const promises = tasks
       .filter((t) => t.status !== 'failed')
-      .map(async (task) => {
+      .map(async (task, idx) => {
         try {
           const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
           if (!conv) throw new Error('Conversation not found');
 
-          task.status = 'running';
-          // Refresh session to show running state
+          // Immutable update: replace the running task with a new object.
+          // The previous implementation mutated `task` in place, which meant
+          // the shallow `[...tasks]` spread in the setter was sharing the
+          // same object reference and could be skipped by React's bailout.
           setOrchestrationSessions((prev) =>
-            prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
+            prev.map((s) => {
+              if (s.id !== sessionId) return s;
+              return {
+                ...s,
+                tasks: s.tasks.map((t, i) =>
+                  i === idx ? { ...t, status: 'running' as const } : t
+                ),
+              };
+            })
           );
 
           // Send initial message to the agent via main process (non-streaming for orchestration)
@@ -394,25 +404,56 @@ Response:`;
             workspaceRoot: conv.worktree?.path,
             tools: [],
           });
-          task.result = result?.content || '';
-          task.status = 'completed';
-
-          task.status = 'completed';
+          const finalStatus: 'completed' | 'failed' = 'completed';
+          const finalResult = result?.content || '';
+          setOrchestrationSessions((prev) =>
+            prev.map((s) => {
+              if (s.id !== sessionId) return s;
+              return {
+                ...s,
+                tasks: s.tasks.map((t, i) =>
+                  i === idx ? { ...t, status: finalStatus, result: finalResult } : t
+                ),
+              };
+            })
+          );
         } catch (err: any) {
-          task.status = 'failed';
-          task.error = err.message;
+          const message = err?.message || String(err);
+          setOrchestrationSessions((prev) =>
+            prev.map((s) => {
+              if (s.id !== sessionId) return s;
+              return {
+                ...s,
+                tasks: s.tasks.map((t, i) =>
+                  i === idx ? { ...t, status: 'failed' as const, error: message } : t
+                ),
+              };
+            })
+          );
         }
       });
 
     await Promise.allSettled(promises);
 
-    // Check if all tasks failed
-    const allFailed = tasks.every((t) => t.status === 'failed');
-    session.status = allFailed ? 'failed' : 'completed';
-    session.completedAt = Date.now();
-    setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? session : s)));
+    // Final tally: read the latest committed state so we don't race with the
+    // per-task setters above.
+    let finalSession: OrchestrationSession | null = null;
+    setOrchestrationSessions((prev) => {
+      const next = prev.map((s) => {
+        if (s.id !== sessionId) return s;
+        const allFailed = s.tasks.every((t) => t.status === 'failed');
+        const updated: OrchestrationSession = {
+          ...s,
+          status: allFailed ? 'failed' : 'completed',
+          completedAt: Date.now(),
+        };
+        finalSession = updated;
+        return updated;
+      });
+      return next;
+    });
 
-    return session;
+    return finalSession || session;
   }, [activeProviderId, activeModel, newWorktreeConversation, rootPath]);
 
   // Memo the value object so the whole subtree only re-renders when an
