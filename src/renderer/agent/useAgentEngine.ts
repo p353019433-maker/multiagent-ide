@@ -17,6 +17,7 @@ import type {
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
 import { resolveWorkspacePath, classifyToolError, compactMessages } from './agentUtils';
+import { logAndIgnore } from '../utils/logAndIgnore';
 import type { GateActionFn } from './useApproval';
 
 export interface AgentEngineDeps {
@@ -189,35 +190,51 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         const result = await new Promise<any>((resolve, reject) => {
           let content = '';
           const toolCalls: ToolCall[] = [];
+          // Track listener cleanup so a synchronous throw from chatStream (or
+          // an IPC sender-destroyed race) cannot leak the four ipcRenderer.on
+          // listeners. Each path below MUST call cleanupAll before settling.
+          let cleanedUp = false;
+          let unsubs: Array<() => void> = [];
+          const cleanupAll = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
+            for (const u of unsubs) {
+              try { u(); } catch { /* listener already gone */ }
+            }
+          };
 
-          const unsubToken = window.api.ai.onStreamToken((token) => {
-            content += token;
-            safeSetStreamContent(content);
-          });
-          const unsubTool = window.api.ai.onStreamToolCall((tc) => {
-            toolCalls.push(tc);
-          });
-          const unsubComplete = window.api.ai.onStreamComplete((res) => {
-            unsubToken();
-            unsubTool();
-            unsubComplete();
-            unsubError();
-            resolve({ ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
-          });
-          const unsubError = window.api.ai.onStreamError((err) => {
-            unsubToken();
-            unsubTool();
-            unsubComplete();
-            unsubError();
-            reject(new Error(err));
-          });
+          try {
+            unsubs.push(
+              window.api.ai.onStreamToken((token) => {
+                content += token;
+                safeSetStreamContent(content);
+              }),
+              window.api.ai.onStreamToolCall((tc) => {
+                toolCalls.push(tc);
+              }),
+              window.api.ai.onStreamComplete((res) => {
+                cleanupAll();
+                resolve({ ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
+              }),
+              window.api.ai.onStreamError((err) => {
+                cleanupAll();
+                reject(new Error(err));
+              })
+            );
 
-          window.api.ai.chatStream(activeProviderId!, loopMessages, {
-            model: activeModel!,
-            tools: BUILTIN_TOOLS,
-            systemPrompt: buildSystemPrompt(),
-            workspaceRoot: rootPath || undefined,
-          });
+            window.api.ai.chatStream(activeProviderId!, loopMessages, {
+              model: activeModel!,
+              tools: BUILTIN_TOOLS,
+              systemPrompt: buildSystemPrompt(),
+              workspaceRoot: rootPath || undefined,
+            });
+          } catch (err) {
+            // chatStream can throw synchronously (sender destroyed, IPC
+            // handler failed, etc.) — without this catch, the listeners
+            // would never be removed and would accumulate across turns.
+            cleanupAll();
+            reject(err);
+          }
         });
 
         const assistantMsg: ChatMessageType = {

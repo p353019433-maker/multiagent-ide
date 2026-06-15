@@ -28,6 +28,17 @@ export class AIService {
     }
   }
 
+  /**
+   * Drop any in-flight AbortController for a webContents that has been
+   * destroyed. The IPC layer normally triggers this via `ai:abort`, but
+   * when a BrowserWindow is closed mid-stream that path may never run, so
+   * we also subscribe to the destroy event on the BrowserWindow's
+   * webContents.
+   */
+  forgetSender(senderId: number): void {
+    this.abortControllers.delete(senderId);
+  }
+
   private getProviders(): AIProvider[] {
     return (this.store.get('providers') as AIProvider[]) || [];
   }
