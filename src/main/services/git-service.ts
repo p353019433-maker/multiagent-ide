@@ -24,7 +24,13 @@ export class GitService {
   private async git(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve) => {
       execFile('git', args, { cwd, maxBuffer: 1024 * 1024, timeout: 30_000 }, (err, stdout, stderr) => {
-        resolve({ stdout: stdout || '', stderr: stderr || '', exitCode: err ? (err as any).code ?? -1 : 0 });
+        // execFile's err.code is a string like 'ENOENT' (the spawn error code),
+        // not a numeric exit code. Map it to -1 so callers comparing with
+        // `=== 0` (or `< 0`) keep working.
+        const exitCode = err
+          ? (typeof (err as any).code === 'number' ? (err as any).code : -1)
+          : 0;
+        resolve({ stdout: stdout || '', stderr: stderr || '', exitCode });
       });
     });
   }
