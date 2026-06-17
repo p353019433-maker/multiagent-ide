@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { statSync } from 'fs';
 
 export interface FileNode {
   name: string;
@@ -101,18 +102,29 @@ export class FileService {
   async searchFiles(rootPath: string, query: string): Promise<{ path: string; line: number; preview: string }[]> {
     const results: { path: string; line: number; preview: string }[] = [];
     const lowerQuery = query.toLowerCase();
+    let fileCount = 0;
+    let dirCount = 0;
+    const started = Date.now();
+
+    const shouldStop = () =>
+      results.length >= 100 ||
+      fileCount >= MAX_SEARCH_FILES ||
+      dirCount >= MAX_SEARCH_DIRS ||
+      Date.now() - started > MAX_SEARCH_MS;
 
     const walk = async (dir: string): Promise<void> => {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
+      if (shouldStop()) return;
+      dirCount++;
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
       for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        // Skip symlinks so a malicious in-workspace link cannot point the
-        // search outside the authorized root.
-        if (entry.isSymbolicLink()) continue;
+        if (shouldStop()) return;
+        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           await walk(full);
         } else {
+          fileCount++;
           try {
             const stat = await fs.stat(full);
             if (stat.size > 1024 * 1024) continue; // skip files >1MB
@@ -121,7 +133,7 @@ export class FileService {
             for (let i = 0; i < lines.length; i++) {
               if (lines[i].toLowerCase().includes(lowerQuery)) {
                 results.push({ path: full, line: i + 1, preview: lines[i].trim() });
-                if (results.length >= 100) return;
+                if (shouldStop()) return;
               }
             }
           } catch {
@@ -167,7 +179,7 @@ export class FileService {
   }
 
   async getFileInfo(filePath: string): Promise<{ size: number; modified: string; isDirectory: boolean }> {
-    const st = await fs.stat(filePath);
+    const st = statSync(filePath);
     return {
       size: st.size,
       modified: st.mtime.toISOString(),

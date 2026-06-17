@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import type { AIProvider as AIProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
-import { AGENT_SYSTEM_PROMPT } from '@shared/tools';
 import { useWorkspace } from './WorkspaceContext';
+import { runHeadlessAgent } from '../agent/headlessAgent';
 import {
   loadConversations,
   createConversationPersister,
@@ -374,141 +374,84 @@ Response:`;
     // Step 3: Start all agents in parallel
     const promises = tasks
       .filter((t) => t.status !== 'failed')
-      .map(async (task, idx) => {
+      .map(async (task) => {
         try {
           const conv = conversationsRef.current.find((c) => c.id === task.conversationId);
           if (!conv) throw new Error('Conversation not found');
 
-          // Immutable update: replace the running task with a new object.
-          // The previous implementation mutated `task` in place, which meant
-          // the shallow `[...tasks]` spread in the setter was sharing the
-          // same object reference and could be skipped by React's bailout.
+          if (!conv.worktree?.path) throw new Error('子任务缺少 worktree');
+
+          task.status = 'running';
+          // Refresh session to show running state
           setOrchestrationSessions((prev) =>
-            prev.map((s) => {
-              if (s.id !== sessionId) return s;
-              return {
-                ...s,
-                tasks: s.tasks.map((t, i) =>
-                  i === idx ? { ...t, status: 'running' as const } : t
-                ),
-              };
-            })
+            prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
           );
 
-          // Send initial message to the agent via main process (non-streaming for orchestration)
-          const result = await window.api.ai.chat(conv.providerId, [
-            { role: 'user', content: task.description }
-          ], {
+          // Drive the sub-task with a real agent loop (tools enabled) inside its
+          // isolated worktree, instead of a single tool-less chat completion.
+          const result = await runHeadlessAgent({
+            providerId: conv.providerId,
             model: conv.model,
-            systemPrompt: AGENT_SYSTEM_PROMPT,
-            workspaceRoot: conv.worktree?.path,
-            tools: [],
+            workspaceRoot: conv.worktree.path,
+            task: task.description,
           });
-          const finalStatus: 'completed' | 'failed' = 'completed';
-          const finalResult = result?.content || '';
-          setOrchestrationSessions((prev) =>
-            prev.map((s) => {
-              if (s.id !== sessionId) return s;
-              return {
-                ...s,
-                tasks: s.tasks.map((t, i) =>
-                  i === idx ? { ...t, status: finalStatus, result: finalResult } : t
-                ),
-              };
-            })
-          );
+          task.result = result.note ? `${result.content}\n\n⚠️ ${result.note}` : result.content;
+          task.status = 'completed';
         } catch (err: any) {
-          const message = err?.message || String(err);
-          setOrchestrationSessions((prev) =>
-            prev.map((s) => {
-              if (s.id !== sessionId) return s;
-              return {
-                ...s,
-                tasks: s.tasks.map((t, i) =>
-                  i === idx ? { ...t, status: 'failed' as const, error: message } : t
-                ),
-              };
-            })
-          );
+          task.status = 'failed';
+          task.error = err.message;
         }
       });
 
     await Promise.allSettled(promises);
 
-    // Final tally: read the latest committed state so we don't race with the
-    // per-task setters above.
-    let finalSession: OrchestrationSession | null = null;
-    setOrchestrationSessions((prev) => {
-      const next = prev.map((s) => {
-        if (s.id !== sessionId) return s;
-        const allFailed = s.tasks.every((t) => t.status === 'failed');
-        const updated: OrchestrationSession = {
-          ...s,
-          status: allFailed ? 'failed' : 'completed',
-          completedAt: Date.now(),
-        };
-        finalSession = updated;
-        return updated;
-      });
-      return next;
-    });
+    // Garbage-collect worktrees for tasks that failed before doing any work
+    // (worktree creation failed, so no conversation/changes exist) and prune
+    // stale metadata. Worktrees that actually ran — even if the agent later
+    // failed — are KEPT so partial work isn't lost; the user reclaims them via
+    // the session-tab cleanup (which now removes the branch too). The bigger
+    // disk win comes from sharing node_modules via symlink at creation time.
+    if (rootPath) {
+      await window.api.git.worktreePrune(rootPath).catch(() => undefined);
+    }
 
-    return finalSession || session;
+    // Check if all tasks failed
+    const allFailed = tasks.every((t) => t.status === 'failed');
+    session.status = allFailed ? 'failed' : 'completed';
+    session.completedAt = Date.now();
+    setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? session : s)));
+
+    return session;
   }, [activeProviderId, activeModel, newWorktreeConversation, rootPath]);
 
-  // Memo the value object so the whole subtree only re-renders when an
-  // actual field changes, not on every parent render. Without this, a
-  // streamToken in a sibling component (or any unrelated state change in
-  // App) re-renders every consumer of useAI() — TitleBar, SessionTabs,
-  // ChatPanel, SettingsModal, MultiAgentPanel.
-  const value = React.useMemo<AIContextValue>(
-    () => ({
-      providers,
-      activeProviderId,
-      activeModel,
-      conversations,
-      activeConversationId,
-      orchestrationSessions,
-      setActiveProvider,
-      setActiveModel,
-      saveProvider,
-      deleteProvider,
-      testProvider,
-      newConversation,
-      newWorktreeConversation,
-      setActiveConversation,
-      deleteConversation,
-      addConversation,
-      addMessage,
-      updateMessage,
-      renameConversation,
-      orchestrate,
-    }),
-    [
-      providers,
-      activeProviderId,
-      activeModel,
-      conversations,
-      activeConversationId,
-      orchestrationSessions,
-      setActiveProvider,
-      setActiveModel,
-      saveProvider,
-      deleteProvider,
-      testProvider,
-      newConversation,
-      newWorktreeConversation,
-      setActiveConversation,
-      deleteConversation,
-      addConversation,
-      addMessage,
-      updateMessage,
-      renameConversation,
-      orchestrate,
-    ]
+  return (
+    <AIContext.Provider
+      value={{
+        providers,
+        activeProviderId,
+        activeModel,
+        conversations,
+        activeConversationId,
+        orchestrationSessions,
+        setActiveProvider,
+        setActiveModel,
+        saveProvider,
+        deleteProvider,
+        testProvider,
+        newConversation,
+        newWorktreeConversation,
+        setActiveConversation,
+        deleteConversation,
+        addConversation,
+        addMessage,
+        updateMessage,
+        renameConversation,
+        orchestrate,
+      }}
+    >
+      {children}
+    </AIContext.Provider>
   );
-
-  return <AIContext.Provider value={value}>{children}</AIContext.Provider>;
 }
 
 export function useAI() {
