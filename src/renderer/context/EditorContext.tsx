@@ -16,8 +16,6 @@ function getLanguageFromPath(filePath: string): string {
   return map[ext] || 'plaintext';
 }
 
-// ── Split contexts: state (changes often) vs actions (stable refs) ──
-
 interface EditorStateValue {
   openFiles: OpenFile[];
   activeFilePath: string | null;
@@ -29,6 +27,7 @@ interface EditorActionsValue {
   setActiveFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
   saveFile: (path: string) => Promise<void>;
+  saveFileContent: (path: string, content: string) => Promise<void>;
   saveActiveFile: () => Promise<void>;
   reloadFileFromDisk: (path: string, content?: string) => Promise<void>;
 }
@@ -39,14 +38,12 @@ const EditorActionsContext = createContext<EditorActionsValue | null>(null);
 export function EditorProvider({ children }: { children: React.ReactNode }) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
-  // Use ref to avoid stale closure issues in callbacks
   const openFilesRef = useRef<OpenFile[]>([]);
   openFilesRef.current = openFiles;
   const activeFilePathRef = useRef<string | null>(null);
   activeFilePathRef.current = activeFilePath;
 
   const openFile = useCallback(async (filePath: string) => {
-    // Check if already open
     const existing = openFilesRef.current.find((f) => f.path === filePath);
     if (existing) {
       setActiveFilePath(filePath);
@@ -66,10 +63,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const closeFile = useCallback((filePath: string) => {
-    setOpenFiles((prev) => {
-      const next = prev.filter((f) => f.path !== filePath);
-      return next;
-    });
+    setOpenFiles((prev) => prev.filter((f) => f.path !== filePath));
     setActiveFilePath((current) => {
       if (current !== filePath) return current;
       const remaining = openFilesRef.current.filter((f) => f.path !== filePath);
@@ -91,16 +85,22 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const saveFile = useCallback(async (filePath: string) => {
-    const file = openFilesRef.current.find((f) => f.path === filePath);
-    if (!file) return;
-    await window.api.fs.writeFile(filePath, file.content);
+  const saveFileContent = useCallback(async (filePath: string, content: string) => {
+    await window.api.fs.writeFile(filePath, content);
     setOpenFiles((prev) =>
       prev.map((f) =>
-        f.path === filePath ? { ...f, originalContent: f.content, isDirty: false } : f
+        f.path === filePath
+          ? { ...f, content, originalContent: content, isDirty: false }
+          : f
       )
     );
   }, []);
+
+  const saveFile = useCallback(async (filePath: string) => {
+    const file = openFilesRef.current.find((f) => f.path === filePath);
+    if (!file) return;
+    await saveFileContent(filePath, file.content);
+  }, [saveFileContent]);
 
   const saveActiveFile = useCallback(async () => {
     const current = activeFilePathRef.current;
@@ -134,10 +134,9 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
 
   const stateValue: EditorStateValue = { openFiles, activeFilePath };
 
-  // Actions are memoized so the actions context never triggers re-renders.
   const actionsValue = useMemo<EditorActionsValue>(
-    () => ({ openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveActiveFile, reloadFileFromDisk }),
-    [openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveActiveFile, reloadFileFromDisk]
+    () => ({ openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk }),
+    [openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk]
   );
 
   return (
@@ -149,21 +148,18 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Read editor state (openFiles, activeFilePath). Triggers re-render on state changes. */
 export function useEditorState() {
   const ctx = useContext(EditorStateContext);
   if (!ctx) throw new Error('useEditorState must be used within EditorProvider');
   return ctx;
 }
 
-/** Read editor actions only. Does NOT re-render when files/active path change. */
 export function useEditorActions() {
   const ctx = useContext(EditorActionsContext);
   if (!ctx) throw new Error('useEditorActions must be used within EditorProvider');
   return ctx;
 }
 
-/** Combined hook (backward-compatible). Components needing both will still re-render on state changes. */
 export function useEditor() {
   return { ...useEditorState(), ...useEditorActions() };
 }
