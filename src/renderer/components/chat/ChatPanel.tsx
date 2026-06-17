@@ -508,7 +508,7 @@ ${suffix.slice(0, 500)}${editsCtx}
             {/* Pending image thumbnails */}
             {pendingImages.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {pendingImages.map((img) => (
+                {pendingImages.map((img, i) => (
                   <div key={img} className="relative group">
                     <img
                       src={img}
