@@ -50,7 +50,11 @@ export default function App() {
               <CommandPalette />
 =======
               <div className="contents" aria-hidden={showSettings || undefined}>
-                <MainLayout onOpenSettings={openSettings} settingsVersion={settingsVersion} />
+                <MainLayout
+                  onOpenSettings={openSettings}
+                  settingsVersion={settingsVersion}
+                  shortcutsDisabled={showSettings}
+                />
               </div>
 >>>>>>> claude/review-repo-contents-tkoLx
               {showSettings && (

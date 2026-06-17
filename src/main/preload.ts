@@ -20,6 +20,7 @@ const api = {
       ipcRenderer.invoke('fs:searchFiles', rootPath, query),
     findFiles: (rootPath: string, pattern: string) =>
       ipcRenderer.invoke('fs:findFiles', rootPath, pattern),
+    listFiles: (rootPath: string) => ipcRenderer.invoke('fs:listFiles', rootPath),
     getFileInfo: (path: string) => ipcRenderer.invoke('fs:getFileInfo', path),
     readMultipleFiles: (paths: string[]) =>
       ipcRenderer.invoke('fs:readMultipleFiles', paths),

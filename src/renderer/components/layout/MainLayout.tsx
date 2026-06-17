@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import Sidebar from '../sidebar/Sidebar';
 import EditorArea from '../editor/EditorArea';
 import TaskPanel from '../task/TaskPanel';
@@ -6,13 +6,14 @@ import TerminalPanel from '../terminal/TerminalPanel';
 import SearchPanel from '../search/SearchPanel';
 import BrowserPreview from '../editor/BrowserPreview';
 import TitleBar from './TitleBar';
-<<<<<<< HEAD
-import StatusBar from '../status/StatusBar';
-=======
 import StatusBar from './StatusBar';
->>>>>>> claude/review-repo-contents-tkoLx
+import CommandPalette, { type PaletteCommand } from '../palette/CommandPalette';
+import { onOpenPalette, openPalette, type PaletteMode } from '../palette/paletteEvents';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTaskWorkspace } from '../../context/TaskContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useEditorActions } from '../../context/EditorContext';
+import { THEMES } from '../../theme';
 import { getAuxPanelWidth, normalizeWorkbenchPanels } from './layoutState';
 import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
 import type { SettingsTab } from '../settings/SettingsWorkbench';
@@ -20,15 +21,11 @@ import type { SettingsTab } from '../settings/SettingsWorkbench';
 interface Props {
   onOpenSettings: (tab?: SettingsTab) => void;
   settingsVersion: number;
+  /** 模态层（如设置页）打开时禁用全局快捷键与命令面板 */
+  shortcutsDisabled?: boolean;
 }
 
-<<<<<<< HEAD
-type Panel = 'sidebar' | 'chat' | 'search' | 'terminal';
-
-export default function MainLayout({ onOpenSettings }: Props) {
-=======
-export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
->>>>>>> claude/review-repo-contents-tkoLx
+export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsDisabled }: Props) {
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [taskPanelWidth, setTaskPanelWidth] = useState(380);
   const [searchWidth, setSearchWidth] = useState(320);
@@ -39,14 +36,11 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
   const [showSearch, setShowSearch] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
-<<<<<<< HEAD
-  const dragging = useRef<Panel | null>(null);
-  const { rootPath } = useWorkspace();
-
-  const handleMouseDown = useCallback((panel: Panel) => {
-=======
+  const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const dragging = useRef<'sidebar' | 'task' | 'search' | 'terminal' | null>(null);
   const { rootPath, openFolder } = useWorkspace();
+  const { themeName, setThemeName } = useTheme();
+  const { saveActiveFile } = useEditorActions();
   const { providers, activeProviderId, activeModel } = useTaskWorkspace();
   const [embeddingConfig, setEmbeddingConfig] = useState<{
     providerId?: string | null;
@@ -169,27 +163,15 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
   }, [isCompact]);
 
   const handleMouseDown = useCallback((panel: 'sidebar' | 'task' | 'search' | 'terminal') => {
->>>>>>> claude/review-repo-contents-tkoLx
     dragging.current = panel;
-    document.body.style.cursor = panel === 'terminal' ? 'row-resize' : 'col-resize';
+    if (panel === 'terminal') {
+      document.body.style.cursor = 'row-resize';
+    } else {
+      document.body.style.cursor = 'col-resize';
+    }
     document.body.style.userSelect = 'none';
 
     const handleMouseMove = (e: MouseEvent) => {
-<<<<<<< HEAD
-      switch (dragging.current) {
-        case 'sidebar':
-          setSidebarWidth(Math.max(160, Math.min(400, e.clientX)));
-          break;
-        case 'chat':
-          setChatWidth(Math.max(280, Math.min(600, window.innerWidth - e.clientX)));
-          break;
-        case 'search':
-          setSearchWidth(Math.max(240, Math.min(500, window.innerWidth - e.clientX)));
-          break;
-        case 'terminal':
-          setTerminalHeight(Math.max(80, Math.min(500, window.innerHeight - e.clientY)));
-          break;
-=======
       if (dragging.current === 'sidebar') {
         setSidebarWidth(Math.max(160, Math.min(400, e.clientX)));
       } else if (dragging.current === 'task') {
@@ -198,9 +180,9 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
         setSearchWidth(Math.max(240, Math.min(500, window.innerWidth - e.clientX)));
       } else if (dragging.current === 'terminal') {
         setTerminalHeight(Math.max(80, Math.min(500, window.innerHeight - e.clientY)));
->>>>>>> claude/review-repo-contents-tkoLx
       }
     };
+
     const handleMouseUp = () => {
       dragging.current = null;
       document.body.style.cursor = '';
@@ -208,30 +190,11 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // Bridge panel-toggle commands (emitted by commands/installCommands.ts
-  // via window CustomEvents) to the panel state. The keymap itself lives
-  // in App.tsx so it survives MainLayout remounts.
-  useEffect(() => {
-    const toggles: Array<[string, () => void]> = [
-      ['panel:toggle-sidebar', () => {/* sidebar is always visible — reserved for future */}],
-      ['panel:toggle-chat', () => { setShowChat((v) => !v); setShowBrowser(false); }],
-      ['panel:toggle-terminal', () => setShowTerminal((v) => !v)],
-      ['panel:toggle-search', () => setShowSearch((v) => !v)],
-      ['panel:toggle-browser', () => { setShowBrowser((v) => !v); setShowChat(false); }],
-    ];
-    const cleanups = toggles.map(([type, fn]) => {
-      const handler = () => fn();
-      window.addEventListener(type, handler);
-      return () => window.removeEventListener(type, handler);
-    });
-    return () => cleanups.forEach((c) => c());
-  }, []);
-
-  // Preview URL events (kept here for now — fired by the AI agent).
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
@@ -269,22 +232,134 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
     return () => window.removeEventListener('preview-url', handlePreviewUrl);
   }, [isCompact]);
 
-<<<<<<< HEAD
-=======
+  const handleOpenPalette = useCallback((mode: PaletteMode) => {
+    setPaletteMode((prev) => (prev === mode ? null : mode));
+  }, []);
+
+  const closePalette = useCallback(() => setPaletteMode(null), []);
+
+  // Monaco 等处通过 CustomEvent 唤起命令面板
+  useEffect(() => {
+    if (shortcutsDisabled) return;
+    return onOpenPalette(handleOpenPalette);
+  }, [handleOpenPalette, shortcutsDisabled]);
+
+  // 模态层（设置页）打开时收起命令面板，避免叠层
+  useEffect(() => {
+    if (shortcutsDisabled) setPaletteMode(null);
+  }, [shortcutsDisabled]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shortcutsDisabled) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.shiftKey && e.key === 'f') {
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (e.shiftKey && key === 'f') {
         e.preventDefault();
         handleToggleSearch();
+      } else if (!e.shiftKey && key === 'p') {
+        e.preventDefault();
+        handleOpenPalette('files');
+      } else if ((e.shiftKey && key === 'p') || (!e.shiftKey && key === 'k')) {
+        e.preventDefault();
+        handleOpenPalette('commands');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleSearch]);
+  }, [handleToggleSearch, handleOpenPalette, shortcutsDisabled]);
 
->>>>>>> claude/review-repo-contents-tkoLx
+  // 命令面板命令表
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const themeCommands = Object.values(THEMES).map((t) => ({
+      id: `theme-${t.name}`,
+      label: `主题：${t.display}`,
+      hint: themeName === t.name ? '当前' : undefined,
+      keywords: `theme color ${t.name}`,
+      run: () => setThemeName(t.name),
+    }));
+    return [
+      {
+        id: 'quick-open',
+        label: '转到文件…',
+        hint: 'Cmd P',
+        keywords: 'quick open goto file',
+        run: () => openPalette('files'),
+      },
+      {
+        id: 'save-file',
+        label: '保存当前文件',
+        hint: 'Cmd S',
+        keywords: 'save file write',
+        run: () => {
+          void saveActiveFile();
+        },
+      },
+      {
+        id: 'open-folder',
+        label: '打开文件夹…',
+        keywords: 'open folder workspace',
+        run: () => {
+          void openFolder();
+        },
+      },
+      {
+        id: 'toggle-task',
+        label: showTaskPanel ? '收起 AI 任务面板' : '打开 AI 任务面板',
+        keywords: 'task panel agent chat ai',
+        run: handleToggleTaskPanel,
+      },
+      {
+        id: 'toggle-terminal',
+        label: showTerminal ? '收起终端' : '打开终端',
+        keywords: 'terminal shell',
+        run: handleToggleTerminal,
+      },
+      {
+        id: 'toggle-search',
+        label: showSearch ? '收起文本搜索' : '打开文本搜索',
+        hint: 'Cmd Shift F',
+        keywords: 'search find text grep',
+        run: handleToggleSearch,
+      },
+      {
+        id: 'toggle-browser',
+        label: showBrowser ? '收起浏览器预览' : '打开浏览器预览',
+        keywords: 'browser preview web',
+        run: handleToggleBrowser,
+      },
+      {
+        id: 'open-settings',
+        label: '打开设置',
+        keywords: 'settings preferences providers model',
+        run: () => onOpenSettings('providers'),
+      },
+      {
+        id: 'open-index-settings',
+        label: '打开索引设置',
+        keywords: 'settings index embedding',
+        run: () => onOpenSettings('index'),
+      },
+      ...themeCommands,
+    ];
+  }, [
+    themeName,
+    setThemeName,
+    saveActiveFile,
+    openFolder,
+    showTaskPanel,
+    showTerminal,
+    showSearch,
+    showBrowser,
+    handleToggleTaskPanel,
+    handleToggleTerminal,
+    handleToggleSearch,
+    handleToggleBrowser,
+    onOpenSettings,
+  ]);
+
   return (
     <div className="flex flex-col h-full bg-editor-bg">
       <TitleBar
@@ -293,27 +368,15 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
         onToggleTerminal={handleToggleTerminal}
         onToggleSearch={handleToggleSearch}
         onToggleBrowser={handleToggleBrowser}
+        onOpenQuickOpen={() => handleOpenPalette('files')}
         showTaskPanel={showTaskPanel}
         showTerminal={showTerminal}
         showSearch={showSearch}
         showBrowser={showBrowser}
       />
       <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Main area: sidebar + editor + panels */}
         <div className="flex flex-1 overflow-hidden">
-<<<<<<< HEAD
-          <div style={{ width: sidebarWidth }} className="flex-shrink-0 h-full">
-            <Sidebar />
-          </div>
-          <div
-            className="resize-handle w-[3px] h-full"
-            onMouseDown={() => handleMouseDown('sidebar')}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="调整侧边栏宽度"
-          />
-
-          <div className="flex-1 flex flex-col overflow-hidden">
-=======
           {/* Sidebar */}
           <div style={{ width: effectiveSidebarWidth }} className="flex-shrink-0 h-full">
             <Sidebar />
@@ -329,19 +392,16 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
 
           {/* Editor + Terminal vertical split */}
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
->>>>>>> claude/review-repo-contents-tkoLx
             <div className="flex-1 overflow-hidden">
               <EditorArea readiness={readiness} onReadinessAction={runReadinessAction} />
             </div>
 
+            {/* Terminal */}
             {showTerminal && rootPath && (
               <>
                 <div
                   className="resize-handle h-[3px] w-full"
                   onMouseDown={() => handleMouseDown('terminal')}
-                  role="separator"
-                  aria-orientation="horizontal"
-                  aria-label="调整终端高度"
                 />
                 <div style={{ height: terminalHeight }} className="flex-shrink-0">
                   <TerminalPanel cwd={rootPath} onClose={() => setShowTerminal(false)} />
@@ -350,19 +410,9 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
             )}
           </div>
 
+          {/* Search panel */}
           {showSearch && rootPath && (
             <>
-<<<<<<< HEAD
-              <div
-                className="resize-handle w-[3px] h-full"
-                onMouseDown={() => handleMouseDown('search')}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="调整搜索面板宽度"
-              />
-              <div style={{ width: searchWidth }} className="flex-shrink-0 h-full">
-                <SearchPanel />
-=======
               {!isCompact && (
                 <div
                   className="resize-handle w-[3px] h-full"
@@ -371,23 +421,10 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
               )}
               <div style={{ width: effectiveSearchWidth }} className="flex-shrink-0 h-full">
                 <SearchPanel onClose={() => setShowSearch(false)} />
->>>>>>> claude/review-repo-contents-tkoLx
               </div>
             </>
           )}
 
-<<<<<<< HEAD
-          {(showChat || showBrowser) && (
-            <>
-              <div
-                className="resize-handle w-[3px] h-full"
-                onMouseDown={() => handleMouseDown('chat')}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="调整右侧面板宽度"
-              />
-              <div style={{ width: chatWidth }} className="flex-shrink-0 h-full">
-=======
           {/* Task or browser panel */}
           {(showTaskPanel || showBrowser) && (
             <>
@@ -398,7 +435,6 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
                 />
               )}
               <div style={{ width: effectiveTaskPanelWidth }} className="flex-shrink-0 h-full">
->>>>>>> claude/review-repo-contents-tkoLx
                 {showBrowser ? (
                   <BrowserPreview
                     visible={showBrowser}
@@ -412,10 +448,17 @@ export default function MainLayout({ onOpenSettings, settingsVersion }: Props) {
             </>
           )}
         </div>
-        {/* Status bar at the very bottom — non-intrusive glance feedback */}
-        <StatusBar />
       </div>
       <StatusBar />
+
+      {paletteMode && (
+        <CommandPalette
+          key={paletteMode}
+          initialMode={paletteMode}
+          commands={paletteCommands}
+          onClose={closePalette}
+        />
+      )}
     </div>
   );
 }

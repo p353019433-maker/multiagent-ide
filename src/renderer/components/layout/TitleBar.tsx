@@ -15,6 +15,7 @@ interface Props {
   onToggleTerminal: () => void;
   onToggleSearch: () => void;
   onToggleBrowser: () => void;
+  onOpenQuickOpen: () => void;
   showTaskPanel: boolean;
   showTerminal: boolean;
   showSearch: boolean;
@@ -35,6 +36,7 @@ export default function TitleBar({
   onToggleTerminal,
   onToggleSearch,
   onToggleBrowser,
+  onOpenQuickOpen,
   showTaskPanel,
   showTerminal,
   showSearch,
@@ -55,19 +57,15 @@ export default function TitleBar({
       </div>
 
       <button
-        onClick={onToggleSearch}
-        className={`no-drag hidden h-6 min-w-0 items-center gap-2 border px-2 text-11 transition-colors md:flex ${
-          showSearch
-            ? 'border-editor-accent bg-editor-bg text-foreground'
-            : 'border-editor-border bg-editor-bg text-muted-foreground hover:bg-editor-hover hover:text-foreground'
-        }`}
-        title="搜索文件和命令 (Cmd+Shift+F)"
+        onClick={onOpenQuickOpen}
+        className="no-drag hidden h-6 min-w-0 items-center gap-2 border border-editor-border bg-editor-bg px-2 text-11 text-muted-foreground transition-colors hover:bg-editor-hover hover:text-foreground md:flex"
+        title="搜索文件和命令 (Cmd+P)"
         aria-label="搜索文件和命令"
       >
         <Search size={14} strokeWidth={1.8} />
-        <span className="truncate">{rootName ? `搜索 ${rootName}` : '搜索工作区'}</span>
+        <span className="truncate">{rootName ? `搜索 ${rootName}` : '搜索文件和命令'}</span>
         <span className="hidden flex-shrink-0 font-mono text-10 text-muted-foreground lg:inline">
-          Cmd Shift F
+          Cmd P
         </span>
       </button>
 
