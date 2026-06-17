@@ -1,6 +1,6 @@
 /**
- * Agent engine hook — owns the multi-turn agent loop, tool execution, retry,
- * self-heal, checkpoints, and streaming state. Extracted from ChatPanel
+ * Task engine hook — owns the multi-turn task loop, tool execution, retry,
+ * self-heal, checkpoints, and streaming state. Extracted from TaskPanel
  * (behavior-preserving). Host-specific decisions (approval) are injected via
  * deps so this hook stays focused on orchestration.
  */
@@ -10,17 +10,21 @@ import { v4 as uuid } from 'uuid';
 import type {
   ChatMessage as ChatMessageType,
   ToolCall,
-  AgentToolExecution,
+  TaskToolExecution,
   Checkpoint,
   Artifact,
 } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
+<<<<<<< HEAD:src/renderer/agent/useAgentEngine.ts
 import { resolveWorkspacePath, classifyToolError, compactMessages } from './agentUtils';
 import { logAndIgnore } from '../utils/logAndIgnore';
+=======
+import { resolveWorkspacePath, classifyToolError, compactMessages } from './taskUtils';
+>>>>>>> claude/review-repo-contents-tkoLx:src/renderer/task-engine/useTaskEngine.ts
 import type { GateActionFn } from './useApproval';
 
-export interface AgentEngineDeps {
+export interface TaskEngineDeps {
   activeProviderId: string | null;
   activeModel: string | null;
   rootPath: string | null;
@@ -32,17 +36,26 @@ export interface AgentEngineDeps {
 
 const MAX_ITERATIONS = 25;
 
-export function useAgentEngine(deps: AgentEngineDeps) {
+export function useTaskEngine(deps: TaskEngineDeps) {
   const { activeProviderId, activeModel, rootPath, addMessage, buildSystemPrompt, gateAction, onFileChanged } = deps;
+
+  // Keep refs for values consumed inside async callbacks (runTurn, chatStream)
+  // to avoid stale closures when deps change mid-turn.
+  const rootPathRef = useRef(rootPath);
+  rootPathRef.current = rootPath;
+  const activeProviderIdRef = useRef(activeProviderId);
+  activeProviderIdRef.current = activeProviderId;
+  const activeModelRef = useRef(activeModel);
+  activeModelRef.current = activeModel;
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
-  const [toolExecutions, setToolExecutions] = useState<AgentToolExecution[]>([]);
+  const [toolExecutions, setToolExecutions] = useState<TaskToolExecution[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
   // Guard against state updates after unmount (e.g. when the component is
-  // torn down while a long-running agent turn is still in flight).
+  // torn down while a long-running task turn is still in flight).
   const mountedRef = useRef(true);
   React.useEffect(() => {
     return () => { mountedRef.current = false; };
@@ -54,11 +67,16 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   const safeSetCheckpoints: typeof setCheckpoints = (v) => { if (mountedRef.current) setCheckpoints(v); };
   const safeSetArtifacts: typeof setArtifacts = (v) => { if (mountedRef.current) setArtifacts(v); };
 
-  // Snapshots of files captured before the current turn modifies them, so a
-  // checkpoint can be created when the turn finishes. Keyed by path.
-  const turnSnapshots = useRef<Map<string, string | null>>(new Map());
+  // Snapshots of files captured before the current turn modifies them.
+  // Instead of holding full file content in memory (which causes OOM on
+  // multi-file edits), we persist snapshots to .ide/.history/ on disk and
+  // only keep path → snapshotId mapping in memory during the turn.
+  const turnSnapshots = useRef<Map<string, { snapshotId: string; isNew: boolean }>>(new Map());
   // Files edited during the current turn — drives the auto-lint self-heal pass.
   const turnEditedFiles = useRef<Set<string>>(new Set());
+
+  /** Generate a unique snapshot ID for a file checkpoint. */
+  const makeSnapshotId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const resolvePath = (p: string): string => resolveWorkspacePath(rootPath, p);
 
@@ -69,13 +87,20 @@ export function useAgentEngine(deps: AgentEngineDeps) {
    */
   const writeFileTracked = async (filePath: string, content: string) => {
     if (!turnSnapshots.current.has(filePath)) {
-      let before: string | null = null;
+      const snapshotId = makeSnapshotId();
+      let isNew = true;
       try {
-        before = await window.api.fs.readFile(filePath);
+        const before = await window.api.fs.readFile(filePath);
+        isNew = false;
+        // Persist the snapshot to disk so it never accumulates in renderer RAM.
+        if (rootPath) {
+          const snapPath = `${rootPath}/.ide/.history/${snapshotId}.snap`;
+          await window.api.fs.writeFile(snapPath, before);
+        }
       } catch {
-        before = null; // new file
+        // File doesn't exist yet — no snapshot content to persist.
       }
-      turnSnapshots.current.set(filePath, before);
+      turnSnapshots.current.set(filePath, { snapshotId, isNew });
     }
     await window.api.fs.writeFile(filePath, content);
     await onFileChanged?.(filePath, content);
@@ -130,7 +155,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
     const results: { toolCallId: string; content: string; isError?: boolean }[] = [];
 
     for (const tc of toolCalls) {
-      const execution: AgentToolExecution = {
+      const execution: TaskToolExecution = {
         id: tc.id,
         name: tc.name,
         arguments: tc.arguments,
@@ -162,7 +187,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   };
 
   /**
-   * Run one user turn: the streaming agent loop with tool execution, stuck-loop
+   * Run one user turn: the streaming task loop with tool execution, stuck-loop
    * detection, auto-lint self-heal, and end-of-turn checkpoint creation.
    */
   const runTurn = async (convId: string, apiMessages: ChatMessageType[], turnLabel = '') => {
@@ -175,7 +200,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
     let loopMessages = compactMessages([...apiMessages]);
     let iterations = 0;
-    // Track repeated identical tool calls to detect a stuck agent.
+    // Track repeated identical tool calls to detect a stuck task.
     let lastToolSignature = '';
     let repeatCount = 0;
     // Auto-lint self-heal runs at most once per turn.
@@ -190,6 +215,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         const result = await new Promise<any>((resolve, reject) => {
           let content = '';
           const toolCalls: ToolCall[] = [];
+<<<<<<< HEAD:src/renderer/agent/useAgentEngine.ts
           // Track listener cleanup so a synchronous throw from chatStream (or
           // an IPC sender-destroyed race) cannot leak the four ipcRenderer.on
           // listeners. Each path below MUST call cleanupAll before settling.
@@ -235,6 +261,50 @@ export function useAgentEngine(deps: AgentEngineDeps) {
             cleanupAll();
             reject(err);
           }
+=======
+          let settled = false;
+          let unsubToken = () => {};
+          let unsubTool = () => {};
+          let unsubComplete = () => {};
+          let unsubError = () => {};
+          const cleanup = () => {
+            unsubToken();
+            unsubTool();
+            unsubComplete();
+            unsubError();
+          };
+          const settle = (fn: (value: any) => void, value: any) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            fn(value);
+          };
+
+          unsubToken = window.api.ai.onStreamToken((token) => {
+            content += token;
+            safeSetStreamContent(content);
+          });
+          unsubTool = window.api.ai.onStreamToolCall((tc) => {
+            toolCalls.push(tc);
+          });
+          unsubComplete = window.api.ai.onStreamComplete((res) => {
+            settle(resolve, { ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
+          });
+          unsubError = window.api.ai.onStreamError((err) => {
+            settle(reject, new Error(err));
+          });
+
+          void window.api.ai
+            .chatStream(activeProviderIdRef.current!, loopMessages, {
+              model: activeModelRef.current!,
+              tools: BUILTIN_TOOLS,
+              systemPrompt: buildSystemPrompt(),
+              workspaceRoot: rootPathRef.current || undefined,
+            })
+            .catch((err) => {
+              settle(reject, err instanceof Error ? err : new Error(String(err)));
+            });
+>>>>>>> claude/review-repo-contents-tkoLx:src/renderer/task-engine/useTaskEngine.ts
         });
 
         const assistantMsg: ChatMessageType = {
@@ -248,9 +318,9 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         safeSetStreamContent('');
 
         if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
-          // The agent thinks it's done. Before stopping, run a self-heal lint
+          // The task runner thinks it's done. Before stopping, run a self-heal lint
           // pass on the files it edited and, if there are errors, feed them back
-          // once so the agent can fix them automatically.
+          // once so the model can fix them automatically.
           if (!selfHealAttempted && turnEditedFiles.current.size > 0 && rootPath) {
             selfHealAttempted = true;
             const edited = Array.from(turnEditedFiles.current);
@@ -287,7 +357,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
           addMessage(convId, {
             id: uuid(),
             role: 'assistant',
-            content: '⚠️ 检测到 Agent 重复执行相同操作且无进展，已自动停止。',
+            content: '[warning] 检测到重复执行相同操作且无进展，已自动停止。',
             timestamp: Date.now(),
           });
           break;
@@ -309,7 +379,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         const errorMsg: ChatMessageType = {
           id: uuid(),
           role: 'assistant',
-          content: `❌ 错误：${err.message}`,
+          content: `[error] ${err.message}`,
           timestamp: Date.now(),
         };
         addMessage(convId, errorMsg);
@@ -321,7 +391,7 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       addMessage(convId, {
         id: uuid(),
         role: 'assistant',
-        content: `⚠️ 已达到最大 ${MAX_ITERATIONS} 轮工具调用上限，自动停止。如需继续可再发一条消息。`,
+        content: `[warning] 已达到最大 ${MAX_ITERATIONS} 轮工具调用上限，自动停止。如需继续可再发一条消息。`,
         timestamp: Date.now(),
       });
     }
@@ -333,9 +403,11 @@ export function useAgentEngine(deps: AgentEngineDeps) {
         id: uuid(),
         label: turnLabel || '未命名改动',
         createdAt: Date.now(),
-        files: Array.from(turnSnapshots.current.entries()).map(([path, before]) => ({
+        files: Array.from(turnSnapshots.current.entries()).map(([path, snap]) => ({
           path,
-          before,
+          // Store the snapshot reference (not full content) to avoid memory bloat.
+          // `before` is set to a sentinel that revertCheckpoint knows to read from disk.
+          before: snap.isNew ? null : `__snap__:${snap.snapshotId}`,
         })),
       };
       safeSetCheckpoints((prev) => [cp, ...prev].slice(0, 20));
@@ -348,9 +420,8 @@ export function useAgentEngine(deps: AgentEngineDeps) {
   };
 
   /**
-   * Build an Antigravity-style verifiable deliverable for a turn that changed
-   * files: a markdown report listing the changed files, the post-change lint /
-   * type verification result, and a git diff stat. Persisted under
+   * Build a verifiable report for a turn that changed files: changed files,
+   * post-change lint/type results, and a git diff stat. Persisted under
    * .ide/artifacts/ so it survives and can be opened in the editor.
    */
   const generateArtifact = async (label: string, files: string[]) => {
@@ -361,8 +432,8 @@ export function useAgentEngine(deps: AgentEngineDeps) {
       if (check) {
         verified = !check.hasErrors;
         lintSection = check.hasErrors
-          ? '❌ **验证未通过**\n\n```\n' + check.output.slice(0, 2000) + '\n```'
-          : '✅ **验证通过**（ESLint + tsc 无错误）';
+          ? '**验证未通过**\n\n```\n' + check.output.slice(0, 2000) + '\n```'
+          : '**验证通过**（ESLint + tsc 无错误）';
       }
     }
 
@@ -417,23 +488,42 @@ export function useAgentEngine(deps: AgentEngineDeps) {
 
   /** Revert all file changes captured in a checkpoint. */
   const revertCheckpoint = async (cp: Checkpoint) => {
-    if (!confirm(`回滚 ${cp.files.length} 个文件到「${cp.label}」之前的状态？`)) return;
+    let reverted = 0;
+    let failed = 0;
+    const snapshotPathsToDelete: string[] = [];
+
     for (const f of cp.files) {
       try {
         if (f.before === null) {
           await window.api.fs.delete(f.path); // file was created in the turn
           await onFileChanged?.(f.path);
+        } else if (typeof f.before === 'string' && f.before.startsWith('__snap__:')) {
+          // Snapshot persisted on disk — read it back.
+          const snapshotId = f.before.slice('__snap__:'.length);
+          const snapPath = `${rootPath}/.ide/.history/${snapshotId}.snap`;
+          const content = await window.api.fs.readFile(snapPath);
+          await window.api.fs.writeFile(f.path, content);
+          await onFileChanged?.(f.path, content);
+          snapshotPathsToDelete.push(snapPath);
         } else {
+          // Legacy: before content stored inline (older checkpoints).
           await window.api.fs.writeFile(f.path, f.before);
           await onFileChanged?.(f.path, f.before);
         }
+        reverted += 1;
       } catch {
-        // best-effort; continue reverting the rest
+        failed += 1;
       }
     }
-    safeSetCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
-    window.dispatchEvent(new CustomEvent('files-reverted'));
-    alert(`已回滚 ${cp.files.length} 个文件`);
+
+    if (failed === 0) {
+      await Promise.all(snapshotPathsToDelete.map((path) => window.api.fs.delete(path).catch(() => {})));
+      safeSetCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
+    }
+    if (reverted > 0) {
+      window.dispatchEvent(new CustomEvent('files-reverted'));
+    }
+    return { reverted, failed };
   };
 
   return {

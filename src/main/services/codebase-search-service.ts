@@ -154,7 +154,7 @@ export class CodebaseSearchService {
         );
         if (this.index.hasEmbeddings()) {
           const [qVec] = await this.ai.embed(embedCfg.providerId, embedCfg.model, [query]);
-          const semantic = qVec ? this.index.semanticSearch(qVec, max * 3) : [];
+          const semantic = qVec ? await this.index.semanticSearch(qVec, max * 3) : [];
 
           if (semantic.length && lexical.length) {
             // Fuse by file so cross-modal agreement is rewarded; represent each

@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron';
 import { v4 as uuid } from 'uuid';
 import os from 'os';
 import { spawn, ChildProcess } from 'child_process';
+import { StringDecoder } from 'string_decoder';
 
 // node-pty is optional: if not available we fall back to a no-op stub.
 // This keeps the project runnable without native compilation.
@@ -34,6 +35,7 @@ interface BackgroundSession {
   running: boolean;
   exitCode: number | null;
   startedAt: number;
+  decoder: StringDecoder;
 }
 
 export class TerminalService {
@@ -145,7 +147,7 @@ export class TerminalService {
   /**
    * Shell-free execution: runs `file` with an argument array directly (no shell
    * interpretation). Use this whenever any argument is untrusted (e.g. file
-   * names coming from the agent) to avoid command injection.
+   * names coming from model/tool input) to avoid command injection.
    */
   runFile(
     cwd: string,
@@ -189,19 +191,22 @@ export class TerminalService {
 
     const id = uuid();
     const proc = spawn(shell, args, { cwd, env: safeEnv() });
-    const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null, startedAt: Date.now() };
+    const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null, startedAt: Date.now(), decoder: new StringDecoder('utf8') };
 
     proc.stdout?.on('data', (data: Buffer) => {
-      session.output += data.toString();
-      // Keep only last 100KB
+      // Use StringDecoder to avoid splitting multi-byte UTF-8 characters
+      // across chunk boundaries, which causes mojibake (replacement chars).
+      session.output += session.decoder.write(data);
+      // Truncate by re-assigning a fresh string to break V8 SlicedString
+      // references that would prevent the original large string from being GC'd.
       if (session.output.length > 100_000) {
-        session.output = session.output.slice(-80_000);
+        session.output = String(session.output.slice(-80_000));
       }
     });
     proc.stderr?.on('data', (data: Buffer) => {
-      session.output += data.toString();
+      session.output += session.decoder.write(data);
       if (session.output.length > 100_000) {
-        session.output = session.output.slice(-80_000);
+        session.output = String(session.output.slice(-80_000));
       }
     });
     proc.on('close', (code) => {

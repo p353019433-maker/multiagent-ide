@@ -1,5 +1,5 @@
 /**
- * Pure agent helpers extracted from ChatPanel — no React, no side effects.
+ * Pure task-run helpers extracted from TaskPanel — no React, no side effects.
  * Kept dependency-free so they're trivial to unit-test.
  */
 
@@ -64,12 +64,25 @@ export function resolveWorkspacePath(rootPath: string | null, p: string): string
       resolved.push(seg);
     }
   }
+<<<<<<< HEAD:src/renderer/agent/agentUtils.ts
 
   return rootPath + '/' + resolved.join('/');
+=======
+  const result = rootPath + '/' + resolved.join('/');
+
+  // Block access to .git internals — a compromised model/tool call could otherwise
+  // overwrite hooks (e.g. .git/hooks/pre-commit) to execute arbitrary code
+  // on the user's next commit. This is a hard security boundary.
+  if (resolved.some((seg) => seg === '.git')) {
+    throw new Error('拒绝访问：禁止读写 .git 目录（安全策略）');
+  }
+
+  return result;
+>>>>>>> claude/review-repo-contents-tkoLx:src/renderer/task-engine/taskUtils.ts
 }
 
 /**
- * Classify a tool error so the agent gets actionable feedback. Transient
+ * Classify a tool error so the model gets actionable feedback. Transient
  * failures (network/timeout/locks) are retriable; logic errors are not.
  */
 export function classifyToolError(err: unknown): { message: string; retriable: boolean } {
@@ -89,7 +102,7 @@ const KEEP_RECENT = 16;
  * Keep the conversation within a sane size for the model. When the history
  * grows past a threshold we summarize the older turns into a single synthetic
  * message and keep the most recent turns verbatim. This prevents unbounded
- * token growth (and cost) on long agent sessions.
+ * token growth (and cost) on long task sessions.
  */
 export function compactMessages(msgs: ChatMessageType[]): ChatMessageType[] {
   if (msgs.length <= COMPACT_THRESHOLD) return msgs;
@@ -104,9 +117,9 @@ export function compactMessages(msgs: ChatMessageType[]): ChatMessageType[] {
     if (m.role === 'user') {
       summaryLines.push(`用户: ${m.content.slice(0, 200)}`);
     } else if (m.role === 'assistant') {
-      if (m.content) summaryLines.push(`助手: ${m.content.slice(0, 200)}`);
+      if (m.content) summaryLines.push(`输出: ${m.content.slice(0, 200)}`);
       if (m.toolCalls?.length) {
-        summaryLines.push(`助手调用工具: ${m.toolCalls.map((t) => t.name).join(', ')}`);
+        summaryLines.push(`工具调用: ${m.toolCalls.map((t) => t.name).join(', ')}`);
       }
     } else if (m.role === 'tool' && m.toolResults) {
       summaryLines.push(
@@ -118,7 +131,7 @@ export function compactMessages(msgs: ChatMessageType[]): ChatMessageType[] {
   const summary: ChatMessageType = {
     id: uuid(),
     role: 'user',
-    content: '[以下是早期对话的压缩摘要，用于节省上下文]\n' + summaryLines.join('\n').slice(0, 4000),
+    content: '[以下是早期会话的压缩摘要，用于节省上下文]\n' + summaryLines.join('\n').slice(0, 4000),
     timestamp: head[0]?.timestamp || Date.now(),
   };
 

@@ -1,5 +1,5 @@
 /**
- * Lightweight web search + fetch service for Agent tools.
+ * Lightweight web search + fetch service for task tools.
  * Uses the built-in Node.js fetch (Node 18+).
  */
 
@@ -129,7 +129,7 @@ export class WebService {
       const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; AI-IDE/1.0)',
+          'User-Agent': 'Mozilla/5.0 (compatible; Code-IDE/1.0)',
         },
         signal: AbortSignal.timeout(10_000),
       });
@@ -174,7 +174,7 @@ export class WebService {
       const safe = assertSafeFetchUrl(url);
       const res = await fetch(safe, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; AI-IDE/1.0)',
+          'User-Agent': 'Mozilla/5.0 (compatible; Code-IDE/1.0)',
           Accept: 'text/html,application/xhtml+xml',
         },
         signal: AbortSignal.timeout(15_000),

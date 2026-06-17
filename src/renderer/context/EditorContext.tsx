@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import type { OpenFile } from '@shared/types';
 
 function getLanguageFromPath(filePath: string): string {
@@ -131,6 +131,21 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       })
     );
   }, []);
+
+  // Listen for file changes from the main process (watcher)
+  useEffect(() => {
+    const cleanup = window.api.fs.onFileChanged((events) => {
+      const openPaths = new Set(openFilesRef.current.map(f => f.path));
+      for (const event of events) {
+        if (openPaths.has(event.path)) {
+          // If a file we have open was modified or deleted externally, reload it.
+          // (reloadFileFromDisk handles deletes by closing the file if read fails).
+          reloadFileFromDisk(event.path);
+        }
+      }
+    });
+    return cleanup;
+  }, [reloadFileFromDisk]);
 
   const stateValue: EditorStateValue = { openFiles, activeFilePath };
 

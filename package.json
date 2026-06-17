@@ -1,7 +1,7 @@
 {
-  "name": "ai-code-ide",
+  "name": "code-ide",
   "version": "0.1.0",
-  "description": "Local-first AI code editor for personal desktop use with Agent mode and multi-provider LLM support",
+  "description": "Local-first code editor for personal desktop use with task workflows and multi-provider model support",
   "private": true,
   "engines": {
     "node": ">=20 <27"
@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run build:main && concurrently \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc -p tsconfig.main.json && vite build && electron-builder",
-    "build:renderer": "vite build",
+    "build:renderer": "vite build && node scripts/check-renderer-bundles.mjs",
     "build:main": "tsc -p tsconfig.main.json",
     "postinstall": "electron-rebuild",
     "preview": "vite preview",
@@ -22,24 +22,25 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "chokidar": "^3.6.0",
     "electron-store": "^6.0.1",
+    "lucide-react": "^1.17.0",
     "monaco-editor": "^0.52.0",
     "node-pty": "^1.0.0",
     "openai": "^4.77.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
-    "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.0",
     "typescript": "^5.7.2",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "web-tree-sitter": "^0.26.9"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
     "@types/node": "^20.11.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
@@ -53,9 +54,14 @@
     "vitest": "^2.1.9",
     "wait-on": "^8.0.1"
   },
+  "overrides": {
+    "refractor": {
+      "prismjs": "1.30.0"
+    }
+  },
   "build": {
     "appId": "com.aicode.ide",
-    "productName": "AI Code IDE",
+    "productName": "Code IDE",
     "files": [
       "dist/**/*",
       "!dist/**/*.d.ts",

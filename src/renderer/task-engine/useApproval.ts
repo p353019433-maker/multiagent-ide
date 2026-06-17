@@ -1,5 +1,5 @@
 /**
- * Approval hook — owns the mode-aware approval gate extracted from ChatPanel.
+ * Approval hook — owns the mode-aware approval gate extracted from TaskPanel.
  *
  * Three modes (see command-policy):
  *  - readonly: every write/command/external action needs manual approval
@@ -51,24 +51,50 @@ const AUTO_ACCEPT_MS = 5000;
 export function useApproval() {
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>(DEFAULT_APPROVAL_MODE);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const pendingApprovalRef = useRef<PendingApproval | null>(null);
+  pendingApprovalRef.current = pendingApproval;
 
   // Ref so the gate (called outside render, deep in tool execution) reads the
   // current mode without stale-closure issues.
   const approvalModeRef = useRef<ApprovalMode>(DEFAULT_APPROVAL_MODE);
   approvalModeRef.current = approvalMode;
 
+  // Sub-flag: even in `full` mode, external/irreversible operations (GitHub
+  // writes, remote API calls) default to manual approval. Setting this to true
+  // restores the "trust myself" intent for external ops. Persisted alongside
+  // approvalMode so the user's choice survives restarts.
+  const [allowExternalInFull, setAllowExternalInFull] = useState<boolean>(false);
+  const allowExternalInFullRef = useRef<boolean>(false);
+  allowExternalInFullRef.current = allowExternalInFull;
+
   const autoApproveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
+      pendingApprovalRef.current?.resolve(false);
+      pendingApprovalRef.current = null;
+    };
+  }, []);
 
   // Load persisted mode once.
   useEffect(() => {
     window.api.store.get('approvalMode').then((m) => {
       if (m === 'readonly' || m === 'auto' || m === 'full') setApprovalMode(m);
     });
+    window.api.store.get('allowExternalInFull').then((v) => {
+      if (v === true) setAllowExternalInFull(true);
+    });
   }, []);
 
   const changeApprovalMode = (m: ApprovalMode) => {
     setApprovalMode(m);
     window.api.store.set('approvalMode', m);
+  };
+
+  const changeAllowExternalInFull = (v: boolean) => {
+    setAllowExternalInFull(v);
+    window.api.store.set('allowExternalInFull', v);
   };
 
   const requestApproval = (
@@ -81,7 +107,12 @@ export function useApproval() {
   ): Promise<boolean> => {
     const countdown = opts?.countdown ?? true;
     return new Promise((resolve) => {
-      setPendingApproval({
+      if (autoApproveTimeout.current) {
+        clearTimeout(autoApproveTimeout.current);
+        autoApproveTimeout.current = null;
+      }
+      pendingApprovalRef.current?.resolve(false);
+      const pending: PendingApproval = {
         toolCallId,
         filePath,
         action,
@@ -90,13 +121,17 @@ export function useApproval() {
         countdown,
         dangerReason: opts?.dangerReason,
         resolve,
-      });
+      };
+      pendingApprovalRef.current = pending;
+      setPendingApproval(pending);
       if (countdown) {
         // Auto-accept after the countdown — user can reject before that.
         autoApproveTimeout.current = setTimeout(() => {
           setPendingApproval((prev) => {
             if (prev?.toolCallId === toolCallId) {
               prev.resolve(true);
+              autoApproveTimeout.current = null;
+              pendingApprovalRef.current = null;
               return null;
             }
             return prev;
@@ -112,7 +147,10 @@ export function useApproval() {
    * blocks for manual approval. Returns true if the action may proceed.
    */
   const gateAction: GateActionFn = (toolCallId, label, kind, before, after, action, opts) => {
-    const decision = decideApproval(approvalModeRef.current, kind, { dangerous: opts?.dangerous });
+    const decision = decideApproval(approvalModeRef.current, kind, {
+      dangerous: opts?.dangerous,
+      allowExternalInFull: allowExternalInFullRef.current,
+    });
     if (decision === 'allow') return Promise.resolve(true);
     return requestApproval(toolCallId, label, action, before, after, {
       countdown: decision === 'auto',
@@ -123,18 +161,22 @@ export function useApproval() {
   const handleApprove = () => {
     if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
     pendingApproval?.resolve(true);
+    pendingApprovalRef.current = null;
     setPendingApproval(null);
   };
 
   const handleReject = () => {
     if (autoApproveTimeout.current) clearTimeout(autoApproveTimeout.current);
     pendingApproval?.resolve(false);
+    pendingApprovalRef.current = null;
     setPendingApproval(null);
   };
 
   return {
     approvalMode,
     changeApprovalMode,
+    allowExternalInFull,
+    changeAllowExternalInFull,
     pendingApproval,
     gateAction,
     handleApprove,

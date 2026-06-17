@@ -1,6 +1,10 @@
 import React from 'react';
+import { CheckCircle2, CircleAlert, CircleDot, FileText, FolderOpen, PanelLeft, X } from 'lucide-react';
 import { useEditor } from '../../context/EditorContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
+import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 import {
+<<<<<<< HEAD
   registerAiInlineCompletion,
   unregisterAiInlineCompletion,
   recordEdit,
@@ -21,6 +25,42 @@ export default function EditorArea() {
     setActiveFile,
     saveFileContent,
   } = useEditor();
+=======
+  registerInlineCompletion,
+  unregisterInlineCompletion,
+  updateInlineCompletionConfig,
+  recordEdit,
+} from './inlineCompletion';
+
+type MonacoModule = typeof import('monaco-editor');
+
+interface Props {
+  readiness: AgentReadiness;
+  onReadinessAction: (actionId: ReadinessActionId) => void;
+}
+
+const STATUS_LABEL: Record<ReadinessStatus, string> = {
+  done: '完成',
+  ready: '就绪',
+  blocked: '需要处理',
+  optional: '可选',
+};
+
+function ReadinessIcon({ status }: { status: ReadinessStatus }) {
+  if (status === 'done' || status === 'ready') {
+    return <CheckCircle2 size={14} strokeWidth={1.8} className="text-emerald-400" />;
+  }
+  if (status === 'blocked') {
+    return <CircleAlert size={14} strokeWidth={1.8} className="text-yellow-400" />;
+  }
+  return <CircleDot size={14} strokeWidth={1.8} className="text-muted-foreground" />;
+}
+
+export default function EditorArea({ readiness, onReadinessAction }: Props) {
+  const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
+    useEditor();
+  const { rootName } = useWorkspace();
+>>>>>>> claude/review-repo-contents-tkoLx
   const containerRef = React.useRef<HTMLDivElement>(null);
   const monacoRef = React.useRef<MonacoModule | null>(null);
   const editorRef = React.useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
@@ -57,8 +97,32 @@ export default function EditorArea() {
       if (disposed || !containerRef.current || editorRef.current) return;
 
       monacoRef.current = monaco;
+
+      monaco.editor.defineTheme('workbench-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '9aa0a6' },
+          { token: 'keyword', foreground: '8ab4f8' },
+          { token: 'string', foreground: 'fde293' },
+          { token: 'function', foreground: '81c995' },
+          { token: 'variable', foreground: 'e8eaed' },
+          { token: 'number', foreground: 'f28b82' },
+          { token: 'type', foreground: '8ab4f8' },
+        ],
+        colors: {
+          'editor.background': '#1f2024',
+          'editor.foreground': '#e8eaed',
+          'editor.lineHighlightBackground': '#ffffff08',
+          'editorLineNumber.foreground': '#5f6368',
+          'editor.selectionBackground': '#4285f444',
+          'editorIndentGuide.background': '#ffffff10',
+          'editorIndentGuide.activeBackground': '#ffffff30',
+        },
+      });
+
       const editor = monaco.editor.create(containerRef.current, {
-        theme: 'vs-dark',
+        theme: 'workbench-dark',
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         minimap: { enabled: true },
@@ -75,7 +139,7 @@ export default function EditorArea() {
       });
 
       editorRef.current = editor;
-      registerAiInlineCompletion(monaco);
+      registerInlineCompletion(monaco);
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         const filePath = activeFilePathRef.current;
@@ -118,7 +182,7 @@ export default function EditorArea() {
       modelsRef.current.forEach((m) => m.dispose());
       modelsRef.current.clear();
       listenedModelsRef.current.clear();
-      unregisterAiInlineCompletion();
+      unregisterInlineCompletion();
       monacoRef.current = null;
       editorRef.current = null;
       setIsMonacoReady(false);
@@ -228,32 +292,56 @@ export default function EditorArea() {
             return (
               <div
                 key={file.path}
+<<<<<<< HEAD
                 role="tab"
                 aria-selected={isActive}
                 tabIndex={isActive ? 0 : -1}
                 className={`flex items-center gap-1 px-3 py-1.5 text-xs cursor-pointer border-r border-editor-border ${
+=======
+                className={`group flex h-8 min-w-[128px] max-w-[240px] items-center gap-2 border-r border-editor-border px-2.5 text-xs cursor-pointer transition-colors focus:outline-none focus:ring-1 focus:ring-editor-accent ${
+>>>>>>> claude/review-repo-contents-tkoLx
                   isActive
-                    ? 'bg-editor-bg text-white border-t-2 border-t-editor-accent'
-                    : 'bg-editor-sidebar text-gray-400 hover:bg-editor-hover'
+                    ? 'bg-editor-bg text-foreground border-t-2 border-t-editor-accent'
+                    : 'bg-editor-sidebar text-muted-foreground hover:bg-editor-hover'
                 }`}
                 onClick={() => setActiveFile(file.path)}
                 onKeyDown={(event) => {
+<<<<<<< HEAD
                   if (event.key === 'Enter' || event.key === ' ') setActiveFile(file.path);
                   if (event.key === 'Delete') closeFile(file.path);
                 }}
+=======
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setActiveFile(file.path);
+                  }
+                }}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={0}
+>>>>>>> claude/review-repo-contents-tkoLx
               >
-                <span className="truncate max-w-[120px]">{name}</span>
+                <FileText size={14} strokeWidth={1.7} className="flex-shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{name}</span>
                 {file.isDirty && <span className="text-editor-accent">●</span>}
                 <button
+<<<<<<< HEAD
                   type="button"
                   aria-label={`关闭 ${name}`}
                   className="ml-1 text-gray-500 hover:text-white text-[10px]"
                   onClick={(event) => {
                     event.stopPropagation();
+=======
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-editor-active hover:text-foreground"
+                  title={`关闭 ${name}`}
+                  aria-label={`关闭 ${name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+>>>>>>> claude/review-repo-contents-tkoLx
                     closeFile(file.path);
                   }}
                 >
-                  ✕
+                  <X size={13} strokeWidth={1.8} />
                 </button>
               </div>
             );
@@ -268,11 +356,65 @@ export default function EditorArea() {
           style={{ display: activeFile ? 'block' : 'none' }}
         />
         {!activeFile && (
+<<<<<<< HEAD
           <div className="flex items-center justify-center h-full text-gray-500">
             <div className="text-center">
               <p className="text-4xl mb-4">🚀</p>
               <p className="text-sm">打开文件开始编辑</p>
               <p className="text-xs text-gray-600 mt-1">使用侧边栏浏览项目文件</p>
+=======
+          <div className="h-full overflow-hidden bg-editor-bg text-muted-foreground">
+            <div className="mx-auto mt-20 w-full max-w-[520px] px-8">
+              <div className="flex h-8 items-center gap-2 border-b border-editor-border text-10 font-semibold uppercase tracking-wide text-muted-foreground">
+                <PanelLeft size={14} strokeWidth={1.8} />
+                工作台
+              </div>
+              <div className="border-b border-editor-border py-4">
+                {!rootName ? (
+                  <button
+                    onClick={() => onReadinessAction('openWorkspace')}
+                    className="inline-flex h-8 items-center gap-2 border border-editor-border bg-editor-sidebar px-3 text-sm text-editor-text transition-colors hover:bg-editor-hover"
+                  >
+                    <FolderOpen size={15} strokeWidth={1.8} />
+                    <span>打开文件夹</span>
+                  </button>
+                ) : (
+                  <div className="flex h-8 min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                    <FolderOpen size={15} strokeWidth={1.8} />
+                    <span className="truncate">{rootName}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex h-10 items-center gap-2 border-b border-editor-border text-sm text-muted-foreground">
+                <FileText size={15} strokeWidth={1.8} />
+                <span>没有活动编辑器</span>
+              </div>
+              <div className="border-b border-editor-border">
+                {readiness.items.map((item) => {
+                  const isNext = item.actionId === readiness.nextActionId;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onReadinessAction(item.actionId)}
+                      className={`grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-2 border-b border-editor-border px-0 text-left text-xs transition-colors last:border-b-0 hover:bg-editor-hover ${
+                        isNext ? 'text-editor-text' : 'text-muted-foreground'
+                      }`}
+                    >
+                      <ReadinessIcon status={item.status} />
+                      <span className="min-w-0">
+                        <span className="block truncate">{item.label}</span>
+                        <span className="block truncate font-mono text-10 text-muted-foreground">
+                          {STATUS_LABEL[item.status]}
+                        </span>
+                      </span>
+                      <span className={`text-right text-11 ${isNext ? 'text-editor-accent' : 'text-muted-foreground'}`}>
+                        {item.actionLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+>>>>>>> claude/review-repo-contents-tkoLx
             </div>
           </div>
         )}

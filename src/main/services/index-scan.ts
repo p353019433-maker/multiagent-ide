@@ -135,6 +135,53 @@ function extractSymbolsTS(rel: string, content: string, ext: string): SymbolEntr
   return out;
 }
 
+/**
+ * Extract semantic chunks from a TS/JS file using the AST.
+ * This extracts top-level functions, classes, interfaces, and large methods
+ * into self-contained semantic text chunks, avoiding arbitrary line splits.
+ */
+function extractChunksTS(rel: string, content: string, ext: string): RawChunk[] {
+  const out: RawChunk[] = [];
+  const src = ts.createSourceFile(rel, content, ts.ScriptTarget.Latest, true, scriptKindFor(ext));
+  
+  const pushChunk = (node: ts.Node) => {
+    const text = node.getText(src);
+    if (text.length < 50 || text.length > 10000) return; // Skip tiny or massive nodes
+    const startLine = src.getLineAndCharacterOfPosition(node.getStart(src)).line + 1;
+    const endLine = src.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+    out.push({ file: rel, startLine, endLine, text: text.trim(), hash: hashString(text.trim()) });
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) || 
+        ts.isClassDeclaration(node) || 
+        ts.isInterfaceDeclaration(node) || 
+        ts.isTypeAliasDeclaration(node) || 
+        ts.isEnumDeclaration(node)) {
+      pushChunk(node);
+      // For classes, also chunk large individual methods if the class is very large
+      if (ts.isClassDeclaration(node) && node.getText(src).length > 2000) {
+        for (const member of node.members) {
+          if (ts.isMethodDeclaration(member)) {
+            pushChunk(member);
+          }
+        }
+      }
+    } else if (ts.isVariableStatement(node)) {
+      // Catch const foo = () => {}
+      const text = node.getText(src);
+      if (text.includes('=>') || text.includes('function')) {
+        pushChunk(node);
+      }
+    } else {
+      ts.forEachChild(node, visit);
+    }
+  };
+
+  visit(src);
+  return out;
+}
+
 /** Build a symbol, folding any container name into both the label and tokens. */
 function mkSym(rel: string, name: string, kind: string, line: number, container?: string): SymbolEntry {
   return {
@@ -374,6 +421,20 @@ export async function scanChunks(root: string): Promise<RawChunk[]> {
       const stat = await fs.stat(full);
       if (stat.size > 256 * 1024) continue;
       const content = await fs.readFile(full, 'utf-8');
+
+      const ext = path.extname(rel);
+      if (TS_EXTS.has(ext)) {
+        try {
+          const semanticChunks = extractChunksTS(rel, content, ext);
+          if (semanticChunks.length > 0) {
+            chunks.push(...semanticChunks);
+            continue;
+          }
+        } catch {
+          // fall through to line-based
+        }
+      }
+
       const lines = content.split('\n');
       for (let start = 0; start < lines.length; start += WINDOW - OVERLAP) {
         const slice = lines.slice(start, start + WINDOW);

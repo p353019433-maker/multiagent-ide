@@ -11,6 +11,7 @@ import { GitHubService } from './services/github-service';
 import { AnalysisService } from './services/analysis-service';
 import { CodebaseSearchService } from './services/codebase-search-service';
 import { registerIpc } from './ipc';
+import { FileWatcherService } from './services/file-watcher-service';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -69,6 +70,7 @@ app.whenReady().then(() => {
   const githubService = new GitHubService();
   const analysisService = new AnalysisService(terminalService, fileService);
   const codebaseSearchService = new CodebaseSearchService(indexService, aiService, fileService, storeService);
+  const fileWatcherService = new FileWatcherService();
 
   registerIpc({
     getMainWindow: () => mainWindow,
@@ -81,6 +83,7 @@ app.whenReady().then(() => {
     githubService,
     analysisService,
     codebaseSearchService,
+    fileWatcherService,
   });
 
   createWindow();

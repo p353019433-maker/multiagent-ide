@@ -289,8 +289,63 @@ export class IndexService {
   }
 
   /** Cosine-similarity search over the embedding index. */
-  semanticSearch(queryVector: number[], limit = 10): CodebaseSearchHit[] {
+  async semanticSearch(queryVector: number[], limit = 10): Promise<CodebaseSearchHit[]> {
     if (this.vectors.length === 0) return [];
+
+    // For small indices, inline is fine. For large ones, offload to a worker
+    // to avoid blocking the main-process event loop (and thus all IPC).
+    const INLINE_THRESHOLD = 2000;
+    if (this.vectors.length <= INLINE_THRESHOLD) {
+      return this.semanticSearchInline(queryVector, limit);
+    }
+
+    try {
+      return await new Promise<CodebaseSearchHit[]>((resolve, reject) => {
+        let settled = false;
+        const finish = (fn: typeof resolve | typeof reject, value: any) => {
+          if (settled) return;
+          settled = true;
+          void worker.terminate();
+          fn(value);
+        };
+        const worker = new Worker(path.join(__dirname, 'index-worker.js'), {
+          workerData: {
+            root: this.embeddedRoot || '',
+            mode: 'cosine',
+            cosinePayload: {
+              queryVector,
+              vectors: this.vectors.map((v) => ({
+                file: v.file,
+                startLine: v.startLine,
+                endLine: v.endLine,
+                vector: v.vector,
+              })),
+              limit,
+            },
+          },
+        });
+        worker.once('message', (msg: any) => {
+          if (msg?.ok) {
+            finish(resolve, msg.hits as CodebaseSearchHit[]);
+          } else {
+            finish(reject, new Error(msg?.error || 'cosine worker failed'));
+          }
+        });
+        worker.once('error', (err) => finish(reject, err));
+        worker.once('exit', (code) => {
+          if (!settled && code !== 0) {
+            finish(reject, new Error(`cosine worker exited with code ${code}`));
+          }
+        });
+      });
+    } catch {
+      // Worker spawn failed — fall back to inline.
+      return this.semanticSearchInline(queryVector, limit);
+    }
+  }
+
+  /** Inline cosine search (used for small indices or worker fallback). */
+  private semanticSearchInline(queryVector: number[], limit: number): CodebaseSearchHit[] {
     const scored = this.vectors.map((v) => ({
       v,
       score: cosineSimilarity(queryVector, v.vector),
