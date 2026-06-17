@@ -6,11 +6,14 @@ import TerminalPanel from '../terminal/TerminalPanel';
 import SearchPanel from '../search/SearchPanel';
 import BrowserPreview from '../editor/BrowserPreview';
 import TitleBar from './TitleBar';
+import StatusBar from '../status/StatusBar';
 import { useWorkspace } from '../../context/WorkspaceContext';
 
 interface Props {
   onOpenSettings: () => void;
 }
+
+type Panel = 'sidebar' | 'chat' | 'search' | 'terminal';
 
 export default function MainLayout({ onOpenSettings }: Props) {
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -22,30 +25,30 @@ export default function MainLayout({ onOpenSettings }: Props) {
   const [showSearch, setShowSearch] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
-  const dragging = useRef<'sidebar' | 'chat' | 'search' | 'terminal' | null>(null);
+  const dragging = useRef<Panel | null>(null);
   const { rootPath } = useWorkspace();
 
-  const handleMouseDown = useCallback((panel: 'sidebar' | 'chat' | 'search' | 'terminal') => {
+  const handleMouseDown = useCallback((panel: Panel) => {
     dragging.current = panel;
-    if (panel === 'terminal') {
-      document.body.style.cursor = 'row-resize';
-    } else {
-      document.body.style.cursor = 'col-resize';
-    }
+    document.body.style.cursor = panel === 'terminal' ? 'row-resize' : 'col-resize';
     document.body.style.userSelect = 'none';
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (dragging.current === 'sidebar') {
-        setSidebarWidth(Math.max(160, Math.min(400, e.clientX)));
-      } else if (dragging.current === 'chat') {
-        setChatWidth(Math.max(280, Math.min(600, window.innerWidth - e.clientX)));
-      } else if (dragging.current === 'search') {
-        setSearchWidth(Math.max(240, Math.min(500, window.innerWidth - e.clientX)));
-      } else if (dragging.current === 'terminal') {
-        setTerminalHeight(Math.max(80, Math.min(500, window.innerHeight - e.clientY)));
+      switch (dragging.current) {
+        case 'sidebar':
+          setSidebarWidth(Math.max(160, Math.min(400, e.clientX)));
+          break;
+        case 'chat':
+          setChatWidth(Math.max(280, Math.min(600, window.innerWidth - e.clientX)));
+          break;
+        case 'search':
+          setSearchWidth(Math.max(240, Math.min(500, window.innerWidth - e.clientX)));
+          break;
+        case 'terminal':
+          setTerminalHeight(Math.max(80, Math.min(500, window.innerHeight - e.clientY)));
+          break;
       }
     };
-
     const handleMouseUp = () => {
       dragging.current = null;
       document.body.style.cursor = '';
@@ -53,11 +56,30 @@ export default function MainLayout({ onOpenSettings }: Props) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, []);
 
+  // Bridge panel-toggle commands (emitted by commands/installCommands.ts
+  // via window CustomEvents) to the panel state. The keymap itself lives
+  // in App.tsx so it survives MainLayout remounts.
+  useEffect(() => {
+    const toggles: Array<[string, () => void]> = [
+      ['panel:toggle-sidebar', () => {/* sidebar is always visible — reserved for future */}],
+      ['panel:toggle-chat', () => { setShowChat((v) => !v); setShowBrowser(false); }],
+      ['panel:toggle-terminal', () => setShowTerminal((v) => !v)],
+      ['panel:toggle-search', () => setShowSearch((v) => !v)],
+      ['panel:toggle-browser', () => { setShowBrowser((v) => !v); setShowChat(false); }],
+    ];
+    const cleanups = toggles.map(([type, fn]) => {
+      const handler = () => fn();
+      window.addEventListener(type, handler);
+      return () => window.removeEventListener(type, handler);
+    });
+    return () => cleanups.forEach((c) => c());
+  }, []);
+
+  // Preview URL events (kept here for now — fired by the AI agent).
   useEffect(() => {
     const handlePreviewUrl = (e: Event) => {
       const url = (e as CustomEvent<{ url?: string }>).detail?.url;
@@ -68,19 +90,6 @@ export default function MainLayout({ onOpenSettings }: Props) {
     };
     window.addEventListener('preview-url', handlePreviewUrl);
     return () => window.removeEventListener('preview-url', handlePreviewUrl);
-  }, []);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.shiftKey && e.key === 'f') {
-        e.preventDefault();
-        setShowSearch((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   return (
@@ -97,31 +106,31 @@ export default function MainLayout({ onOpenSettings }: Props) {
         showBrowser={showBrowser}
       />
       <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Main area: sidebar + editor + panels */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
           <div style={{ width: sidebarWidth }} className="flex-shrink-0 h-full">
             <Sidebar />
           </div>
-
-          {/* Sidebar resize handle */}
           <div
             className="resize-handle w-[3px] h-full"
             onMouseDown={() => handleMouseDown('sidebar')}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整侧边栏宽度"
           />
 
-          {/* Editor + Terminal vertical split */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-hidden">
               <EditorArea />
             </div>
 
-            {/* Terminal */}
             {showTerminal && rootPath && (
               <>
                 <div
                   className="resize-handle h-[3px] w-full"
                   onMouseDown={() => handleMouseDown('terminal')}
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="调整终端高度"
                 />
                 <div style={{ height: terminalHeight }} className="flex-shrink-0">
                   <TerminalPanel cwd={rootPath} />
@@ -130,12 +139,14 @@ export default function MainLayout({ onOpenSettings }: Props) {
             )}
           </div>
 
-          {/* Search panel */}
           {showSearch && rootPath && (
             <>
               <div
                 className="resize-handle w-[3px] h-full"
                 onMouseDown={() => handleMouseDown('search')}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="调整搜索面板宽度"
               />
               <div style={{ width: searchWidth }} className="flex-shrink-0 h-full">
                 <SearchPanel />
@@ -143,12 +154,14 @@ export default function MainLayout({ onOpenSettings }: Props) {
             </>
           )}
 
-          {/* Chat or Browser panel */}
           {(showChat || showBrowser) && (
             <>
               <div
                 className="resize-handle w-[3px] h-full"
                 onMouseDown={() => handleMouseDown('chat')}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="调整右侧面板宽度"
               />
               <div style={{ width: chatWidth }} className="flex-shrink-0 h-full">
                 {showBrowser ? (
@@ -164,6 +177,8 @@ export default function MainLayout({ onOpenSettings }: Props) {
             </>
           )}
         </div>
+        {/* Status bar at the very bottom — non-intrusive glance feedback */}
+        <StatusBar />
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import {
   updateInlineCompletionConfig,
   recordEdit,
 } from './aiInlineCompletion';
+import { setCursorState } from '../../editor/cursorPosition';
 
 type MonacoModule = typeof import('monaco-editor');
 
@@ -22,6 +23,10 @@ export default function EditorArea() {
   const saveRef = React.useRef(saveActiveFile);
   const [isMonacoReady, setIsMonacoReady] = React.useState(false);
   saveRef.current = saveActiveFile;
+  // Mirror activeFilePath into a ref so the cursor handler (registered once
+  // on editor creation) always sees the latest path without re-subscribing.
+  const activeFilePathRef = React.useRef(activeFilePath);
+  activeFilePathRef.current = activeFilePath;
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
@@ -57,6 +62,25 @@ export default function EditorArea() {
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         saveRef.current();
       });
+
+      // Broadcast cursor position to the StatusBar via the leaf-only bus —
+      // avoids pushing per-keystroke updates through React context.
+      editor.onDidChangeCursorPosition((e) => {
+        const model = editor.getModel();
+        const sel = editor.getSelection();
+        setCursorState({
+          filePath: activeFilePathRef.current,
+          lineNumber: e.position.lineNumber,
+          column: e.position.column,
+          selectionLength: sel ? (sel.endLineNumber - sel.startLineNumber) || (sel.endColumn - sel.startColumn) : 0,
+          language: model ? model.getLanguageId() : 'plaintext',
+        });
+      });
+      // Toggle line comment on Cmd+/ — VS Code parity for keyboard-driven editing.
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
+        editor.getAction('editor.action.commentLine')?.run();
+      });
+
       setIsMonacoReady(true);
     });
 
