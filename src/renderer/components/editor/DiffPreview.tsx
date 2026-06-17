@@ -10,6 +10,8 @@ interface Props {
   visible: boolean;
   onAccept: () => void;
   onReject: () => void;
+  statusText?: string;
+  statusTone?: 'warning' | 'danger';
 }
 
 /**
@@ -17,7 +19,17 @@ interface Props {
  * Shows original on the left, modified on the right,
  * with accept/reject buttons.
  */
-export default function DiffPreview({ original, modified, filePath, language, visible, onAccept, onReject }: Props) {
+export default function DiffPreview({
+  original,
+  modified,
+  filePath,
+  language,
+  visible,
+  onAccept,
+  onReject,
+  statusText,
+  statusTone = 'warning',
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const diffEditorRef = useRef<import('monaco-editor').editor.IStandaloneDiffEditor | null>(null);
   const acceptRef = useRef(onAccept);
@@ -43,8 +55,31 @@ export default function DiffPreview({ original, modified, filePath, language, vi
       originalModel = monaco.editor.createModel(original, lang);
       modifiedModel = monaco.editor.createModel(modified, lang);
 
+      monaco.editor.defineTheme('workbench-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '9aa0a6' },
+          { token: 'keyword', foreground: '8ab4f8' },
+          { token: 'string', foreground: 'fde293' },
+          { token: 'function', foreground: '81c995' },
+          { token: 'variable', foreground: 'e8eaed' },
+          { token: 'number', foreground: 'f28b82' },
+          { token: 'type', foreground: '8ab4f8' },
+        ],
+        colors: {
+          'editor.background': '#1f2024',
+          'editor.foreground': '#e8eaed',
+          'editor.lineHighlightBackground': '#ffffff08',
+          'editorLineNumber.foreground': '#5f6368',
+          'editor.selectionBackground': '#4285f444',
+          'editorIndentGuide.background': '#ffffff10',
+          'editorIndentGuide.activeBackground': '#ffffff30',
+        },
+      });
+
       diffEditor = monaco.editor.createDiffEditor(containerRef.current, {
-        theme: 'vs-dark',
+        theme: 'workbench-dark',
         fontSize: 12,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         readOnly: true,
@@ -91,26 +126,34 @@ export default function DiffPreview({ original, modified, filePath, language, vi
 
   return (
     <div className="flex flex-col h-full bg-editor-bg border-t border-editor-border">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-editor-sidebar border-b border-editor-border">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-yellow-400 font-semibold">Diff 预览</span>
-          <span className="text-gray-500 truncate max-w-[200px]">
+      <div className="flex h-8 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">差异</span>
+          <span className="text-muted-foreground truncate max-w-[200px]">
             {filePath.split('/').pop() || filePath}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-500">
-            ⌘Enter 接受 · ⌘Esc 拒绝
-          </span>
+        <div className="flex min-w-0 items-center gap-2">
+          {statusText && (
+            <span
+              className={`truncate text-11 ${
+                statusTone === 'danger' ? 'text-red-400' : 'text-yellow-400'
+              }`}
+            >
+              {statusText}
+            </span>
+          )}
           <button
             onClick={onAccept}
-            className="px-2 py-0.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+            className="h-6 border border-green-700 bg-green-700 px-2 text-xs text-white hover:bg-green-600"
+            aria-label="接受差异"
           >
             接受
           </button>
           <button
             onClick={onReject}
-            className="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+            className="h-6 border border-red-700 bg-red-700 px-2 text-xs text-white hover:bg-red-600"
+            aria-label="拒绝差异"
           >
             拒绝
           </button>

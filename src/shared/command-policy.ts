@@ -6,7 +6,12 @@
  *  - auto:     reads run freely; workspace writes auto-accept after a short
  *              preview; shell commands run unless they match a danger pattern,
  *              in which case they require manual approval regardless of tier
- *  - full:     everything runs with no prompts (the original behavior)
+ *  - full:     everything runs with no prompts EXCEPT external/irreversible
+ *              operations (GitHub writes, remote API), which still need an
+ *              explicit manual approval unless the user has opted in to
+ *              `allowExternalInFull`. The opt-in flag exists to preserve the
+ *              "trust myself" intent of `full` mode without making external
+ *              actions irreversibly silent.
  */
 
 export type ApprovalMode = 'readonly' | 'auto' | 'full';
@@ -15,20 +20,17 @@ export const DEFAULT_APPROVAL_MODE: ApprovalMode = 'auto';
 
 export const APPROVAL_MODE_META: Record<
   ApprovalMode,
-  { icon: string; label: string; hint: string }
+  { label: string; hint: string }
 > = {
   readonly: {
-    icon: '🔒',
     label: '只读',
     hint: '所有写入与命令都需手动批准',
   },
   auto: {
-    icon: '⚖️',
     label: '自动',
     hint: '读放行，写入预览后自动接受，危险命令拦截',
   },
   full: {
-    icon: '⚡',
     label: '完全',
     hint: '全部自动执行，无拦截（有风险）',
   },
@@ -97,11 +99,18 @@ export type ApprovalDecision = 'allow' | 'auto' | 'manual';
 export function decideApproval(
   mode: ApprovalMode,
   kind: 'read' | 'write' | 'command' | 'external',
-  opts?: { dangerous?: boolean }
+  opts?: { dangerous?: boolean; allowExternalInFull?: boolean }
 ): ApprovalDecision {
   if (kind === 'read') return 'allow';
 
-  if (mode === 'full') return 'allow';
+  if (mode === 'full') {
+    // external/irreversible ops (GitHub writes, remote API calls) still require
+    // explicit confirmation in `full` mode unless the user has explicitly opted
+    // in via `allowExternalInFull`. This keeps the "trust myself" intent of
+    // `full` while preventing silent irreversible actions.
+    if (kind === 'external' && !opts?.allowExternalInFull) return 'manual';
+    return 'allow';
+  }
 
   if (mode === 'readonly') return 'manual';
 

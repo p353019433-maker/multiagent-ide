@@ -1,7 +1,7 @@
 /**
- * AI Inline Completion provider for Monaco Editor.
- * Uses current AI provider to generate code completions at cursor position.
- * Does NOT use FIM (fill-in-the-middle) — sends context as chat completion.
+ * Inline completion provider for Monaco Editor.
+ * Uses the active model provider to generate code completions at cursor position.
+ * Non-FIM models receive prefix/suffix context through the model service.
  */
 
 import type * as Monaco from 'monaco-editor';
@@ -16,7 +16,7 @@ type ProviderConfig = {
   fim?: boolean;
 };
 
-type AiCompleteFn = (params: {
+type InlineCompletionSource = (params: {
   prefix: string;
   suffix: string;
   language: string;
@@ -25,7 +25,7 @@ type AiCompleteFn = (params: {
   recentEdits: string[];
 }) => Promise<string | null>;
 
-let _aiCompleteFn: AiCompleteFn | null = null;
+let _completionSource: InlineCompletionSource | null = null;
 
 // Ring buffer of recent edits (Cursor-Tab style "next edit" context).
 const _recentEdits: string[] = [];
@@ -37,14 +37,14 @@ export function recordEdit(snippet: string) {
 }
 let _pendingId = 0;
 let _lastRequestTime = 0;
-// FIM models are fast & cheap, so we can fire much more often than chat models.
+// FIM models are fast and cheap, so we can fire much more often than request/response models.
 const DEBOUNCE_FIM_MS = 150;
 const DEBOUNCE_CHAT_MS = 300;
 const COOLDOWN_FIM_MS = 300;
 const COOLDOWN_CHAT_MS = 2000;
 
-export function setAiCompleteFn(fn: AiCompleteFn) {
-  _aiCompleteFn = fn;
+export function setInlineCompletionSource(fn: InlineCompletionSource) {
+  _completionSource = fn;
 }
 
 let _monaco: MonacoModule | null = null;
@@ -56,7 +56,14 @@ function disposeInlineCompletionProvider() {
   _disposables = [];
 }
 
+<<<<<<< HEAD:src/renderer/components/editor/aiInlineCompletion.ts
 function installProvider(monaco: MonacoModule) {
+=======
+export function registerInlineCompletion(monaco: MonacoModule) {
+  _monaco = monaco;
+  disposeInlineCompletionProvider();
+
+>>>>>>> claude/review-repo-contents-tkoLx:src/renderer/components/editor/inlineCompletion.ts
   const provider: Monaco.languages.InlineCompletionsProvider = {
     provideInlineCompletions: async (
       model: Monaco.editor.ITextModel,
@@ -64,7 +71,7 @@ function installProvider(monaco: MonacoModule) {
       _context: Monaco.languages.InlineCompletionContext,
       _token: Monaco.CancellationToken
     ): Promise<Monaco.languages.InlineCompletions> => {
-      if (!_aiCompleteFn || !_config.providerId) return { items: [] };
+      if (!_completionSource || !_config.providerId) return { items: [] };
 
       const cooldown = _config.fim ? COOLDOWN_FIM_MS : COOLDOWN_CHAT_MS;
       const debounce = _config.fim ? DEBOUNCE_FIM_MS : DEBOUNCE_CHAT_MS;
@@ -110,7 +117,7 @@ function installProvider(monaco: MonacoModule) {
       const language = model.getLanguageId();
 
       try {
-        const result = await _aiCompleteFn({
+        const result = await _completionSource({
           prefix,
           suffix,
           language,
@@ -120,6 +127,27 @@ function installProvider(monaco: MonacoModule) {
 
         if (!result || result.trim().length === 0 || _token.isCancellationRequested) return { items: [] };
 
+        // Suffix overlap detection: if the completion text starts matching the immediate suffix,
+        // we should overwrite that part of the suffix instead of just inserting.
+        // This is crucial for multi-line edits to feel like a "diff" replacement.
+        let overlapLength = 0;
+        const maxOverlap = Math.min(result.length, suffix.length);
+        // Look for the largest overlap where result ends with or matches a prefix of the suffix.
+        // A simple heuristic: check how many characters of the suffix match the end of the completion,
+        // or how many characters of the completion match the beginning of the suffix.
+        for (let i = maxOverlap; i > 0; i--) {
+          if (result.endsWith(suffix.substring(0, i))) {
+            overlapLength = i;
+            break;
+          }
+        }
+        
+        let endPos = position;
+        if (overlapLength > 0) {
+          // Calculate the end position in the model by advancing overlapLength characters
+          endPos = model.getPositionAt(model.getOffsetAt(position) + overlapLength);
+        }
+
         return {
           items: [
             {
@@ -127,8 +155,8 @@ function installProvider(monaco: MonacoModule) {
               range: new monaco.Range(
                 position.lineNumber,
                 position.column,
-                position.lineNumber,
-                position.column
+                endPos.lineNumber,
+                endPos.column
               ),
             },
           ],
@@ -148,6 +176,7 @@ function installProvider(monaco: MonacoModule) {
   _disposables = [d1];
 }
 
+<<<<<<< HEAD:src/renderer/components/editor/aiInlineCompletion.ts
 export function registerAiInlineCompletion(monaco: MonacoModule) {
   _monaco = monaco;
   // If a config was queued before monaco was ready (common — ChatPanel sets
@@ -160,6 +189,9 @@ export function registerAiInlineCompletion(monaco: MonacoModule) {
 }
 
 export function unregisterAiInlineCompletion() {
+=======
+export function unregisterInlineCompletion() {
+>>>>>>> claude/review-repo-contents-tkoLx:src/renderer/components/editor/inlineCompletion.ts
   disposeInlineCompletionProvider();
   _config = { providerId: null, model: null };
 }
@@ -167,6 +199,7 @@ export function unregisterAiInlineCompletion() {
 export function updateInlineCompletionConfig(config: ProviderConfig) {
   _config = config;
   if (!config.providerId) {
+<<<<<<< HEAD:src/renderer/components/editor/aiInlineCompletion.ts
     unregisterAiInlineCompletion();
     return;
   }
@@ -179,5 +212,10 @@ export function updateInlineCompletionConfig(config: ProviderConfig) {
     // Config changed but provider is already installed — re-install so the
     // captured closure (debounce/cooldown via _config) takes the new values.
     installProvider(_monaco);
+=======
+    unregisterInlineCompletion();
+  } else if (_disposables.length === 0 && _monaco) {
+    registerInlineCompletion(_monaco);
+>>>>>>> claude/review-repo-contents-tkoLx:src/renderer/components/editor/inlineCompletion.ts
   }
 }

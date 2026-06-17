@@ -1,7 +1,7 @@
 import type { ToolDefinition } from './types';
 
 /**
- * Expanded Agent tools.
+ * Expanded task tools.
  * Grouped logically: file ops, code analysis, web, interaction, system.
  */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
@@ -279,7 +279,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'git_worktree_add',
-    description: '创建新的 git worktree 隔离分支（类似 Codex fork session）。Agent 可在新 worktree 里独立工作。',
+    description: '创建新的 git worktree 隔离分支（类似 Codex fork session）。任务可在新 worktree 里独立工作。',
     parameters: {
       type: 'object',
       properties: {
@@ -450,7 +450,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     name: 'save_context',
     description:
-      '保存一段上下文信息，供后续对话使用。例如项目的架构概览、关键决策等。',
+      '保存一段上下文信息，供后续会话使用。例如项目的架构概览、关键决策等。',
     parameters: {
       type: 'object',
       properties: {
@@ -627,7 +627,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'github_create_review',
-    description: '对 PR 提交代码审查（comment、approve 或 request changes）。审查内容是 AI 自动生成的代码审查意见。',
+    description: '对 PR 提交代码审查（comment、approve 或 request changes）。审查内容是自动生成的代码审查意见。',
     parameters: {
       type: 'object',
       properties: {
@@ -686,7 +686,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
 ];
 
-export const AGENT_SYSTEM_PROMPT = `You are an AI coding assistant integrated into a code IDE. You help users by reading, writing, and modifying code in their workspace.
+export const TASK_SYSTEM_PROMPT = `You are a coding task runner integrated into Code IDE. You help users by reading, writing, and modifying code in their workspace.
 
 ## Capabilities
 You have access to many tools that let you interact with the user's workspace:
@@ -750,3 +750,5 @@ You have access to many tools that let you interact with the user's workspace:
 The user controls an approval mode. Writes, shell commands, and external (GitHub) actions may require the user's approval before they run; destructive shell commands (rm -rf, git push --force, curl | sh, sudo, etc.) always require explicit approval. If an action is rejected, do not retry it — explain and propose an alternative. Prefer the least destructive command that accomplishes the task.
 
 Be direct and concise. Focus on getting the task done.`;
+
+export const AGENT_SYSTEM_PROMPT = TASK_SYSTEM_PROMPT;

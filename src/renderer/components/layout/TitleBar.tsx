@@ -1,112 +1,116 @@
 import React from 'react';
-import { useAI } from '../../context/AIContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
+import {
+  ChevronRight,
+  Monitor,
+  PanelRight,
+  Search,
+  Settings as SettingsIcon,
+  SquareTerminal,
+} from 'lucide-react';
 
 interface Props {
   onOpenSettings: () => void;
-  onToggleChat: () => void;
+  onToggleTaskPanel: () => void;
   onToggleTerminal: () => void;
   onToggleSearch: () => void;
   onToggleBrowser: () => void;
-  showChat: boolean;
+  showTaskPanel: boolean;
   showTerminal: boolean;
   showSearch: boolean;
   showBrowser: boolean;
 }
 
+function titleButtonClass(active: boolean): string {
+  return `flex h-8 w-8 items-center justify-center border-l border-editor-border border-b-2 transition-colors duration-75 ${
+    active
+      ? 'border-b-editor-accent bg-editor-bg text-foreground'
+      : 'border-b-transparent text-muted-foreground hover:bg-editor-hover hover:text-foreground'
+  }`;
+}
+
 export default function TitleBar({
   onOpenSettings,
-  onToggleChat,
+  onToggleTaskPanel,
   onToggleTerminal,
   onToggleSearch,
   onToggleBrowser,
-  showChat,
+  showTaskPanel,
   showTerminal,
   showSearch,
   showBrowser,
 }: Props) {
-  const { providers, activeProviderId, activeModel, setActiveProvider, setActiveModel } = useAI();
-  const activeProvider = providers.find((p) => p.id === activeProviderId);
+  const { rootName } = useWorkspace();
 
   return (
-    <div className="h-10 flex items-center justify-between px-4 bg-editor-sidebar border-b border-editor-border drag-region">
-      <div className="flex items-center gap-3 no-drag">
-        <span className="text-sm font-semibold text-white">AI Code IDE</span>
-      </div>
-
-      <div className="flex items-center gap-2 no-drag">
-        {providers.length > 0 && (
+    <div className="grid h-8 grid-cols-[minmax(0,1fr)_minmax(150px,420px)_minmax(0,1fr)] items-center bg-editor-sidebar border-b border-editor-border drag-region">
+      <div className="flex min-w-0 items-center gap-1.5 px-2 no-drag sm:px-3">
+        <span className="text-xs font-medium text-editor-text">Code IDE</span>
+        {rootName && (
           <>
-            <select
-              className="bg-editor-active text-xs text-editor-text px-2 py-1 rounded border border-editor-border outline-none"
-              value={activeProviderId || ''}
-              onChange={(e) => setActiveProvider(e.target.value)}
-            >
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            {activeProvider && (
-              <select
-                className="bg-editor-active text-xs text-editor-text px-2 py-1 rounded border border-editor-border outline-none"
-                value={activeModel || ''}
-                onChange={(e) => setActiveModel(e.target.value)}
-              >
-                {activeProvider.models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            )}
+            <ChevronRight size={13} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
+            <span className="truncate text-11 text-muted-foreground">{rootName}</span>
           </>
         )}
       </div>
 
-      <div className="flex items-center gap-2 no-drag">
+      <button
+        onClick={onToggleSearch}
+        className={`no-drag hidden h-6 min-w-0 items-center gap-2 border px-2 text-11 transition-colors md:flex ${
+          showSearch
+            ? 'border-editor-accent bg-editor-bg text-foreground'
+            : 'border-editor-border bg-editor-bg text-muted-foreground hover:bg-editor-hover hover:text-foreground'
+        }`}
+        title="搜索文件和命令 (Cmd+Shift+F)"
+        aria-label="搜索文件和命令"
+      >
+        <Search size={14} strokeWidth={1.8} />
+        <span className="truncate">{rootName ? `搜索 ${rootName}` : '搜索工作区'}</span>
+        <span className="hidden flex-shrink-0 font-mono text-10 text-muted-foreground lg:inline">
+          Cmd Shift F
+        </span>
+      </button>
+
+      <div className="flex shrink-0 items-center justify-end no-drag justify-self-end">
         <button
           onClick={onToggleSearch}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            showSearch ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
-          }`}
+          className={titleButtonClass(showSearch)}
           title="搜索 (Cmd+Shift+F)"
+          aria-label="搜索"
         >
-          🔍
+          <Search size={14} strokeWidth={1.8} />
         </button>
         <button
           onClick={onToggleTerminal}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            showTerminal ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
-          }`}
+          className={titleButtonClass(showTerminal)}
           title={showTerminal ? '收起终端' : '显示终端'}
+          aria-label={showTerminal ? '收起终端' : '显示终端'}
         >
-          &gt;_
+          <SquareTerminal size={14} strokeWidth={1.8} />
         </button>
         <button
-          onClick={onToggleChat}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            showChat ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
-          }`}
-          title={showChat ? '收起对话' : '显示对话'}
+          onClick={onToggleTaskPanel}
+          className={titleButtonClass(showTaskPanel)}
+          title={showTaskPanel ? '收起任务面板' : '显示任务面板'}
+          aria-label={showTaskPanel ? '收起任务面板' : '显示任务面板'}
         >
-          💬
+          <PanelRight size={14} strokeWidth={1.8} />
         </button>
         <button
           onClick={onToggleBrowser}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            showBrowser ? 'bg-editor-active text-white' : 'hover:bg-editor-active text-gray-400'
-          }`}
+          className={titleButtonClass(showBrowser)}
           title={showBrowser ? '收起浏览器' : '内置浏览器'}
+          aria-label={showBrowser ? '收起浏览器' : '内置浏览器'}
         >
-          🌐
+          <Monitor size={14} strokeWidth={1.8} />
         </button>
         <button
           onClick={onOpenSettings}
-          className="text-xs px-2 py-1 rounded hover:bg-editor-active transition-colors"
+          className={titleButtonClass(false)}
           title="设置"
+          aria-label="设置"
         >
-          ⚙️
+          <SettingsIcon size={14} strokeWidth={1.8} />
         </button>
       </div>
     </div>

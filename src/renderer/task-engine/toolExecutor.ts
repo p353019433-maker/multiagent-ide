@@ -1,7 +1,7 @@
 /**
- * Agent tool executor — the big dispatch that runs a single tool call.
+ * Task tool executor — the big dispatch that runs a single tool call.
  *
- * Extracted from ChatPanel verbatim (behavior-preserving). All host
+ * Extracted from TaskPanel verbatim (behavior-preserving). All host
  * capabilities the tools need are injected via ToolContext so this module has
  * no React or component coupling and can be tested in isolation.
  */
@@ -10,7 +10,7 @@ import { classifyCommand } from '@shared/command-policy';
 import type { ToolCall } from '@shared/types';
 import { applyEdit } from './applyEdit';
 
-/** Action kinds for the approval gate (mirrors ChatPanel's pendingApproval). */
+/** Action kinds for the approval gate (mirrors TaskPanel's pendingApproval). */
 export type GateAction =
   | 'write'
   | 'edit'
@@ -100,7 +100,7 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'list_directory': {
       const dirPath = resolvePath(args.path as string);
       const nodes = await window.api.fs.readDirectory(dirPath);
-      return nodes.map((n: any) => `${n.isDirectory ? '📁' : '📄'} ${n.name}`).join('\n');
+      return nodes.map((n: any) => `${n.isDirectory ? '[dir]' : '[file]'} ${n.name}`).join('\n');
     }
     case 'search_files': {
       if (!rootPath) throw new Error('未打开工作区');
@@ -350,10 +350,29 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       if (files.length === 0) return '未找到匹配项';
 
       // Count exact literal occurrences per file.
+      // Skip files that are too large (>1 MB) or appear to be binary —
+      // attempting split/join on them would OOM the renderer process.
+      const MAX_REPLACE_SIZE = 1024 * 1024; // 1 MB
       const perFile: { filePath: string; content: string; occ: number }[] = [];
       let totalOcc = 0;
+      let skippedLarge = 0;
       for (const filePath of files) {
+        try {
+          const info = await window.api.fs.getFileInfo(filePath);
+          if (info.size > MAX_REPLACE_SIZE || info.isDirectory) {
+            skippedLarge++;
+            continue;
+          }
+        } catch {
+          continue; // stat failed — skip
+        }
         const content = await window.api.fs.readFile(filePath);
+        // Basic binary detection: if the first 8 KB contains a null byte it's
+        // almost certainly a binary file and text replacement is meaningless.
+        if (content.slice(0, 8192).includes('\0')) {
+          skippedLarge++;
+          continue;
+        }
         const occ = content.split(pattern).length - 1;
         if (occ > 0) {
           perFile.push({ filePath, content, occ });
@@ -361,7 +380,8 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
         }
       }
       if (totalOcc === 0) {
-        return `候选文件存在，但未找到精确字面匹配 "${pattern}"（注意：本工具按字面文本而非正则匹配，区分大小写）`;
+        const skipNote = skippedLarge ? `（跳过了 ${skippedLarge} 个大/二进制文件）` : '';
+        return `候选文件存在，但未找到精确字面匹配 "${pattern}"${skipNote}（注意：本工具按字面文本而非正则匹配，区分大小写）`;
       }
       if (dryRun) {
         return (

@@ -27,7 +27,7 @@ async function write(rel: string, content: string) {
 
 describe('tokenize', () => {
   it('splits camelCase / snake_case / kebab and lowercases', () => {
-    expect(tokenize('runHeadlessAgent')).toEqual(['run', 'headless', 'agent']);
+    expect(tokenize('runHeadlessTask')).toEqual(['run', 'headless', 'task']);
     expect(tokenize('my_func-name')).toEqual(['my', 'func', 'name']);
   });
   it('drops single-char tokens', () => {

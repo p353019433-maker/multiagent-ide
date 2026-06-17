@@ -16,6 +16,7 @@ import type { WebService } from './services/web-service';
 import type { GitHubService } from './services/github-service';
 import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
+import type { FileWatcherService } from './services/file-watcher-service';
 
 const allowedRoots = new Set<string>();
 
@@ -24,8 +25,21 @@ async function canonical(p: string): Promise<string> {
   try {
     return await fs.realpath(resolved);
   } catch {
-    const parent = await fs.realpath(path.dirname(resolved));
-    return path.join(parent, path.basename(resolved));
+    const pending: string[] = [];
+    let cursor = resolved;
+
+    while (cursor && cursor !== path.dirname(cursor)) {
+      try {
+        const real = await fs.realpath(cursor);
+        return path.join(real, ...pending.reverse());
+      } catch {
+        pending.push(path.basename(cursor));
+        cursor = path.dirname(cursor);
+      }
+    }
+
+    const realRoot = await fs.realpath(cursor || path.sep);
+    return path.join(realRoot, ...pending.reverse());
   }
 }
 
@@ -78,9 +92,11 @@ const ALLOWED_STORE_KEYS = new Set([
   'activeProviderId',
   'activeModel',
   'approvalMode',
+  'allowExternalInFull',
   'embeddingConfig',
   'rerankConfig',
   'conversationIndex',
+  'conversations',
 ]);
 
 function assertAllowedStoreKey(key: string): string {
@@ -89,7 +105,7 @@ function assertAllowedStoreKey(key: string): string {
 }
 
 function assertAllowedSecretKey(key: string): string {
-  if (key === 'github_token' || key.startsWith('apiKey:')) return key;
+  if (key === 'github_token' || key.startsWith('apiKey:') || key.startsWith('apikey_')) return key;
   throw new Error('拒绝访问通用 secret');
 }
 
@@ -116,6 +132,7 @@ export interface IpcDeps {
   githubService: GitHubService;
   analysisService: AnalysisService;
   codebaseSearchService: CodebaseSearchService;
+  fileWatcherService: FileWatcherService;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -142,7 +159,20 @@ function registerDialogIpc(): void {
   });
 }
 
-function registerFileSystemIpc({ fileService }: IpcDeps): void {
+function registerFileSystemIpc({ fileService, fileWatcherService, getMainWindow }: IpcDeps): void {
+  ipcMain.handle('fs:startWatching', async (event, rootPath: string) => {
+    assertAppOrigin(event);
+    const win = getMainWindow();
+    if (win) {
+      fileWatcherService.startWatching(await assertAllowedRoot(rootPath), win);
+    }
+  });
+  
+  ipcMain.handle('fs:stopWatching', async (event) => {
+    assertAppOrigin(event);
+    fileWatcherService.stopWatching();
+  });
+
   ipcMain.handle('fs:readDirectory', async (event, dirPath: string) => {
     assertAppOrigin(event);
     return fileService.readDirectory(await assertAllowedRoot(dirPath));
@@ -153,7 +183,9 @@ function registerFileSystemIpc({ fileService }: IpcDeps): void {
   });
   ipcMain.handle('fs:writeFile', async (event, filePath: string, content: string) => {
     assertAppOrigin(event);
-    return fileService.writeFile(await assertAllowedPath(filePath), content);
+    const allowedPath = await assertAllowedPath(filePath);
+    fileWatcherService.ignoreNext(allowedPath);
+    return fileService.writeFile(allowedPath, content);
   });
   ipcMain.handle('fs:createFile', async (event, filePath: string) => {
     assertAppOrigin(event);
@@ -475,7 +507,7 @@ function registerAnalysisIpc({ analysisService }: IpcDeps): void {
 }
 
 function registerContextIpc({ storeService }: IpcDeps): void {
-  const CONTEXT_KEY = 'agentContextMemory';
+  const CONTEXT_KEY = 'agentContextMemory'; // Legacy storage key; keep for compatibility.
   const readContextStore = (): Record<string, string> =>
     (storeService.get(CONTEXT_KEY) as Record<string, string>) || {};
 
@@ -500,8 +532,8 @@ function registerContextIpc({ storeService }: IpcDeps): void {
 }
 
 function registerRulesIpc(): void {
-  // Load project-level agent rules (like Cursor's .cursorrules / AGENTS.md).
-  // The first existing file wins; content is appended to the agent system prompt.
+  // Load project-level task rules (like Cursor's .cursorrules / AGENTS.md).
+  // The first existing file wins; content is appended to the task system prompt.
   ipcMain.handle('rules:load', async (event, root: string) => {
     assertAppOrigin(event);
     const safeRoot = await assertAllowedRoot(root);

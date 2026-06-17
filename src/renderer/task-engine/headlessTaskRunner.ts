@@ -1,9 +1,9 @@
 /**
- * Headless agent loop for background / orchestrated sub-tasks.
+ * Headless task loop for background / orchestrated sub-tasks.
  *
- * The interactive agent (useAgentEngine) is bound to React state and the global
+ * The interactive task engine (useTaskEngine) is bound to React state and the global
  * streaming IPC channels, so it can only drive ONE conversation at a time. The
- * orchestrator runs several sub-agents in parallel inside isolated git
+ * orchestrator runs several sub-tasks in parallel inside isolated git
  * worktrees, so it needs a self-contained loop that:
  *
  *   - uses the NON-streaming `ai.chat` (parallel streams would interleave on the
@@ -12,7 +12,7 @@
  *   - runs autonomously (no human to click "approve").
  *
  * Capability policy (tuned for a single-user local tool that favours automation):
- * each agent is fenced to its own worktree and may freely read, write, run
+ * each task is fenced to its own worktree and may freely read, write, run
  * commands (build/test/lint) and do LOCAL git, so it can actually implement AND
  * self-verify a sub-task. The only hard blocks are the things that are
  * outward-facing or irreversible without a human — remote/GitHub writes
@@ -20,61 +20,63 @@
  * step), and genuinely destructive shell commands (rm -rf, dd, fork bombs, force
  * push, hard reset…) caught by the shared danger classifier.
  *
- * This is what turns `orchestrate` from a text-only "复读机" into agents that can
+ * This is what turns `orchestrate` from a text-only "复读机" into task runs that can
  * actually read, edit, run, and verify changes in their workspace.
  */
 
 import { v4 as uuid } from 'uuid';
 import type { ChatMessage, ToolCall } from '@shared/types';
-import { BUILTIN_TOOLS, AGENT_SYSTEM_PROMPT } from '@shared/tools';
+import { BUILTIN_TOOLS, TASK_SYSTEM_PROMPT } from '@shared/tools';
 import { classifyCommand } from '@shared/command-policy';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
-import { resolveWorkspacePath, classifyToolError } from './agentUtils';
+import { resolveWorkspacePath, classifyToolError } from './taskUtils';
 
 const MAX_ITERATIONS = 20;
 
-/** Tools an unattended agent must not call: outward-facing or user-owned. */
+/** Tools an unattended task must not call: outward-facing or user-owned. */
 const HEADLESS_BLOCKED_TOOLS = new Set(['git_push', 'git_merge']);
 
 /**
  * Enforce the headless capability policy before a tool runs. Blocks remote /
  * integration tools outright and destructive shell commands via the shared
  * danger classifier; everything else (reads, workspace writes, safe commands,
- * local git) is allowed so the agent can implement and self-verify autonomously.
+ * local git) is allowed so the task can implement and self-verify autonomously.
  */
 function assertHeadlessToolAllowed(tc: ToolCall): void {
   if (tc.name.startsWith('github_') || HEADLESS_BLOCKED_TOOLS.has(tc.name)) {
-    throw new Error(`后台 Agent 禁止调用 ${tc.name}：无人值守模式不做远端写入/分支合并，请在界面中手动操作`);
+    throw new Error(`后台任务禁止调用 ${tc.name}：无人值守模式不做远端写入/分支合并，请在界面中手动操作`);
   }
   if (tc.name === 'run_command' || tc.name === 'run_background_command') {
     const command = String((tc.arguments as { command?: unknown })?.command ?? '');
     const risk = classifyCommand(command);
     if (risk.dangerous) {
-      throw new Error(`后台 Agent 拒绝执行高危命令（${risk.reason}）：${command}`);
+      throw new Error(`后台任务拒绝执行高危命令（${risk.reason}）：${command}`);
     }
   }
 }
 
-export interface HeadlessAgentResult {
-  /** The agent's final assistant text. */
+export interface HeadlessTaskResult {
+  /** The task runner's final assistant text. */
   content: string;
   /** How many model round-trips ran. */
   iterations: number;
-  /** Absolute paths the agent wrote to (deduped). */
+  /** Absolute paths the task wrote to (deduped). */
   editedFiles: string[];
   /** Set when the loop ended abnormally (cap hit, error, stuck). */
   note?: string;
 }
 
-export interface HeadlessAgentParams {
+export interface HeadlessTaskParams {
   providerId: string;
   model: string;
-  /** Absolute path of the isolated worktree this agent operates in. */
+  /** Absolute path of the isolated worktree this task operates in. */
   workspaceRoot: string;
   /** The sub-task instruction. */
   task: string;
-  /** Optional extra system guidance appended to the base agent prompt. */
+  /** Optional extra system guidance appended to the base task prompt. */
   systemPromptSuffix?: string;
+  /** Callback fired when a file is written. */
+  onFileWritten?: (path: string) => void;
 }
 
 /** Run a tool with exponential-backoff retry on transient (retriable) errors. */
@@ -99,28 +101,36 @@ async function runToolWithRetry(tc: ToolCall, ctx: ToolContext, maxAttempts = 3)
  * failures are captured into the returned `content`/`note` so the orchestrator
  * can record a per-task status without aborting its siblings.
  */
-export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<HeadlessAgentResult> {
-  const { providerId, model, workspaceRoot, task, systemPromptSuffix } = params;
+export async function runHeadlessTask(params: HeadlessTaskParams): Promise<HeadlessTaskResult> {
+  const { providerId, model, workspaceRoot, task, systemPromptSuffix, onFileWritten } = params;
 
   const editedFiles = new Set<string>();
   const ctx: ToolContext = {
     rootPath: workspaceRoot,
     resolvePath: (p: string) => resolveWorkspacePath(workspaceRoot, p),
     // Policy is enforced at the tool gate (assertHeadlessToolAllowed): whatever
-    // reaches a tool is already vetted, so the approval gate auto-approves —
-    // there is no human to prompt in unattended mode.
-    gateAction: async () => true,
+    // reaches a tool is already vetted by the blocklist. The gate additionally
+    // blocks writes to .git/ (malicious hooks) and rejects dangerous commands
+    // caught by the classifier — but allows safe commands so the task can
+    // build/test/lint in its worktree without human input.
+    gateAction: async (_toolCallId, label, kind, _before, _after, _action, opts) => {
+      if (typeof label === 'string' && /[\/\\]\.git[\/\\]/i.test(label)) return false;
+      if (kind === 'write' && !opts?.dangerous) return true;
+      if (kind === 'command' && !opts?.dangerous) return true;
+      return false;
+    },
     writeFileTracked: async (filePath: string, content: string) => {
       await window.api.fs.writeFile(filePath, content);
       editedFiles.add(filePath);
+      onFileWritten?.(filePath);
     },
-    // Background agents don't act on GitHub; surface a clear failure if they try.
+    // Background tasks don't act on GitHub; surface a clear failure if they try.
     getGitHubContext: async () => ({ token: null, info: null }),
   };
 
   const systemPrompt = systemPromptSuffix
-    ? `${AGENT_SYSTEM_PROMPT}\n\n${systemPromptSuffix}`
-    : AGENT_SYSTEM_PROMPT;
+    ? `${TASK_SYSTEM_PROMPT}\n\n${systemPromptSuffix}`
+    : TASK_SYSTEM_PROMPT;
 
   let messages: ChatMessage[] = [
     { id: uuid(), role: 'user', content: task, timestamp: Date.now() },
@@ -161,7 +171,7 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
 
     if (!result.toolCalls?.length || result.finishReason !== 'tool_calls') {
       messages = [...messages, assistantMsg];
-      // Self-verify once: if the agent edited files, run lint/type-check on them
+      // Self-verify once: if the task edited files, run lint/type-check on them
       // and feed any errors back so it can fix them before finishing. Enabled by
       // the shared node_modules symlink, which lets tsc/eslint run in the worktree.
       if (!selfHealAttempted && editedFiles.size > 0) {
@@ -188,10 +198,10 @@ export async function runHeadlessAgent(params: HeadlessAgentParams): Promise<Hea
           continue;
         }
       }
-      break; // agent considers the task done
+      break; // task runner considers the task done
     }
 
-    // Detect a stuck agent repeating identical calls with no progress.
+    // Detect a stuck task repeating identical calls with no progress.
     const signature = JSON.stringify(result.toolCalls.map((tc) => [tc.name, tc.arguments]));
     repeatCount = signature === lastSignature ? repeatCount + 1 : 0;
     lastSignature = signature;
