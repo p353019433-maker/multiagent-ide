@@ -144,7 +144,9 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const res = await window.api.codebase.search(rootPath, query, limit);
       if (!res.hits.length) return `未找到与 "${query}" 相关的代码`;
       const modeLabel =
-        res.mode === 'embedding'
+        res.mode === 'hybrid'
+          ? '混合检索（向量+词法 RRF 融合）'
+          : res.mode === 'embedding'
           ? '向量语义检索'
           : res.mode === 'text'
           ? '全文检索（符号索引无命中）'

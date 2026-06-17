@@ -7,7 +7,6 @@
 import { ipcMain, dialog, safeStorage, BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
-import type { ChatMessage, ChatOptions, FimRequest } from '../shared/types';
 import type { FileService } from './services/file-service';
 import type { TerminalService } from './services/terminal-service';
 import type { StoreService } from './services/store-service';
@@ -19,16 +18,6 @@ import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
 
 const allowedRoots = new Set<string>();
-
-/**
- * Allowlist of secret-store keys that may be decrypted through the
- * `store:decryptAndGet` IPC channel. The general `store:get` channel can
- * read any key (it returns whatever was stored, encrypted or not), but the
- * *decrypt* path is intentionally narrower so a renderer-side bug can't be
- * leveraged to dump every encrypted secret in the store. Add a key here
- * only if a feature truly needs to read it back as plaintext.
- */
-const DECRYPTABLE_SECRETS: ReadonlySet<string> = new Set(['github_token']);
 
 async function canonical(p: string): Promise<string> {
   const resolved = path.resolve(p);
@@ -64,6 +53,18 @@ async function assertAllowedRoot(root: string): Promise<string> {
   return assertAllowedPath(root, { allowRoot: true });
 }
 
+async function assertAllowedWorktreePath(repoRoot: string, requestedPath: string): Promise<string> {
+  const repoParent = path.dirname(repoRoot);
+  const repoBase = path.basename(repoRoot);
+  const allowedParent = await canonical(path.join(repoParent, `${repoBase}_wt`));
+  const real = await canonical(requestedPath);
+  const rel = path.relative(allowedParent, real);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`拒绝创建 worktree：路径必须位于 ${allowedParent} 内`);
+  }
+  return real;
+}
+
 function assertAppOrigin(event: IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url || '';
   if (url.startsWith('file://')) return;
@@ -71,6 +72,38 @@ function assertAppOrigin(event: IpcMainInvokeEvent): void {
   throw new Error(`拒绝来自非应用页面的 IPC: ${url}`);
 }
 
+
+const ALLOWED_STORE_KEYS = new Set([
+  'providers',
+  'activeProviderId',
+  'activeModel',
+  'approvalMode',
+  'embeddingConfig',
+  'rerankConfig',
+  'conversationIndex',
+]);
+
+function assertAllowedStoreKey(key: string): string {
+  if (ALLOWED_STORE_KEYS.has(key) || key.startsWith('conv:')) return key;
+  throw new Error(`拒绝访问 store key: ${key}`);
+}
+
+function assertAllowedSecretKey(key: string): string {
+  if (key === 'github_token' || key.startsWith('apiKey:')) return key;
+  throw new Error('拒绝访问通用 secret');
+}
+
+function assertSafeGitRef(ref: string, label: string): string {
+  if (!ref || ref.length > 200 || /[\0\n\r~^:?*[\\]/.test(ref) || ref.includes('..') || ref.endsWith('.lock')) {
+    throw new Error(`非法 ${label}: ${ref}`);
+  }
+  return ref;
+}
+
+function assertMergeMethod(method: string): 'merge' | 'squash' | 'rebase' {
+  if (method === 'merge' || method === 'squash' || method === 'rebase') return method;
+  throw new Error(`非法合并方式: ${method}`);
+}
 
 export interface IpcDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -132,18 +165,7 @@ function registerFileSystemIpc({ fileService }: IpcDeps): void {
   });
   ipcMain.handle('fs:delete', async (event, targetPath: string) => {
     assertAppOrigin(event);
-    // Defense in depth: refuse to delete the root of any authorized workspace,
-    // and reject empty / excessively short targets. Recursive `rm` is forced
-    // by file-service, so a mistaken root target would wipe the entire
-    // workspace (or any other authorized root such as a worktree).
-    const safe = await assertAllowedPath(targetPath);
-    const realSafe = await canonical(safe);
-    for (const root of allowedRoots) {
-      if (realSafe === root) {
-        throw new Error('拒绝删除工作区根目录');
-      }
-    }
-    return fileService.delete(safe);
+    return fileService.delete(await assertAllowedPath(targetPath));
   });
   ipcMain.handle('fs:rename', async (event, oldPath: string, newPath: string) => {
     assertAppOrigin(event);
@@ -214,24 +236,28 @@ function registerTerminalIpc({ terminalService, getMainWindow }: IpcDeps): void 
 }
 
 function registerStoreIpc({ storeService }: IpcDeps): void {
-  ipcMain.handle('store:get', (event, key: string) => { assertAppOrigin(event); return storeService.get(key); });
-  ipcMain.handle('store:set', (event, key: string, value: unknown) => { assertAppOrigin(event); return storeService.set(key, value); });
+  ipcMain.handle('store:get', (event, key: string) => {
+    assertAppOrigin(event);
+    return storeService.get(assertAllowedStoreKey(key));
+  });
+  ipcMain.handle('store:set', (event, key: string, value: unknown) => {
+    assertAppOrigin(event);
+    return storeService.set(assertAllowedStoreKey(key), value);
+  });
   ipcMain.handle('store:encryptAndStore', (event, key: string, value: string) => {
     assertAppOrigin(event);
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error(
-        '系统未启用密钥环加密 (safeStorage 不可用)。为保护敏感字段，请仅在 macOS / Windows / ' +
-          '已配置 libsecret 的 Linux 上保存 secret。'
-      );
+    const safeKey = assertAllowedSecretKey(key);
+    if (safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(value);
+      storeService.set(safeKey, encrypted.toString('base64'));
+      return true;
     }
-    const encrypted = safeStorage.encryptString(value);
-    storeService.set(key, encrypted.toString('base64'));
-    return true;
+    return false;
   });
   ipcMain.handle('store:decryptAndGet', (event, key: string) => {
     assertAppOrigin(event);
-    if (!DECRYPTABLE_SECRETS.has(key)) throw new Error('拒绝读取通用 secret');
-    const encrypted = storeService.get(key) as string | undefined;
+    const safeKey = assertAllowedSecretKey(key);
+    const encrypted = storeService.get(safeKey) as string | undefined;
     if (!encrypted) return null;
     if (safeStorage.isEncryptionAvailable()) {
       return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
@@ -241,15 +267,9 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
 }
 
 function registerAIIpc({ aiService }: IpcDeps): void {
-  // Cast `unknown` from the wire to the service's expected shape. The trust
-  // boundary is at preload's contextBridge — the renderer's structuredClone
-  // already serializes by JSON-compatible types. The `as unknown as` double
-  // hop is intentional: it forces TS to require an explicit re-assertion at
-  // every boundary, so a future schema drift in @shared/types is visible
-  // here rather than silently corrupting downstream calls.
   ipcMain.handle('ai:chat', (event, providerId: string, messages: unknown[], options: unknown) => {
     assertAppOrigin(event);
-    return aiService.chat(providerId, messages as unknown as ChatMessage[], options as unknown as ChatOptions);
+    return aiService.chat(providerId, messages as any, options as any);
   });
   ipcMain.handle('ai:chatStream', async (event, providerId: string, messages: unknown[], options: unknown) => {
     assertAppOrigin(event);
@@ -262,18 +282,12 @@ function registerAIIpc({ aiService }: IpcDeps): void {
         // Window was closed during streaming, ignore
       }
     };
-    await aiService.chatStream(
-      senderId,
-      providerId,
-      messages as unknown as ChatMessage[],
-      options as unknown as ChatOptions,
-      {
-        onToken: (token: string) => safeSend('ai:stream-token', token),
-        onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', toolCall),
-        onComplete: (result: unknown) => safeSend('ai:stream-complete', result),
-        onError: (error: string) => safeSend('ai:stream-error', error),
-      }
-    );
+    await aiService.chatStream(senderId, providerId, messages as any, options as any, {
+      onToken: (token: string) => safeSend('ai:stream-token', token),
+      onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', toolCall),
+      onComplete: (result: unknown) => safeSend('ai:stream-complete', result),
+      onError: (error: string) => safeSend('ai:stream-error', error),
+    });
   });
   ipcMain.handle('ai:abort', (event) => {
     assertAppOrigin(event);
@@ -285,7 +299,7 @@ function registerAIIpc({ aiService }: IpcDeps): void {
   });
   ipcMain.handle('ai:fimComplete', (event, req: unknown) => {
     assertAppOrigin(event);
-    return aiService.fimComplete(req as unknown as FimRequest);
+    return aiService.fimComplete(req as any);
   });
   ipcMain.handle('ai:supportsFim', (event, providerId: string, model: string) => {
     assertAppOrigin(event);
@@ -321,26 +335,9 @@ function registerGitIpc({ gitService }: IpcDeps): void {
   ipcMain.handle('git:worktreeAdd', async (event, cwd: string, p: string, name: string, base?: string) => {
     assertAppOrigin(event);
     const safeCwd = await assertAllowedRoot(cwd);
-    const res = await gitService.worktreeAdd(safeCwd, path.resolve(p), name, base);
-    // Only trust the path git reports back if it is physically inside an
-    // already-authorized root. Without this check a malicious call like
-    // `worktreeAdd(cwd, '/tmp/evil', 'x')` would smuggle `/tmp/evil` into the
-    // allowedRoots set and grant the agent read/write access to it.
-    if (res.success && res.path) {
-      const real = await canonical(res.path);
-      let inside = false;
-      for (const root of allowedRoots) {
-        const rel = path.relative(root, real);
-        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-          inside = true;
-          break;
-        }
-      }
-      if (!inside) {
-        return { ...res, success: false, message: 'worktree 路径必须在已授权工作区之下' };
-      }
-      await allowRoot(real);
-    }
+    const safePath = await assertAllowedWorktreePath(safeCwd, p);
+    const res = await gitService.worktreeAdd(safeCwd, safePath, name, base);
+    if (res.success && res.path) await allowRoot(res.path);
     return res;
   });
   ipcMain.handle('git:authorizeWorktrees', async (event, cwd: string) => {
@@ -359,15 +356,22 @@ function registerGitIpc({ gitService }: IpcDeps): void {
     return authorized;
   });
   ipcMain.handle('git:worktreeList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreeList(await assertAllowedRoot(cwd)); });
-  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p)); });
+  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string, deleteBranch?: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p), deleteBranch); });
   ipcMain.handle('git:worktreePrune', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreePrune(await assertAllowedRoot(cwd)); });
   ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string, targetBranch?: string) => {
     assertAppOrigin(event);
-    return gitService.worktreeMerge(await assertAllowedRoot(cwd), sourceBranch, method as any, targetBranch);
+    const safeMethod = assertMergeMethod(method);
+    const safeSource = assertSafeGitRef(sourceBranch, 'sourceBranch');
+    const safeTarget = targetBranch ? assertSafeGitRef(targetBranch, 'targetBranch') : undefined;
+    return gitService.worktreeMerge(await assertAllowedRoot(cwd), safeSource, safeMethod, safeTarget);
   });
   ipcMain.handle('git:worktreeMergeDiff', async (event, cwd: string, baseBranch: string, headBranch: string) => {
     assertAppOrigin(event);
-    return gitService.worktreeMergeDiff(await assertAllowedRoot(cwd), baseBranch, headBranch);
+    return gitService.worktreeMergeDiff(
+      await assertAllowedRoot(cwd),
+      assertSafeGitRef(baseBranch, 'baseBranch'),
+      assertSafeGitRef(headBranch, 'headBranch')
+    );
   });
 }
 

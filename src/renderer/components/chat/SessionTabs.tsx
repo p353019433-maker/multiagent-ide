@@ -75,8 +75,7 @@ export default function SessionTabs({
         mergeTarget.worktree.baseBranch
       );
       if (!res.success) throw new Error(res.message);
-      await window.api.git.push(workspaceRoot!, 'origin', mergeTarget.worktree.baseBranch);
-      alert(`合并成功：${res.message}\n已推送 ${mergeTarget.worktree.baseBranch} 到 origin`);
+      alert(`合并成功：${res.message}\n已保留为本地改动；确认无误后再手动 push 到远端。`);
       setMergeTarget(null);
     } catch (e: any) {
       setMergeError(e.message || String(e));
@@ -88,7 +87,7 @@ export default function SessionTabs({
     if (!confirm(`删除 ${conv.worktree.branch} 的 worktree 和分支？`)) return;
     try {
       await ensureKnownWorktree(conv);
-      await window.api.git.worktreeRemove(workspaceRoot!, conv.worktree.path);
+      await window.api.git.worktreeRemove(workspaceRoot!, conv.worktree.path, conv.worktree.branch);
       alert('Worktree 已清理');
       onDelete(conv.id);
     } catch (e: any) {

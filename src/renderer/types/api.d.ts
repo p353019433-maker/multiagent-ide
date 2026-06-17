@@ -3,7 +3,7 @@ import type { FileNode } from '@shared/types';
 interface CodebaseSearchResult {
   hits: { file: string; line: number; kind: string; name: string; score: number }[];
   fellBack: boolean;
-  mode?: 'embedding' | 'symbol' | 'text';
+  mode?: 'hybrid' | 'embedding' | 'symbol' | 'text';
 }
 
 declare global {
@@ -98,7 +98,7 @@ declare global {
         ) => Promise<{ success: boolean; path: string; message: string }>;
         authorizeWorktrees: (cwd: string) => Promise<string[]>;
         worktreeList: (cwd: string) => Promise<any[]>;
-        worktreeRemove: (cwd: string, path: string) => Promise<void>;
+        worktreeRemove: (cwd: string, path: string, deleteBranch?: string) => Promise<{ success: boolean; message: string }>;
         worktreePrune: (cwd: string) => Promise<void>;
         worktreeMerge: (
           cwd: string,

@@ -10,40 +10,24 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import crypto from 'crypto';
+import { Worker } from 'worker_threads';
+import {
+  tokenize,
+  scanSymbols,
+  scanChunks,
+  type SymbolEntry,
+  type FileEntry,
+  type RawChunk,
+} from './index-scan';
+import { Bm25Index } from './bm25';
 
-const IGNORED_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  '.next',
-  '.cache',
-  'release',
-  '__pycache__',
-  '.svn',
-  'coverage',
-]);
-
-const CODE_EXTS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
-  '.py', '.go', '.rs', '.java', '.rb', '.php', '.c', '.h',
-  '.cpp', '.cc', '.cs', '.swift', '.kt', '.scala', '.vue', '.svelte',
-]);
-
-interface SymbolEntry {
-  name: string;
-  kind: string;
+/** A single searchable unit (a symbol or a bare file) with its lexical tokens. */
+interface SearchDoc {
   file: string;
   line: number;
-  /** Lower-cased name split into word parts for matching */
+  kind: string;
+  name: string;
   tokens: string[];
-}
-
-interface FileEntry {
-  file: string;
-  /** Lower-cased path words, for path-based matching */
-  pathTokens: string[];
 }
 
 export interface CodebaseSearchHit {
@@ -54,32 +38,10 @@ export interface CodebaseSearchHit {
   score: number;
 }
 
-const SYMBOL_PATTERNS: { re: RegExp; kind: string; group: number }[] = [
-  { re: /(?:export\s+)?(?:async\s+)?function\s+(\w+)/, kind: 'function', group: 1 },
-  { re: /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(/, kind: 'function', group: 1 },
-  { re: /(?:export\s+)?class\s+(\w+)/, kind: 'class', group: 1 },
-  { re: /(?:export\s+)?interface\s+(\w+)/, kind: 'interface', group: 1 },
-  { re: /(?:export\s+)?type\s+(\w+)/, kind: 'type', group: 1 },
-  { re: /(?:export\s+)?enum\s+(\w+)/, kind: 'enum', group: 1 },
-  // Python / Go / Rust style
-  { re: /^\s*def\s+(\w+)/, kind: 'function', group: 1 },
-  { re: /^\s*class\s+(\w+)/, kind: 'class', group: 1 },
-  { re: /^\s*func\s+(?:\([^)]*\)\s*)?(\w+)/, kind: 'function', group: 1 },
-  { re: /^\s*(?:pub\s+)?fn\s+(\w+)/, kind: 'function', group: 1 },
-];
-
-/** Split an identifier or phrase into lowercase word tokens (camelCase, snake_case, kebab). */
-function tokenize(s: string): string[] {
-  return s
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .map((t) => t.toLowerCase())
-    .filter((t) => t.length > 1);
-}
-
 export class IndexService {
   private symbols: SymbolEntry[] = [];
-  private files: FileEntry[] = [];
+  private docs: SearchDoc[] = [];
+  private bm25: Bm25Index | null = null;
   private indexedRoot: string | null = null;
   private indexedAt = 0;
   private buildingSymbols = new Map<string, Promise<void>>();
@@ -98,109 +60,100 @@ export class IndexService {
   }
 
   private async build(root: string): Promise<void> {
-    const symbols: SymbolEntry[] = [];
-    const files: FileEntry[] = [];
-    let fileCount = 0;
-
-    const walk = async (dir: string): Promise<void> => {
-      if (fileCount > 5000) return; // hard cap to stay responsive
-      let entries;
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        // Never follow symlinks — a link pointing outside the workspace would
-        // let the indexer read & embed arbitrary files (e.g. /Users, /etc).
-        if (entry.isSymbolicLink() || entry.isFIFO() || entry.isSocket()) continue;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (CODE_EXTS.has(path.extname(entry.name))) {
-          fileCount++;
-          const rel = path.relative(root, full);
-          files.push({ file: rel, pathTokens: tokenize(rel) });
-          try {
-            const stat = await fs.stat(full);
-            if (stat.size > 512 * 1024) continue; // skip huge files for symbol scan
-            const content = await fs.readFile(full, 'utf-8');
-            const lines = content.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-              for (const { re, kind, group } of SYMBOL_PATTERNS) {
-                const m = lines[i].match(re);
-                if (m && m[group]) {
-                  const name = m[group];
-                  symbols.push({ name, kind, file: rel, line: i + 1, tokens: tokenize(name) });
-                  break;
-                }
-              }
-            }
-          } catch {
-            // skip unreadable files
-          }
-        }
-      }
-    };
-
-    await walk(root);
+    // Run the heavy walk + regex off the main thread; fall back to inline if the
+    // worker can't be spawned (e.g. unit tests, or a packaging mishap).
+    const { symbols, files } = await this.scanOffThread<{ symbols: SymbolEntry[]; files: FileEntry[] }>(
+      'symbols',
+      root,
+      () => scanSymbols(root)
+    );
     this.symbols = symbols;
-    this.files = files;
+
+    // Build a unified lexical doc set: every symbol, plus each file (so files
+    // with no extracted symbols are still findable by path). The BM25 index over
+    // these docs is the lexical half of hybrid search.
+    const docs: SearchDoc[] = symbols.map((s) => ({
+      file: s.file,
+      line: s.line,
+      kind: s.kind,
+      name: s.name,
+      tokens: [...s.tokens, ...tokenize(s.file)],
+    }));
+    for (const f of files) {
+      docs.push({ file: f.file, line: 1, kind: 'file', name: path.basename(f.file), tokens: f.pathTokens });
+    }
+    this.docs = docs;
+    this.bm25 = new Bm25Index(docs.map((d, i) => ({ id: i, tokens: d.tokens })));
+
     this.indexedRoot = root;
     this.indexedAt = Date.now();
   }
 
   /**
-   * Rank symbols + files by relevance to the query. Scoring favors exact and
-   * prefix matches on symbol names, then partial token overlap, then path hits.
+   * Run a scan in a worker thread, resolving with its plain-data result. If the
+   * worker fails to start or errors, transparently fall back to running the
+   * same scan inline so indexing degrades gracefully instead of breaking.
+   */
+  private async scanOffThread<R>(
+    mode: 'symbols' | 'chunks',
+    root: string,
+    inline: () => Promise<R>
+  ): Promise<R> {
+    try {
+      return await new Promise<R>((resolve, reject) => {
+        let settled = false;
+        const finish = (fn: typeof resolve | typeof reject, value: any) => {
+          if (settled) return;
+          settled = true;
+          void worker.terminate();
+          fn(value);
+        };
+        const worker = new Worker(path.join(__dirname, 'index-worker.js'), {
+          workerData: { root, mode },
+        });
+        worker.once('message', (msg: any) => {
+          if (msg?.ok) {
+            finish(resolve, (mode === 'symbols' ? { symbols: msg.symbols, files: msg.files } : msg.chunks) as R);
+          } else {
+            finish(reject, new Error(msg?.error || 'index worker failed'));
+          }
+        });
+        worker.once('error', (err) => {
+          finish(reject, err);
+        });
+        worker.once('exit', (code) => {
+          if (!settled && code !== 0) {
+            finish(reject, new Error(`index worker exited with code ${code}`));
+          }
+        });
+      });
+    } catch {
+      return inline();
+    }
+  }
+
+  /**
+   * Lexical search: BM25 over the symbol/file doc set, then a heuristic rerank
+   * that lifts exact / substring name matches above pure token-frequency hits.
    */
   search(query: string, limit = 10): CodebaseSearchHit[] {
     const qTokens = tokenize(query);
-    if (qTokens.length === 0) return [];
+    if (qTokens.length === 0 || !this.bm25) return [];
     const qLower = query.toLowerCase();
 
-    const hits: CodebaseSearchHit[] = [];
-
-    for (const sym of this.symbols) {
-      const nameLower = sym.name.toLowerCase();
-      let score = 0;
-
-      // Strong signals on the symbol name itself.
-      if (nameLower === qLower) score += 100;
-      else if (qLower.includes(nameLower) || nameLower.includes(qLower)) score += 40;
-
-      // Token overlap between query and symbol name.
-      let overlap = 0;
-      for (const qt of qTokens) {
-        if (sym.tokens.includes(qt)) overlap += 1;
-        else if (sym.tokens.some((t) => t.startsWith(qt) || qt.startsWith(t))) overlap += 0.5;
-      }
-      score += (overlap / qTokens.length) * 50;
-
-      // Mild boost when the file path also matches the query intent.
-      const pathTokens = tokenize(sym.file);
-      const pathOverlap = qTokens.filter((qt) => pathTokens.includes(qt)).length;
-      score += pathOverlap * 5;
-
-      if (score > 0) {
-        hits.push({ file: sym.file, line: sym.line, kind: sym.kind, name: sym.name, score });
-      }
-    }
-
-    // File-path level matches (covers files with no extracted symbols).
-    for (const f of this.files) {
-      const overlap = qTokens.filter((qt) => f.pathTokens.includes(qt)).length;
-      if (overlap > 0) {
-        hits.push({
-          file: f.file,
-          line: 1,
-          kind: 'file',
-          name: path.basename(f.file),
-          score: overlap * 8,
-        });
-      }
-    }
+    // Pull a generous BM25 candidate pool, then rerank within it.
+    const candidates = this.bm25.search(qTokens, Math.max(limit * 5, 50));
+    const hits: CodebaseSearchHit[] = candidates.map(({ id, score }) => {
+      const doc = this.docs[id];
+      const nameLower = doc.name.toLowerCase();
+      let boost = 0;
+      // Exact and substring name agreement are strong navigational signals.
+      if (nameLower === qLower) boost += 1000;
+      else if (nameLower.includes(qLower) || qLower.includes(nameLower)) boost += 100;
+      // A concrete symbol is usually more useful than a bare file hit.
+      if (doc.kind !== 'file' && doc.kind !== 'text') boost += 5;
+      return { file: doc.file, line: doc.line, kind: doc.kind, name: doc.name, score: score + boost };
+    });
 
     hits.sort((a, b) => b.score - a.score);
 
@@ -236,6 +189,7 @@ export class IndexService {
 
   private vectors: ChunkVector[] = [];
   private embeddedRoot: string | null = null;
+  private embeddedAt = 0;
   private buildingEmbeds = new Map<string, Promise<void>>();
 
   /**
@@ -252,6 +206,8 @@ export class IndexService {
     embed: (texts: string[]) => Promise<number[][]>,
     cacheFile: string
   ): Promise<void> {
+    const fresh = this.embeddedRoot === root && Date.now() - this.embeddedAt < 60_000;
+    if (fresh && this.vectors.length > 0) return;
     let promise = this.buildingEmbeds.get(root);
     if (promise) return promise;
     promise = this.buildEmbeddings(root, embed, cacheFile).finally(() => {
@@ -273,8 +229,8 @@ export class IndexService {
     }
     const cached = new Map(this.vectors.map((v) => [v.hash, v]));
 
-    // Collect chunks across the workspace.
-    const chunks = await this.collectChunks(root);
+    // Collect chunks across the workspace (off-thread, with inline fallback).
+    const chunks = await this.scanOffThread<RawChunk[]>('chunks', root, () => scanChunks(root));
 
     // Figure out which chunks are new (not in cache).
     const pending = chunks.filter((c) => !cached.has(c.hash));
@@ -328,63 +284,8 @@ export class IndexService {
     }
 
     this.vectors = next;
+    this.embeddedAt = Date.now();
     await this.saveVectorCache(cacheFile, next);
-  }
-
-  /** Chunk all code files into overlapping line windows. */
-  private async collectChunks(root: string): Promise<RawChunk[]> {
-    const chunks: RawChunk[] = [];
-    const WINDOW = 60;
-    const OVERLAP = 12;
-    let fileCount = 0;
-
-    const walk = async (dir: string): Promise<void> => {
-      if (fileCount > 4000) return;
-      let entries;
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        // Never follow symlinks — see build() for rationale.
-        if (entry.isSymbolicLink() || entry.isFIFO() || entry.isSocket()) continue;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (CODE_EXTS.has(path.extname(entry.name))) {
-          fileCount++;
-          try {
-            const stat = await fs.stat(full);
-            if (stat.size > 256 * 1024) continue;
-            const content = await fs.readFile(full, 'utf-8');
-            const rel = path.relative(root, full);
-            const lines = content.split('\n');
-            for (let start = 0; start < lines.length; start += WINDOW - OVERLAP) {
-              const slice = lines.slice(start, start + WINDOW);
-              const text = slice.join('\n').trim();
-              if (text.length < 20) continue;
-              // Prefix with the path so the embedding captures file context.
-              const payload = `// ${rel}\n${text}`;
-              chunks.push({
-                file: rel,
-                startLine: start + 1,
-                endLine: Math.min(start + WINDOW, lines.length),
-                text: payload,
-                hash: hashString(rel + ':' + start + ':' + payload),
-              });
-              if (start + WINDOW >= lines.length) break;
-            }
-          } catch {
-            // skip unreadable
-          }
-        }
-      }
-    };
-
-    await walk(root);
-    return chunks;
   }
 
   /** Cosine-similarity search over the embedding index. */
@@ -429,32 +330,12 @@ export class IndexService {
   }
 }
 
-interface RawChunk {
-  file: string;
-  startLine: number;
-  endLine: number;
-  text: string;
-  hash: string;
-}
-
 interface ChunkVector {
   file: string;
   startLine: number;
   endLine: number;
   hash: string;
   vector: number[];
-}
-
-/**
- * sha-256 truncated to 16 hex chars for chunk content keying. The previous
- * 32-bit FNV-1a hash was cheap but trivially collidable — a workspace with
- * adversarial content could craft two distinct chunks with the same hash,
- * causing the embedding/symbol index to serve stale vectors for code that
- * has actually changed. 64 bits of sha-256 is still cheap on chunks ≤2KB
- * and is collision-resistant for our use.
- */
-function hashString(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
