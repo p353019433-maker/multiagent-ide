@@ -1,6 +1,6 @@
 import React from 'react';
-import { FileText, RotateCcw, ShieldCheck, ShieldOff } from 'lucide-react';
-import type { Artifact, Checkpoint } from '@shared/types';
+import { Check, ChevronDown, ChevronRight, FileText, RotateCcw, ShieldCheck, ShieldOff } from 'lucide-react';
+import type { Artifact, Checkpoint, PlanStep } from '@shared/types';
 import { type ApprovalMode, APPROVAL_MODE_META } from '@shared/command-policy';
 import type { PendingApproval } from '../../task-engine/useApproval';
 import DiffPreview from '../editor/DiffPreview';
@@ -67,6 +67,73 @@ export function AgentRunBar({ isStreaming, awaitingApproval, toolCount, runningC
         )}
       </span>
     </div>
+  );
+}
+
+const PLAN_STATE_META: Record<PlanStep['status'], { label: string; cls: string }> = {
+  pending: { label: '待办', cls: 'text-muted-foreground' },
+  in_progress: { label: '进行中', cls: 'text-yellow-400' },
+  completed: { label: '完成', cls: 'text-emerald-400' },
+};
+
+/**
+ * Agent execution plan card (Open Design `agent-plan`), rendered below the run-
+ * bar. Reflects the live plan the model maintains via the update_plan tool;
+ * collapsible and read-only. Renders nothing until a plan exists.
+ */
+export function AgentPlan({ steps }: { steps: PlanStep[] }) {
+  const [collapsed, setCollapsed] = React.useState(false);
+  if (!steps.length) return null;
+  const done = steps.filter((s) => s.status === 'completed').length;
+
+  return (
+    <section className="border-b border-editor-border bg-editor-bg">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="flex h-8 w-full items-center gap-2 px-3 text-left"
+        aria-expanded={!collapsed}
+      >
+        <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">执行计划</span>
+        <span className="font-mono text-10 tabular-nums text-muted-foreground">
+          {done}/{steps.length}
+        </span>
+        <span className="ml-auto text-muted-foreground">
+          {collapsed ? <ChevronRight size={13} strokeWidth={1.8} /> : <ChevronDown size={13} strokeWidth={1.8} />}
+        </span>
+      </button>
+      {!collapsed && (
+        <div className="pb-1">
+          {steps.map((s, i) => {
+            const meta = PLAN_STATE_META[s.status];
+            return (
+              <div
+                key={i}
+                className={`grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1 text-xs ${
+                  s.status === 'in_progress' ? 'bg-yellow-400/5' : ''
+                }`}
+              >
+                <span className="flex items-center justify-center">
+                  {s.status === 'completed' ? (
+                    <Check size={13} strokeWidth={2} className="text-emerald-400" />
+                  ) : (
+                    <span className="font-mono text-10 tabular-nums text-muted-foreground">{i + 1}</span>
+                  )}
+                </span>
+                <span
+                  className={`min-w-0 truncate ${
+                    s.status === 'completed' ? 'text-muted-foreground line-through' : 'text-editor-text'
+                  }`}
+                >
+                  {s.content}
+                </span>
+                <span className={`font-mono text-10 ${meta.cls}`}>{meta.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -13,6 +13,7 @@ import type {
   TaskToolExecution,
   Checkpoint,
   Artifact,
+  PlanStep,
 } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
@@ -51,6 +52,8 @@ export function useTaskEngine(deps: TaskEngineDeps) {
   // Token usage of the latest model round-trip this turn — surfaced in the
   // Agent run-bar so the cost of the current context is glanceable.
   const [turnTokens, setTurnTokens] = useState(0);
+  // Live Agent execution plan, set via the update_plan tool. Reset each turn.
+  const [plan, setPlan] = useState<PlanStep[]>([]);
 
   // Guard against state updates after unmount (e.g. when the component is
   // torn down while a long-running task turn is still in flight).
@@ -65,6 +68,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
   const safeSetCheckpoints: typeof setCheckpoints = (v) => { if (mountedRef.current) setCheckpoints(v); };
   const safeSetArtifacts: typeof setArtifacts = (v) => { if (mountedRef.current) setArtifacts(v); };
   const safeSetTurnTokens: typeof setTurnTokens = (v) => { if (mountedRef.current) setTurnTokens(v); };
+  const safeSetPlan: typeof setPlan = (v) => { if (mountedRef.current) setPlan(v); };
 
   // Snapshots of files captured before the current turn modifies them.
   // Instead of holding full file content in memory (which causes OOM on
@@ -131,6 +135,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
     gateAction,
     writeFileTracked,
     getGitHubContext,
+    onPlanUpdate: (steps) => safeSetPlan(steps),
   };
 
   /** Run a tool, retrying transient failures with exponential backoff. */
@@ -194,6 +199,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
     safeSetStreamContent('');
     safeSetToolExecutions([]);
     safeSetTurnTokens(0);
+    safeSetPlan([]);
     // Begin a new turn: reset checkpoint/edit trackers.
     turnSnapshots.current = new Map();
     turnEditedFiles.current = new Set();
@@ -493,6 +499,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
     checkpoints,
     artifacts,
     turnTokens,
+    plan,
     runTurn,
     abort,
     revertCheckpoint,

@@ -7,7 +7,7 @@
  */
 
 import { classifyCommand } from '@shared/command-policy';
-import type { ToolCall } from '@shared/types';
+import type { ToolCall, PlanStep } from '@shared/types';
 import { applyEdit } from './applyEdit';
 
 /** Action kinds for the approval gate (mirrors TaskPanel's pendingApproval). */
@@ -40,6 +40,8 @@ export interface ToolContext {
     token: string | null;
     info: { owner: string; repo: string } | null;
   }>;
+  /** Push the latest Agent execution plan to the host (rendered in the task panel). */
+  onPlanUpdate?: (steps: PlanStep[]) => void;
 }
 
 export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise<string> {
@@ -414,6 +416,22 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'load_context': {
       const val = await window.api.context.load(args.key as string);
       return val || `未找到上下文 "${args.key}"`;
+    }
+
+    // ── Planning ──
+    case 'update_plan': {
+      const rawSteps = Array.isArray(args.steps) ? (args.steps as unknown[]) : [];
+      const steps: PlanStep[] = rawSteps
+        .map((s) => {
+          const obj = (s ?? {}) as { content?: unknown; status?: unknown };
+          const status =
+            obj.status === 'in_progress' || obj.status === 'completed' ? obj.status : 'pending';
+          return { content: String(obj.content ?? '').slice(0, 200), status: status as PlanStep['status'] };
+        })
+        .filter((s) => s.content);
+      ctx.onPlanUpdate?.(steps);
+      const done = steps.filter((s) => s.status === 'completed').length;
+      return `计划已更新：${steps.length} 步（完成 ${done}）`;
     }
 
     // ── GitHub ──
