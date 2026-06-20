@@ -48,10 +48,12 @@ export default {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        pill: '9999px', // Wise pill buttons
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+        display: ['Wise Sans', 'Inter', 'sans-serif'], // Wise display font
       },
       // IDE 字号规范（不要再用任意值 text-[NNpx]）：
       // text-10 徽标/快捷键提示 · text-11 状态栏/元信息 · text-xs(12px) UI 默认 · text-13 正文/编辑器侧

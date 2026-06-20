@@ -1,12 +1,8 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import Sidebar from '../sidebar/Sidebar';
-import EditorArea from '../editor/EditorArea';
-import TaskPanel from '../task/TaskPanel';
-import TerminalPanel from '../terminal/TerminalPanel';
-import SearchPanel from '../search/SearchPanel';
-import BrowserPreview from '../editor/BrowserPreview';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import TitleBar from './TitleBar';
 import StatusBar from './StatusBar';
+import TaskPanel from '../task/TaskPanel';
+import EditorArea from '../editor/EditorArea';
 import CommandPalette, { type PaletteCommand } from '../palette/CommandPalette';
 import { onOpenPalette, openPalette, type PaletteMode } from '../palette/paletteEvents';
 import { useWorkspace } from '../../context/WorkspaceContext';
@@ -14,52 +10,33 @@ import { useTaskWorkspace } from '../../context/TaskContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useEditorActions } from '../../context/EditorContext';
 import { THEMES } from '../../theme';
-import { getAuxPanelWidth, normalizeWorkbenchPanels } from './layoutState';
 import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
 import type { SettingsTab } from '../settings/SettingsWorkbench';
+import { Code2, MessageSquare, Settings } from 'lucide-react';
 
 interface Props {
   onOpenSettings: (tab?: SettingsTab) => void;
   settingsVersion: number;
-  /** 模态层（如设置页）打开时禁用全局快捷键与命令面板 */
   shortcutsDisabled?: boolean;
 }
 
+/**
+ * Codex-style layout: left conversation sidebar + center chat flow (main) +
+ * right optional Monaco panel + bottom input bar. The chat replaces the code
+ * editor as the primary focus — Monaco becomes an auxiliary code viewer.
+ */
 export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsDisabled }: Props) {
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [taskPanelWidth, setTaskPanelWidth] = useState(380);
-  const [searchWidth, setSearchWidth] = useState(320);
-  const [terminalHeight, setTerminalHeight] = useState(200);
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
-  const [showTaskPanel, setShowTaskPanel] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [showBrowser, setShowBrowser] = useState(false);
-  const [browserUrl, setBrowserUrl] = useState('');
+  const [showEditor, setShowEditor] = useState(false);
+  const [editorWidth, setEditorWidth] = useState(480);
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
-  const dragging = useRef<'sidebar' | 'task' | 'search' | 'terminal' | null>(null);
   const { rootPath, openFolder } = useWorkspace();
   const { themeName, setThemeName } = useTheme();
   const { saveActiveFile } = useEditorActions();
-  const { providers, activeProviderId, activeModel } = useTaskWorkspace();
+  const { providers, activeProviderId, activeModel, conversations, activeConversationId, setActiveConversation, newConversation, deleteConversation } = useTaskWorkspace();
   const [embeddingConfig, setEmbeddingConfig] = useState<{
     providerId?: string | null;
     model?: string | null;
   } | null>(null);
-  const isCompact = viewportWidth < 760;
-  const effectiveSidebarWidth = isCompact ? 160 : sidebarWidth;
-  const effectiveTaskPanelWidth = getAuxPanelWidth({
-    isCompact,
-    viewportWidth,
-    sidebarWidth: effectiveSidebarWidth,
-    preferredWidth: taskPanelWidth,
-  });
-  const effectiveSearchWidth = getAuxPanelWidth({
-    isCompact,
-    viewportWidth,
-    sidebarWidth: effectiveSidebarWidth,
-    preferredWidth: searchWidth,
-  });
 
   useEffect(() => {
     let cancelled = false;
@@ -86,15 +63,6 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
     embeddingConfig,
   });
 
-  const openTaskPanel = useCallback(() => {
-    setShowTaskPanel(true);
-    setShowBrowser(false);
-    if (isCompact) {
-      setShowSearch(false);
-      setShowTerminal(false);
-    }
-  }, [isCompact]);
-
   const runReadinessAction = useCallback(
     (actionId: ReadinessActionId) => {
       if (actionId === 'openWorkspace') {
@@ -103,369 +71,149 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
         onOpenSettings('providers');
       } else if (actionId === 'openIndexSettings') {
         onOpenSettings('index');
-      } else if (actionId === 'openTaskPanel') {
-        openTaskPanel();
       }
     },
-    [onOpenSettings, openFolder, openTaskPanel]
+    [onOpenSettings, openFolder]
   );
 
-  const handleToggleSearch = useCallback(() => {
-    if (!rootPath) {
-      setShowSearch(false);
-      return;
-    }
-    setShowSearch((prev) => {
-      const next = !prev;
-      if (next && isCompact) {
-        setShowTaskPanel(false);
-        setShowBrowser(false);
-        setShowTerminal(false);
-      }
-      return next;
-    });
-  }, [isCompact, rootPath]);
-
-  const handleToggleTaskPanel = useCallback(() => {
-    setShowTaskPanel((prev) => {
-      const next = !prev;
-      if (next && isCompact) {
-        setShowSearch(false);
-        setShowTerminal(false);
-      }
-      return next;
-    });
-    setShowBrowser(false);
-  }, [isCompact]);
-
-  const handleToggleBrowser = useCallback(() => {
-    setShowBrowser((prev) => {
-      const next = !prev;
-      if (next && isCompact) {
-        setShowSearch(false);
-        setShowTerminal(false);
-      }
-      return next;
-    });
-    setShowTaskPanel(false);
-  }, [isCompact]);
-
-  const handleToggleTerminal = useCallback(() => {
-    setShowTerminal((prev) => {
-      const next = !prev;
-      if (next && isCompact) {
-        setShowSearch(false);
-        setShowTaskPanel(false);
-        setShowBrowser(false);
-      }
-      return next;
-    });
-  }, [isCompact]);
-
-  const handleMouseDown = useCallback((panel: 'sidebar' | 'task' | 'search' | 'terminal') => {
-    dragging.current = panel;
-    if (panel === 'terminal') {
-      document.body.style.cursor = 'row-resize';
-    } else {
-      document.body.style.cursor = 'col-resize';
-    }
-    document.body.style.userSelect = 'none';
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (dragging.current === 'sidebar') {
-        setSidebarWidth(Math.max(160, Math.min(400, e.clientX)));
-      } else if (dragging.current === 'task') {
-        setTaskPanelWidth(Math.max(280, Math.min(600, window.innerWidth - e.clientX)));
-      } else if (dragging.current === 'search') {
-        setSearchWidth(Math.max(240, Math.min(500, window.innerWidth - e.clientX)));
-      } else if (dragging.current === 'terminal') {
-        setTerminalHeight(Math.max(80, Math.min(500, window.innerHeight - e.clientY)));
-      }
-    };
-
-    const handleMouseUp = () => {
-      dragging.current = null;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+  // Command palette
+  useEffect(() => {
+    const dispose = onOpenPalette((mode) => setPaletteMode(mode));
+    return dispose;
   }, []);
 
-  useEffect(() => {
-    const handleResize = () => setViewportWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const handlePaletteClose = useCallback(() => setPaletteMode(null), []);
 
-  useEffect(() => {
-    const normalized = normalizeWorkbenchPanels({
-      isCompact,
-      showSearch,
-      showTaskPanel,
-      showBrowser,
-      showTerminal,
-    });
+  const paletteCommands: PaletteCommand[] = [
+    { id: 'settings', label: '打开设置', hint: '⌘,', run: () => onOpenSettings() },
+    { id: 'newConv', label: '新对话', hint: '⌘N', run: () => newConversation() },
+    { id: 'toggleEditor', label: showEditor ? '关闭代码查看器' : '打开代码查看器', hint: '⌘E', run: () => setShowEditor((p) => !p) },
+    ...Object.values(THEMES).map((t) => ({
+      id: `theme-${t.name}`,
+      label: `切换主题: ${t.name}`,
+      run: () => setThemeName(t.name),
+    })),
+  ];
 
-    if (normalized.showSearch !== showSearch) setShowSearch(normalized.showSearch);
-    if (normalized.showTaskPanel !== showTaskPanel) setShowTaskPanel(normalized.showTaskPanel);
-    if (normalized.showBrowser !== showBrowser) setShowBrowser(normalized.showBrowser);
-    if (normalized.showTerminal !== showTerminal) setShowTerminal(normalized.showTerminal);
-  }, [isCompact, showSearch, showTaskPanel, showBrowser, showTerminal]);
-
-  useEffect(() => {
-    const handlePreviewUrl = (e: Event) => {
-      const url = (e as CustomEvent<{ url?: string }>).detail?.url;
-      if (!url) return;
-      setBrowserUrl(url);
-      setShowBrowser(true);
-      setShowTaskPanel(false);
-      if (isCompact) {
-        setShowSearch(false);
-        setShowTerminal(false);
-      }
-    };
-    window.addEventListener('preview-url', handlePreviewUrl);
-    return () => window.removeEventListener('preview-url', handlePreviewUrl);
-  }, [isCompact]);
-
-  const handleOpenPalette = useCallback((mode: PaletteMode) => {
-    setPaletteMode((prev) => (prev === mode ? null : mode));
-  }, []);
-
-  const closePalette = useCallback(() => setPaletteMode(null), []);
-
-  // Monaco 等处通过 CustomEvent 唤起命令面板
+  // Global shortcuts (⌘S save, ⌘, settings, etc.)
   useEffect(() => {
     if (shortcutsDisabled) return;
-    return onOpenPalette(handleOpenPalette);
-  }, [handleOpenPalette, shortcutsDisabled]);
-
-  // 模态层（设置页）打开时收起命令面板，避免叠层
-  useEffect(() => {
-    if (shortcutsDisabled) setPaletteMode(null);
-  }, [shortcutsDisabled]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (shortcutsDisabled) return;
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (e.shiftKey && key === 'f') {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
         e.preventDefault();
-        handleToggleSearch();
-      } else if (!e.shiftKey && key === 'p') {
+        onOpenSettings();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        handleOpenPalette('files');
-      } else if ((e.shiftKey && key === 'p') || (!e.shiftKey && key === 'k')) {
+        void saveActiveFile();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        handleOpenPalette('commands');
-      } else if (!e.shiftKey && key === 'j') {
+        setPaletteMode((p) => (p ? null : 'commands'));
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         e.preventDefault();
-        handleToggleTaskPanel();
-      } else if (!e.shiftKey && key === '`') {
+        newConversation();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
         e.preventDefault();
-        handleToggleTerminal();
-      } else if (!e.shiftKey && key === ',') {
-        e.preventDefault();
-        onOpenSettings('providers');
+        setShowEditor((p) => !p);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleSearch, handleOpenPalette, handleToggleTaskPanel, handleToggleTerminal, onOpenSettings, shortcutsDisabled]);
-
-  // 命令面板命令表
-  const paletteCommands = useMemo<PaletteCommand[]>(() => {
-    const themeCommands = Object.values(THEMES).map((t) => ({
-      id: `theme-${t.name}`,
-      label: `主题：${t.display}`,
-      hint: themeName === t.name ? '当前' : undefined,
-      keywords: `theme color ${t.name}`,
-      run: () => setThemeName(t.name),
-    }));
-    return [
-      {
-        id: 'quick-open',
-        label: '转到文件…',
-        hint: 'Cmd P',
-        keywords: 'quick open goto file',
-        run: () => openPalette('files'),
-      },
-      {
-        id: 'save-file',
-        label: '保存当前文件',
-        hint: 'Cmd S',
-        keywords: 'save file write',
-        run: () => {
-          void saveActiveFile();
-        },
-      },
-      {
-        id: 'open-folder',
-        label: '打开文件夹…',
-        keywords: 'open folder workspace',
-        run: () => {
-          void openFolder();
-        },
-      },
-      {
-        id: 'toggle-task',
-        label: showTaskPanel ? '收起 AI 任务面板' : '打开 AI 任务面板',
-        keywords: 'task panel agent chat ai',
-        run: handleToggleTaskPanel,
-      },
-      {
-        id: 'toggle-terminal',
-        label: showTerminal ? '收起终端' : '打开终端',
-        keywords: 'terminal shell',
-        run: handleToggleTerminal,
-      },
-      {
-        id: 'toggle-search',
-        label: showSearch ? '收起文本搜索' : '打开文本搜索',
-        hint: 'Cmd Shift F',
-        keywords: 'search find text grep',
-        run: handleToggleSearch,
-      },
-      {
-        id: 'toggle-browser',
-        label: showBrowser ? '收起浏览器预览' : '打开浏览器预览',
-        keywords: 'browser preview web',
-        run: handleToggleBrowser,
-      },
-      {
-        id: 'open-settings',
-        label: '打开设置',
-        keywords: 'settings preferences providers model',
-        run: () => onOpenSettings('providers'),
-      },
-      {
-        id: 'open-index-settings',
-        label: '打开索引设置',
-        keywords: 'settings index embedding',
-        run: () => onOpenSettings('index'),
-      },
-      ...themeCommands,
-    ];
-  }, [
-    themeName,
-    setThemeName,
-    saveActiveFile,
-    openFolder,
-    showTaskPanel,
-    showTerminal,
-    showSearch,
-    showBrowser,
-    handleToggleTaskPanel,
-    handleToggleTerminal,
-    handleToggleSearch,
-    handleToggleBrowser,
-    onOpenSettings,
-  ]);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [shortcutsDisabled, onOpenSettings, saveActiveFile, newConversation]);
 
   return (
-    <div className="flex flex-col h-full bg-editor-bg">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <TitleBar
         onOpenSettings={onOpenSettings}
-        onToggleTaskPanel={handleToggleTaskPanel}
-        onToggleTerminal={handleToggleTerminal}
-        onToggleSearch={handleToggleSearch}
-        onToggleBrowser={handleToggleBrowser}
-        onOpenQuickOpen={() => handleOpenPalette('files')}
-        showTaskPanel={showTaskPanel}
-        showTerminal={showTerminal}
-        showSearch={showSearch}
-        showBrowser={showBrowser}
+        onToggleTaskPanel={() => {}}
+        onToggleTerminal={() => {}}
+        onToggleSearch={() => {}}
+        onToggleBrowser={() => setShowEditor((p) => !p)}
+        onOpenQuickOpen={() => setPaletteMode('files')}
+        showTaskPanel={false}
+        showTerminal={false}
+        showSearch={false}
+        showBrowser={showEditor}
       />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Main area: sidebar + editor + panels */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
-          <div style={{ width: effectiveSidebarWidth }} className="flex-shrink-0 h-full">
-            <Sidebar />
-          </div>
 
-          {/* Sidebar resize handle */}
-          {!isCompact && (
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar: conversation list */}
+        <aside className="flex w-60 flex-col border-r border-border bg-surface">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">对话</h2>
+            <button onClick={() => newConversation()} className="btn-codex h-6 px-2 text-10" title="新对话">
+              <MessageSquare size={12} strokeWidth={1.8} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {conversations.map((conv) => (
+              <div
+                key={conv.id}
+                onClick={() => setActiveConversation(conv.id)}
+                className={`cursor-pointer border-b border-border px-3 py-2 text-xs transition-colors hover:bg-muted ${
+                  conv.id === activeConversationId ? 'bg-muted text-primary' : 'text-foreground'
+                }`}
+              >
+                <div className="truncate font-medium">{conv.title}</div>
+                <div className="truncate text-10 text-muted-foreground">{conv.messages.length} 条消息</div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-border p-2">
+            <button onClick={() => onOpenSettings()} className="btn-codex-secondary w-full text-xs">
+              <Settings size={12} strokeWidth={1.8} />
+              设置
+            </button>
+          </div>
+        </aside>
+
+        {/* Center: main chat flow (TaskPanel as primary) */}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
+        </main>
+
+        {/* Right: optional Monaco editor panel */}
+        {showEditor && (
+          <>
             <div
-              className="resize-handle w-[3px] h-full"
-              onMouseDown={() => handleMouseDown('sidebar')}
+              className="w-[3px] cursor-col-resize bg-transparent hover:bg-ring"
+              onMouseDown={() => {
+                const startX = 0;
+                const startW = editorWidth;
+                const onMove = (e: MouseEvent) => setEditorWidth(Math.max(320, startW - (e.clientX - startX)));
+                const onUp = () => {
+                  document.removeEventListener('mousemove', onMove);
+                  document.removeEventListener('mouseup', onUp);
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+              }}
             />
-          )}
-
-          {/* Editor + Terminal vertical split */}
-          <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-hidden">
-              <EditorArea readiness={readiness} onReadinessAction={runReadinessAction} />
-            </div>
-
-            {/* Terminal */}
-            {showTerminal && rootPath && (
-              <>
-                <div
-                  className="resize-handle h-[3px] w-full"
-                  onMouseDown={() => handleMouseDown('terminal')}
-                />
-                <div style={{ height: terminalHeight }} className="flex-shrink-0">
-                  <TerminalPanel cwd={rootPath} onClose={() => setShowTerminal(false)} />
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Search panel */}
-          {showSearch && rootPath && (
-            <>
-              {!isCompact && (
-                <div
-                  className="resize-handle w-[3px] h-full"
-                  onMouseDown={() => handleMouseDown('search')}
-                />
-              )}
-              <div style={{ width: effectiveSearchWidth }} className="flex-shrink-0 h-full">
-                <SearchPanel onClose={() => setShowSearch(false)} />
+            <aside className="flex flex-col border-l border-border bg-background" style={{ width: editorWidth }}>
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">代码查看器</h2>
+                <button onClick={() => setShowEditor(false)} className="btn-codex-secondary h-6 px-2 text-10" title="关闭">
+                  <Code2 size={12} strokeWidth={1.8} />
+                </button>
               </div>
-            </>
-          )}
-
-          {/* Task or browser panel */}
-          {(showTaskPanel || showBrowser) && (
-            <>
-              {!isCompact && (
-                <div
-                  className="resize-handle w-[3px] h-full"
-                  onMouseDown={() => handleMouseDown('task')}
-                />
-              )}
-              <div style={{ width: effectiveTaskPanelWidth }} className="flex-shrink-0 h-full">
-                {showBrowser ? (
-                  <BrowserPreview
-                    visible={showBrowser}
-                    onClose={() => setShowBrowser(false)}
-                    initialUrl={browserUrl}
-                  />
-                ) : (
-                  <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
-                )}
+              <div className="flex-1 overflow-hidden">
+                <EditorArea readiness={readiness} onReadinessAction={runReadinessAction} />
               </div>
-            </>
-          )}
-        </div>
+            </aside>
+          </>
+        )}
       </div>
+
       <StatusBar />
 
       {paletteMode && (
         <CommandPalette
-          key={paletteMode}
           initialMode={paletteMode}
           commands={paletteCommands}
-          onClose={closePalette}
+          onClose={handlePaletteClose}
         />
       )}
     </div>

@@ -169,7 +169,7 @@ export default function AgentsTab() {
             <button
               key={k}
               onClick={() => openForm(k)}
-              className="inline-flex items-center gap-1 border border-editor-border px-2 py-1 text-xs text-editor-text hover:bg-editor-hover"
+              className="btn-codex h-7 text-xs"
             >
               <Plus size={12} strokeWidth={1.8} />
               {TYPE_LABEL[k]}
@@ -228,10 +228,10 @@ export default function AgentsTab() {
             />
             {err && <p className="text-11 text-red-400">{err}</p>}
             <div className="flex justify-end gap-2 pt-0.5">
-              <button onClick={resetForm} className="h-7 border border-editor-border px-3 text-xs text-foreground hover:bg-editor-active">
+              <button onClick={resetForm} className="btn-codex h-7 bg-secondary text-secondary-foreground">
                 取消
               </button>
-              <button onClick={submit} className="h-7 bg-editor-accent px-3 text-xs text-primary-foreground hover:opacity-90">
+              <button onClick={submit} className="btn-codex h-7">
                 保存
               </button>
             </div>

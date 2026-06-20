@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code IDE - AI 辅助代码编辑器</title>
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+       Wise 设计系统 tokens - 基于 design-systems/wise
+       ═══════════════════════════════════════════════════════════ */
+    :root {
+      /* Wise 设计系统 - 浅色版（柔和视觉）*/
+      --bg: #fafafa;              /* 柔和的灰白背景 - 减少纯白刺眼感 */
+      --surface: #f5f5f5;         /* 浅灰表面 - 降低对比 */
+      --surface-hover: #eeeeee;   /* hover 状态 - 更柔和的过渡 */
+      --fg: #2a2a2a;              /* 柔和黑色 - 降低文本对比度 */
+      --fg-2: #5a5a5a;            /* 次要文本 - 更柔和 */
+      --muted: #9a9a9a;           /* 弱化文本 - 更浅更柔和 */
+      --border: rgba(0, 0, 0, 0.06);  /* 极浅边框 - 减少分割感 */
+      --accent: #3a9b4d;          /* 柔和深绿 - 略微提亮但保持柔和 */
+      --accent-on: #ffffff;       /* 白色文字在绿底上 */
+      --accent-hover: #2d8a3e;    /* hover 时更深 */
+      --success: #2d8a3e;         /* Positive Green - 柔和版本 */
+      --warn: #f5c842;            /* Warning Yellow - 柔和版本 */
+      --danger: #e85d5d;          /* Danger Red - 柔和版本 */
+
+      /* Typography - Wise Sans + Inter */
+      --font-display: "Wise Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "SF Mono", "JetBrains Mono", Consolas, Monaco, monospace;
+
+      /* Type scale */
+      --text-xs: 11px;
+      --text-sm: 13px;
+      --text-base: 14px;
+      --text-lg: 18px;
+
+      /* Spacing - 增加间距减少拥挤感 */
+      --space-1: 4px;
+      --space-2: 10px;
+      --space-3: 14px;
+      --space-4: 18px;
+      --space-6: 28px;
+
+      /* Radius - 柔和圆角 */
+      --radius-sm: 8px;           /* 增大基础圆角 */
+      --radius-md: 12px;          /* 中等圆角 */
+      --radius-pill: 9999px;      /* Wise 标志性 pill 按钮 */
+
+      /* Elevation - 极轻柔阴影 */
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-soft: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+      /* Motion - 更慢更柔和的动画 */
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+      --duration-fast: 180ms;
+      --duration-base: 280ms;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg); color: var(--fg);
+      font: var(--text-base)/1.5 var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "calt" 1;  /* Wise 要求所有文本启用 contextual alternates */
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Layout - IDE Shell
+       ═══════════════════════════════════════════════════════════ */
+    .ide-shell {
+      display: grid;
+      grid-template-rows: 40px 1fr 24px;
+      height: 100vh;
+    }
+
+    /* TitleBar */
+    .titlebar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 var(--space-4);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .titlebar-title {
+      font-size: var(--text-sm); font-weight: 500;
+      color: var(--fg-2); letter-spacing: -0.01em;
+    }
+    .titlebar-actions {
+      display: flex; gap: var(--space-2);
+    }
+    .titlebar-btn {
+      padding: 6px 16px;
+      font-size: var(--text-xs);
+      color: var(--accent-on);
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-pill);  /* Wise pill 按钮 */
+      cursor: pointer;
+      transition: transform var(--duration-fast) var(--ease-soft),
+                  background var(--duration-base) var(--ease-soft),
+                  box-shadow var(--duration-base) var(--ease-soft);
+      font-weight: 600;
+      font-feature-settings: "calt" 1;
+    }
+    .titlebar-btn:hover {
+      transform: scale(1.02);  /* Wise 标志性 scale hover - 减少幅度更柔和 */
+      background: var(--accent-hover);
+      box-shadow: 0 2px 8px rgba(58, 155, 77, 0.15);
+    }
+    .titlebar-btn:active {
+      transform: scale(0.98);  /* Wise active 缩小 - 减少幅度 */
+    }
+    .titlebar-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Main Container - 三栏布局 */
+    .main-container {
+      display: grid;
+      grid-template-columns: 240px 1fr 380px;
+      overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Sidebar
+       ═══════════════════════════════════════════════════════════ */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+    }
+    .sidebar-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-tab {
+      flex: 1;
+      padding: var(--space-3);
+      font-size: var(--text-xs);
+      text-align: center;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all var(--duration-base) var(--ease-soft);
+      font-feature-settings: "calt" 1;
+    }
+    .sidebar-tab:hover {
+      color: var(--fg);
+      background: var(--surface-hover);
+    }
+    .sidebar-tab:active {
+      transform: translateY(0.5px);
+    }
+    .sidebar-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .sidebar-content {
+      flex: 1; overflow-y: auto; padding: var(--space-2);
+    }
+
+    /* File Item */
+    .file-item {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--fg-2);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--duration-base) var(--ease-soft);
+      display: flex; align-items: center; gap: var(--space-2);
+      border-left: 2px solid transparent;
+      font-feature-settings: "calt" 1;
+    }
+    .file-item:hover {
+      background: var(--surface-hover);
+      color: var(--fg);
+      border-left-color: var(--accent);
+      box-shadow: var(--elev-soft);
+    }
+    .file-item:active {
+      transform: scale(0.99);
+    }
+    .file-item.active {
+      background: var(--surface-hover);
+      color: var(--accent);
+      border-left-color: var(--accent);
+      box-shadow: var(--elev-soft);
+    }
+    .file-icon {
+      width: 16px; height: 16px;
+      opacity: 0.6;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Editor Area
+       ═══════════════════════════════════════════════════════════ */
+    .editor-area {
+      display: flex; flex-direction: column;
+    }
+    .tabs-bar {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tabs-bar::-webkit-scrollbar { display: none; }
+    .tab {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--fg-2);
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--border);
+      cursor: pointer;
+      transition: background var(--duration-base) var(--ease-soft),
+                  color var(--duration-base) var(--ease-soft);
+      white-space: nowrap;
+      position: relative;
+      font-feature-settings: "calt" 1;
+    }
+    .tab:hover {
+      background: var(--surface-hover);
+      color: var(--fg);
+    }
+    .tab.active {
+      color: var(--accent);
+      background: var(--bg);
+    }
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px 2px 0 0;
+    }
+    .tab-close {
+      display: grid; place-items: center;
+      width: 16px; height: 16px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity var(--duration-base) var(--ease-soft),
+                  background var(--duration-base) var(--ease-soft),
+                  transform var(--duration-base) var(--ease-soft);
+    }
+    .tab:hover .tab-close { opacity: 0.5; }
+    .tab-close:hover {
+      opacity: 1 !important;
+      background: rgba(58, 155, 77, 0.1);
+      transform: scale(1.08);
+    }
+    .tab-close:active {
+      transform: scale(0.95);
+    }
+
+    .editor-content {
+      flex: 1;
+      padding: var(--space-6);
+      overflow: auto;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: 1.6;
+      color: var(--fg-2);
+      background: var(--bg);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Task Panel - AI 任务面板
+       ═══════════════════════════════════════════════════════════ */
+    .task-panel {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+    .task-header {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .task-title {
+      font-size: var(--text-sm);
+      font-weight: 600;
+      color: var(--fg);
+      font-feature-settings: "calt" 1;
+    }
+    .model-picker {
+      font-size: var(--text-xs);
+      color: var(--accent-on);
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-pill);
+      padding: 5px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform var(--duration-fast) var(--ease-soft),
+                  background var(--duration-base) var(--ease-soft),
+                  box-shadow var(--duration-base) var(--ease-soft);
+      font-feature-settings: "calt" 1;
+    }
+    .model-picker:hover {
+      transform: scale(1.02);
+      background: var(--accent-hover);
+      box-shadow: 0 2px 8px rgba(58, 155, 77, 0.15);
+    }
+    .model-picker:active {
+      transform: scale(0.98);
+    }
+    .model-picker:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    .task-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--space-4);
+    }
+
+    /* Message */
+    .message {
+      margin-bottom: var(--space-6);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      box-shadow: var(--elev-soft);
+    }
+    .message-role {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;  /* Wise craft rule: ALL CAPS 最小 0.06em */
+      color: var(--accent);
+      margin-bottom: var(--space-3);
+      font-feature-settings: "calt" 1;
+    }
+    .message-content {
+      font-size: var(--text-sm);
+      line-height: 1.7;
+      color: var(--fg);
+      font-feature-settings: "calt" 1;
+    }
+
+    /* Tool Execution */
+    .tool-execution {
+      margin-top: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: rgba(58, 155, 77, 0.05);
+      border-left: 2px solid var(--accent);
+      border-radius: var(--radius-sm);
+    }
+    .tool-name {
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       StatusBar
+       ═══════════════════════════════════════════════════════════ */
+    .statusbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 var(--space-4);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      font-size: var(--text-xs);
+      color: var(--muted);
+      font-feature-settings: "calt" 1;
+    }
+    .statusbar-left, .statusbar-right {
+      display: flex; gap: var(--space-4); align-items: center;
+    }
+    .status-item {
+      display: flex; align-items: center; gap: var(--space-1);
+      transition: color var(--duration-base) var(--ease-soft);
+      cursor: pointer;
+    }
+    .status-item:hover { color: var(--fg); }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(58, 155, 77, 0.15);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Command Palette
+       ═══════════════════════════════════════════════════════════ */
+    .cmd-palette {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.96);
+      width: 600px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.08);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--duration-base) var(--ease-soft),
+                  transform var(--duration-base) var(--ease-soft);
+      z-index: 1000;
+    }
+    .cmd-palette.open {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+      pointer-events: auto;
+    }
+    .cmd-input {
+      width: 100%;
+      padding: var(--space-4) var(--space-6);
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      color: var(--fg);
+      font-size: var(--text-base);
+      outline: none;
+      font-feature-settings: "calt" 1;
+    }
+    .cmd-results {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: var(--space-3);
+    }
+    .cmd-item {
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background var(--duration-base) var(--ease-soft),
+                  transform var(--duration-base) var(--ease-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-feature-settings: "calt" 1;
+    }
+    .cmd-item:hover {
+      background: var(--surface-hover);
+      transform: translateX(2px);
+    }
+    .cmd-shortcut {
+      font-size: var(--text-xs);
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Responsive
+       ═══════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      .main-container {
+        grid-template-columns: 0 1fr 0;
+      }
+      .sidebar, .task-panel {
+        position: fixed;
+        top: 40px;
+        bottom: 24px;
+        z-index: 100;
+        transition: left var(--duration-base) var(--ease-soft), right var(--duration-base) var(--ease-soft);
+      }
+      .sidebar {
+        left: -240px;
+        width: 240px;
+      }
+      .sidebar.open {
+        left: 0;
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+      }
+      .task-panel {
+        right: -380px;
+        width: 380px;
+      }
+      .task-panel.open {
+        right: 0;
+        box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
+      }
+
+      /* 移动端字体缩放 */
+      .titlebar-title {
+        font-size: 12px;
+      }
+      .titlebar-btn {
+        padding: 4px 10px;
+        font-size: 10px;
+      }
+
+      /* 移动端命令面板 */
+      .cmd-palette {
+        width: calc(100vw - 32px);
+        left: 16px;
+        transform: translateX(0) scale(0.96);
+      }
+      .cmd-palette.open {
+        transform: translateX(0) scale(1);
+      }
+    }
+
+    /* 平板断点 */
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .main-container {
+        grid-template-columns: 200px 1fr 320px;
+      }
+    }
+
+    /* 超宽屏优化 */
+    @media (min-width: 1920px) {
+      .main-container {
+        grid-template-columns: 280px 1fr 420px;
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Focus States - Accessibility
+       ═══════════════════════════════════════════════════════════ */
+    button:focus-visible,
+    .file-item:focus-visible,
+    .tab:focus-visible,
+    .cmd-item:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: var(--radius-sm);
+    }
+
+    .cmd-input:focus-visible {
+      outline: none;
+      border-bottom-color: var(--accent);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Empty States
+       ═══════════════════════════════════════════════════════════ */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-6);
+      color: var(--muted);
+      text-align: center;
+      min-height: 200px;
+    }
+    .empty-state-icon {
+      width: 48px;
+      height: 48px;
+      margin-bottom: var(--space-3);
+      opacity: 0.4;
+    }
+    .empty-state-text {
+      font-size: var(--text-sm);
+      line-height: 1.6;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       Reduced Motion
+       ═══════════════════════════════════════════════════════════ */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ide-shell">
+    <header class="titlebar" role="banner">
+      <div class="titlebar-title">Code IDE — AI 辅助代码编辑器</div>
+      <div class="titlebar-actions">
+        <button class="titlebar-btn">设置</button>
+        <button class="titlebar-btn">主题</button>
+      </div>
+    </header>
+
+    <div class="main-container">
+      <aside class="sidebar" role="navigation" aria-label="侧边栏">
+        <div class="sidebar-tabs" role="tablist">
+          <button class="sidebar-tab active" role="tab" aria-selected="true" aria-controls="file-tree">文件</button>
+          <button class="sidebar-tab" role="tab" aria-selected="false" aria-controls="git-panel">Git</button>
+          <button class="sidebar-tab" role="tab" aria-selected="false" aria-controls="search-panel">搜索</button>
+        </div>
+        <div class="sidebar-content" id="file-tree" role="tabpanel" aria-labelledby="file-tab">
+          <div class="file-item active" data-file="src/renderer/App.tsx" tabindex="0" role="button">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M9 2L14 7v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h6z"/>
+              <path d="M9 2v5h5" fill="none" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            <span>App.tsx</span>
+          </div>
+          <div class="file-item" data-file="src/renderer/components/layout/MainLayout.tsx" tabindex="0" role="button">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M9 2L14 7v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h6z"/>
+              <path d="M9 2v5h5" fill="none" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            <span>MainLayout.tsx</span>
+          </div>
+          <div class="file-item" data-file="src/renderer/components/task/TaskPanel.tsx" tabindex="0" role="button">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M9 2L14 7v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h6z"/>
+              <path d="M9 2v5h5" fill="none" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            <span>TaskPanel.tsx</span>
+          </div>
+          <div class="file-item" data-file="src/renderer/components/editor/EditorArea.tsx" tabindex="0" role="button">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M9 2L14 7v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h6z"/>
+              <path d="M9 2v5h5" fill="none" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            <span>EditorArea.tsx</span>
+          </div>
+          <div class="file-item" data-file="src/main/services/ai-service.ts" tabindex="0" role="button">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M9 2L14 7v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h6z"/>
+              <path d="M9 2v5h5" fill="none" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            <span>ai-service.ts</span>
+          </div>
+          <div class="file-item" data-file="package.json" tabindex="0" role="button">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M9 2L14 7v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h6z"/>
+              <path d="M9 2v5h5" fill="none" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            <span>package.json</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="editor-area" role="main">
+        <div class="tabs-bar" id="tabs-bar" role="tablist">
+          <button class="tab active" role="tab" aria-selected="true">
+            <span>App.tsx</span>
+            <span class="tab-close" aria-label="关闭 App.tsx">×</span>
+          </button>
+          <button class="tab" role="tab" aria-selected="false">
+            <span>MainLayout.tsx</span>
+            <span class="tab-close" aria-label="关闭 MainLayout.tsx">×</span>
+          </button>
+        </div>
+        <div class="editor-content" id="editor-content">
+          <pre style="white-space: pre-wrap; word-break: break-word;">import React, { useState } from 'react';
+import { WorkspaceProvider } from './context/WorkspaceContext';
+import { TaskContextProvider } from './context/TaskContext';
+import { EditorProvider } from './context/EditorContext';
+import { ThemeProvider } from './context/ThemeContext';
+import MainLayout from './components/layout/MainLayout';
+import SettingsWorkbench from './components/settings/SettingsWorkbench';
+
+export default function App() {
+  const [showSettings, setShowSettings] = useState(false);
+
+  return (
+    &lt;ThemeProvider&gt;
+      &lt;WorkspaceProvider&gt;
+        &lt;TaskContextProvider&gt;
+          &lt;EditorProvider&gt;
+            &lt;MainLayout onOpenSettings={() => setShowSettings(true)} /&gt;
+          &lt;/EditorProvider&gt;
+        &lt;/TaskContextProvider&gt;
+      &lt;/WorkspaceProvider&gt;
+    &lt;/ThemeProvider&gt;
+  );
+}</pre>
+        </div>
+      </main>
+
+      <aside class="task-panel" role="complementary" aria-label="任务面板">
+        <div class="task-header">
+          <span class="task-title">AI 任务</span>
+          <select class="model-picker" aria-label="选择模型">
+            <option>Claude Opus 4.6</option>
+            <option>DeepSeek V4-pro</option>
+            <option>GPT-4o</option>
+          </select>
+        </div>
+        <div class="task-content">
+          <!-- 空状态示例（当无任务时显示）：
+          <div class="empty-state">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            <div class="empty-state-text">暂无 AI 任务<br/>开始对话以创建任务</div>
+          </div>
+          -->
+          <div class="message">
+            <div class="message-role">User</div>
+            <div class="message-content">帮我重构 MainLayout 组件，提取出面板管理逻辑</div>
+          </div>
+          <div class="message">
+            <div class="message-role">Assistant</div>
+            <div class="message-content">
+              我会帮你重构 MainLayout.tsx。计划：
+              <br/>1. 提取 usePanelState hook
+              <br/>2. 创建 PanelManager 组件
+              <br/>3. 简化 MainLayout 主组件
+              <div class="tool-execution">
+                <div class="tool-name">Read: src/renderer/components/layout/MainLayout.tsx</div>
+              </div>
+              <div class="tool-execution">
+                <div class="tool-name">Write: src/renderer/hooks/usePanelState.ts</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="statusbar" role="contentinfo">
+      <div class="statusbar-left">
+        <div class="status-item">
+          <span class="status-dot" aria-label="系统状态"></span>
+          <span>就绪</span>
+        </div>
+        <div class="status-item" id="current-file-path">src/renderer/App.tsx</div>
+        <div class="status-item">Anthropic · Claude Opus 4.6</div>
+      </div>
+      <div class="statusbar-right">
+        <div class="status-item">UTF-8</div>
+        <div class="status-item">LF</div>
+        <div class="status-item" id="cursor-pos">第 12 行，第 8 列</div>
+      </div>
+    </footer>
+  </div>
+
+  <div class="cmd-palette" id="cmd-palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <input type="text" class="cmd-input" placeholder="输入命令..." id="cmd-input" />
+    <div class="cmd-results">
+      <div class="cmd-item">
+        <span>Git: Commit...</span>
+        <span class="cmd-shortcut">⌘⇧G</span>
+      </div>
+      <div class="cmd-item">
+        <span>Format Document</span>
+        <span class="cmd-shortcut">⇧⌥F</span>
+      </div>
+      <div class="cmd-item">
+        <span>Toggle Terminal</span>
+        <span class="cmd-shortcut">⌃`</span>
+      </div>
+      <div class="cmd-item">
+        <span>Open Settings</span>
+        <span class="cmd-shortcut">⌘,</span>
+      </div>
+      <div class="cmd-item">
+        <span>Search in Workspace</span>
+        <span class="cmd-shortcut">⌘⇧F</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const cmdPalette = document.getElementById('cmd-palette');
+    const cmdInput = document.getElementById('cmd-input');
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+        e.preventDefault();
+        cmdPalette.classList.toggle('open');
+        if (cmdPalette.classList.contains('open')) {
+          cmdInput.focus();
+        }
+      }
+      if (e.key === 'Escape' && cmdPalette.classList.contains('open')) {
+        cmdPalette.classList.remove('open');
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!cmdPalette.contains(e.target) && cmdPalette.classList.contains('open')) {
+        cmdPalette.classList.remove('open');
+      }
+    });
+
+    document.querySelectorAll('.sidebar-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+
+    document.querySelectorAll('.file-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.file-item').forEach(f => f.classList.remove('active'));
+        item.classList.add('active');
+
+        const fileName = item.dataset.file;
+        document.getElementById('current-file-path').textContent = fileName;
+
+        const editor = document.getElementById('editor-content');
+        editor.innerHTML = `<pre style="white-space: pre-wrap; word-break: break-word;">// ${fileName}\n// 文件内容加载中...</pre>`;
+      });
+
+      // 键盘支持：Enter 或 Space 激活
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          item.click();
+        }
+      });
+    });
+
+    document.querySelectorAll('.tab-close').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tab = btn.closest('.tab');
+        tab.remove();
+      });
+    });
+
+    document.body.setAttribute('tabindex', '-1');
+    document.body.style.outline = 'none';
+    document.body.focus();
+  </script>
+</body>
+</html>

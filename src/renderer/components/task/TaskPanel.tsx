@@ -338,6 +338,14 @@ ${suffix.slice(0, 500)}${editsCtx}
     }
   };
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`;
+    }
+  }, [input]);
+
   // ── Attachments ──
   const addImageFiles = (files: FileList | File[]) => {
     Array.from(files)
@@ -363,8 +371,8 @@ ${suffix.slice(0, 500)}${editsCtx}
   };
 
   return (
-    <div className="flex h-full flex-col bg-editor-sidebar border-l border-editor-border">
-      <div className="flex h-8 flex-shrink-0 items-center justify-between gap-2 border-b border-editor-border px-3">
+    <div className="flex h-full flex-col bg-background">
+      <div className="flex h-10 flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-11 font-semibold uppercase tracking-wide text-muted-foreground">
             任务工作台
@@ -560,8 +568,9 @@ ${suffix.slice(0, 500)}${editsCtx}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder="任务说明或 @文件引用"
-              className="h-20 w-full resize-none border border-editor-border bg-editor-sidebar px-2 py-2 text-sm text-editor-text outline-none hover:bg-editor-active focus:border-editor-accent"
+              placeholder="任务说明或 @文件引用 (Shift+Enter 换行)"
+              className="w-full resize-none border border-editor-border bg-editor-sidebar px-3 py-2.5 text-sm leading-relaxed text-editor-text outline-none transition-colors hover:bg-editor-active focus:border-editor-accent"
+              style={{ minHeight: '80px', maxHeight: '200px' }}
               disabled={isStreaming}
             />
             <div className="mt-2 flex items-center justify-between gap-2">

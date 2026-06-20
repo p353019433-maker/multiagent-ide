@@ -37,51 +37,52 @@ export default function ToolExecutionRow({ execution }: Props) {
 
   return (
     <div className="border-b border-editor-border bg-editor-sidebar text-xs">
-      <div
-        className="grid min-h-7 cursor-pointer grid-cols-[64px_minmax(0,1fr)_minmax(0,120px)_auto_auto] items-center gap-2 hover:bg-editor-hover"
+      <button
+        className="grid w-full min-h-8 cursor-pointer grid-cols-[64px_minmax(0,1fr)_minmax(0,120px)_auto_auto] items-center gap-2 text-left transition-colors hover:bg-editor-hover"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className={`border-r border-editor-border/70 px-2 font-mono text-10 ${statusColor}`}>
+        <span className={`border-r border-editor-border/70 px-2 py-2 font-mono text-10 ${statusColor}`}>
           {statusMark}
         </span>
         <span className="min-w-0 truncate font-mono text-editor-accent">{execution.name}</span>
         <span className="hidden min-w-0 truncate text-11 text-muted-foreground sm:block">
-          {argKeys.join(', ')}
+          {argKeys.slice(0, 3).join(', ')}
+          {argKeys.length > 3 && ` +${argKeys.length - 3}`}
         </span>
-        <span className={`px-2 text-11 ${statusColor}`}>
+        <span className={`px-2 text-11 font-medium ${statusColor}`}>
           {STATUS_NAMES[execution.status] || execution.status}
         </span>
         <span className="pr-2 text-muted-foreground">
           {expanded ? <ChevronDown size={13} strokeWidth={1.8} /> : <ChevronRight size={13} strokeWidth={1.8} />}
         </span>
-      </div>
+      </button>
 
       {expanded && (
         <div className="border-t border-editor-border bg-editor-bg">
           <div>
-            <div className="border-b border-editor-border px-3 py-1 font-mono text-10 text-muted-foreground">
-              PARAMS
+            <div className="border-b border-editor-border px-3 py-1.5 font-mono text-10 uppercase tracking-wide text-muted-foreground">
+              参数
             </div>
-            <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-3 py-2 pl-[76px] font-mono text-11 text-foreground">
-              {JSON.stringify(execution.arguments, null, 2).slice(0, 500)}
+            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-4 py-3 font-mono text-11 leading-relaxed text-foreground">
+              {JSON.stringify(execution.arguments, null, 2).slice(0, 800)}
             </pre>
           </div>
           {execution.result && (
             <div>
-              <div className="border-b border-editor-border px-3 py-1 font-mono text-10 text-muted-foreground">
-                RESULT
+              <div className="border-b border-editor-border px-3 py-1.5 font-mono text-10 uppercase tracking-wide text-muted-foreground">
+                返回值
               </div>
-              <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-3 py-2 pl-[76px] font-mono text-11 text-foreground">
-                {execution.result.slice(0, 1000)}
+              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap border-b border-editor-border bg-editor-bg px-4 py-3 font-mono text-11 leading-relaxed text-foreground">
+                {execution.result.slice(0, 1200)}
               </pre>
             </div>
           )}
           {execution.error && (
             <div>
-              <div className="border-b border-editor-border px-3 py-1 font-mono text-10 text-red-500">
-                ERROR
+              <div className="border-b border-editor-border px-3 py-1.5 font-mono text-10 uppercase tracking-wide text-red-400">
+                错误信息
               </div>
-              <div className="border-b border-editor-border px-3 py-2 pl-[76px] text-red-400">
+              <div className="border-b border-editor-border bg-red-950/20 px-4 py-3 text-11 leading-relaxed text-red-400">
                 {execution.error}
               </div>
             </div>

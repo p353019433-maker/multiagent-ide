@@ -173,7 +173,7 @@ export default function RoundTablePanel() {
                 <button
                   onClick={implement}
                   disabled={implementing || implementable.length === 0}
-                  className="ml-auto inline-flex h-6 items-center gap-1 bg-editor-accent px-2 text-10 text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                  className="btn-codex ml-auto h-6 text-10"
                   title="让每个启用的 agent(含 CLI)在各自 worktree 实现该方案"
                 >
                   <Hammer size={11} strokeWidth={1.8} />
@@ -198,11 +198,7 @@ export default function RoundTablePanel() {
             <div className="flex items-center gap-2 bg-editor-sidebar px-3 py-1.5">
               <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">实现对比</span>
               {impls.filter((r) => r.status === 'ok' && r.diff).length >= 2 && !impls.some((r) => r.agent.id === 'integrated') && (
-                <button
-                  onClick={integrate}
-                  className="inline-flex items-center gap-1 text-10 text-editor-accent hover:text-editor-accent/80"
-                  title="把各 agent 的改动整合成 best-of"
-                >
+                <button onClick={integrate} className="btn-codex h-6 px-2 text-10" title="把各 agent 的改动整合成 best-of">
                   <GitMerge size={11} strokeWidth={1.8} /> 整合
                 </button>
               )}
@@ -219,7 +215,7 @@ export default function RoundTablePanel() {
                   </span>
                   {r.status === 'ok' && <span className="text-muted-foreground">· {r.editedFiles.length} 文件</span>}
                   {r.status === 'ok' && r.diff && (
-                    <button onClick={() => adopt(r)} className="ml-auto inline-flex items-center gap-1 text-10 text-emerald-400 hover:text-emerald-300" title="提交并合并此实现到主工作区">
+                    <button onClick={() => adopt(r)} className="btn-codex ml-auto h-5 px-2 text-10" title="提交并合并此实现到主工作区">
                       <GitMerge size={11} strokeWidth={1.8} /> 采用
                     </button>
                   )}
@@ -254,16 +250,12 @@ export default function RoundTablePanel() {
         />
         <div className="mt-1.5 flex justify-end">
           {running ? (
-            <button onClick={stop} className="inline-flex h-7 items-center gap-1 bg-red-600 px-3 text-xs text-white hover:bg-red-700">
+            <button onClick={stop} className="btn-codex bg-red-600 hover:bg-red-700">
               <Square size={12} strokeWidth={1.8} />
               停止
             </button>
           ) : (
-            <button
-              onClick={run}
-              disabled={!question.trim() || enabled.length === 0}
-              className="inline-flex h-7 items-center gap-1 bg-editor-accent px-3 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
-            >
+            <button onClick={run} disabled={!question.trim() || enabled.length === 0} className="btn-codex">
               <Play size={12} strokeWidth={1.8} />
               讨论
             </button>
