@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
 import { resolveWorkspacePath } from './taskUtils';
-import type { ToolCall } from '@shared/types';
+import type { ToolCall, PlanStep } from '@shared/types';
 
 const ROOT = '/workspace';
 
@@ -128,6 +128,43 @@ describe('toolExecutor — file operations', () => {
     await expect(
       executeSingleTool(call('read_file', { path: '../etc/passwd' }), ctx)
     ).rejects.toThrow();
+  });
+});
+
+describe('toolExecutor — update_plan', () => {
+  it('normalizes steps and forwards them to onPlanUpdate without an approval gate', async () => {
+    const { ctx, gate } = makeCtx();
+    const plans: PlanStep[][] = [];
+    const ctxWithPlan: ToolContext = { ...ctx, onPlanUpdate: (s) => plans.push(s) };
+    const out = await executeSingleTool(
+      call('update_plan', {
+        steps: [
+          { content: '读取 theme.ts', status: 'completed' },
+          { content: '写入 token', status: 'in_progress' },
+          { content: '跑 lint', status: 'pending' },
+          { content: '', status: 'pending' }, // empty content -> dropped
+          { content: '坏状态', status: 'bogus' }, // unknown status -> pending
+        ],
+      }),
+      ctxWithPlan
+    );
+    // A metadata-only tool must not require approval.
+    expect(gate).not.toHaveBeenCalled();
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toEqual([
+      { content: '读取 theme.ts', status: 'completed' },
+      { content: '写入 token', status: 'in_progress' },
+      { content: '跑 lint', status: 'pending' },
+      { content: '坏状态', status: 'pending' },
+    ]);
+    expect(out).toContain('4 步');
+    expect(out).toContain('完成 1');
+  });
+
+  it('tolerates a missing onPlanUpdate (headless) and missing steps', async () => {
+    const { ctx } = makeCtx(); // no onPlanUpdate provided
+    const out = await executeSingleTool(call('update_plan', {}), ctx);
+    expect(out).toContain('0 步');
   });
 });
 
