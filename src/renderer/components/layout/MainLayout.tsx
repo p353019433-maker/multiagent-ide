@@ -265,11 +265,20 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
       } else if ((e.shiftKey && key === 'p') || (!e.shiftKey && key === 'k')) {
         e.preventDefault();
         handleOpenPalette('commands');
+      } else if (!e.shiftKey && key === 'j') {
+        e.preventDefault();
+        handleToggleTaskPanel();
+      } else if (!e.shiftKey && key === '`') {
+        e.preventDefault();
+        handleToggleTerminal();
+      } else if (!e.shiftKey && key === ',') {
+        e.preventDefault();
+        onOpenSettings('providers');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleSearch, handleOpenPalette, shortcutsDisabled]);
+  }, [handleToggleSearch, handleOpenPalette, handleToggleTaskPanel, handleToggleTerminal, onOpenSettings, shortcutsDisabled]);
 
   // 命令面板命令表
   const paletteCommands = useMemo<PaletteCommand[]>(() => {

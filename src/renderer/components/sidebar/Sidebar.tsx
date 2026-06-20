@@ -23,12 +23,6 @@ import {
 type SidebarTab = 'explorer' | 'git' | 'github' | 'problems' | 'tasks';
 type PendingCreateKind = 'file' | 'folder';
 
-<<<<<<< HEAD
-=======
-function isSafeName(name: string): boolean {
-  return !!name && !name.includes('/') && !name.includes('\\') && name !== '.' && name !== '..';
-}
-
 function WorkspaceRequiredState() {
   return (
     <div className="border-b border-editor-border px-3 py-2 text-xs text-muted-foreground">
@@ -37,7 +31,6 @@ function WorkspaceRequiredState() {
   );
 }
 
->>>>>>> claude/review-repo-contents-tkoLx
 export default function Sidebar() {
   const { rootPath, rootName, fileTree, openFolder, refreshTree } = useWorkspace();
   const { openFile } = useEditor();

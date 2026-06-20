@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-=======
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
->>>>>>> claude/review-repo-contents-tkoLx
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type { FileNode } from '@shared/types';
 
 interface WorkspaceContextValue {

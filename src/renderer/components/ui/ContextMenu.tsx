@@ -58,13 +58,8 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
           <div key={`sep:${i}`} className="border-t border-editor-border mx-1 my-1" />
         ) : (
           <button
-<<<<<<< HEAD
             key={`${item.label}:${i}`}
-            className={`w-full text-left px-3 py-1.5 text-editor-text hover:bg-editor-hover transition-colors ${
-=======
-            key={i}
             className={`w-full px-3 py-1.5 text-left text-editor-text transition-colors hover:bg-editor-hover ${
->>>>>>> claude/review-repo-contents-tkoLx
               item.disabled ? 'opacity-40 cursor-not-allowed' : ''
             }`}
             onClick={() => {

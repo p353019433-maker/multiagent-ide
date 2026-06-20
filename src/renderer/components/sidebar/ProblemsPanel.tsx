@@ -88,26 +88,6 @@ export default function ProblemsPanel() {
           </div>
         )}
 
-<<<<<<< HEAD
-        {problems.map((p) => (
-          <div
-            key={`${p.file}:${p.line}:${p.column}:${p.message}`}
-            className="flex items-start gap-2 px-3 py-[3px] cursor-pointer hover:bg-editor-hover text-xs border-b border-editor-border/30"
-            onClick={() => handleClick(p)}
-          >
-            <span className={
-              p.severity === 'error' ? 'text-red-400 flex-shrink-0 mt-0.5' :
-              p.severity === 'warning' ? 'text-yellow-400 flex-shrink-0 mt-0.5' :
-              'text-blue-400 flex-shrink-0 mt-0.5'
-            }>
-              {p.severity === 'error' ? '✕' : p.severity === 'warning' ? '⚠' : 'ℹ'}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-editor-text truncate">{p.message}</div>
-              <div className="text-[10px] text-gray-600 font-mono truncate">
-                {p.file ? `${p.file.split('/').pop()}#${p.line}` : ''}
-                {p.rule ? ` · ${p.rule}` : ''}
-=======
         {problems.map((p, i) => {
           const { Icon, className } = PROBLEM_META[p.severity];
           return (
@@ -123,7 +103,6 @@ export default function ProblemsPanel() {
                   {p.file ? `${p.file.split('/').pop()}#${p.line}` : ''}
                   {p.rule ? ` · ${p.rule}` : ''}
                 </div>
->>>>>>> claude/review-repo-contents-tkoLx
               </div>
             </div>
           );
