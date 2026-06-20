@@ -3,10 +3,6 @@ import type { FileNode } from '@shared/types';
 import { useEditor } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import ContextMenu from '../ui/ContextMenu';
-<<<<<<< HEAD
-import { logAndIgnore } from '../../utils/logAndIgnore';
-import { isSafeName } from '../../utils/pathSafety';
-=======
 import {
   Braces,
   ChevronDown,
@@ -22,7 +18,7 @@ import {
   Terminal,
   type LucideIcon,
 } from 'lucide-react';
->>>>>>> claude/review-repo-contents-tkoLx
+import { isSafeName } from '../../utils/pathSafety';
 
 interface Props {
   nodes: FileNode[];
@@ -116,24 +112,14 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
   const handleCreateConfirm = useCallback(async () => {
     if (createInFlightRef.current) return;
     const cleanName = newName.trim();
-<<<<<<< HEAD
-    if (!cleanName || !rootPath) {
-=======
     if (!rootPath) return;
     if (!cleanName) {
->>>>>>> claude/review-repo-contents-tkoLx
       setCreating(null);
       setNewName('');
       return;
     }
     if (!isSafeName(cleanName)) {
-<<<<<<< HEAD
-      window.alert('名称不能包含路径分隔符或 ..');
-      setCreating(null);
-      setNewName('');
-=======
       setNodeError('名称不能包含路径分隔符或 ..');
->>>>>>> claude/review-repo-contents-tkoLx
       return;
     }
     const fullPath = node.path + '/' + cleanName;
@@ -152,22 +138,13 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
       if (creating === 'file') {
         openFile(fullPath);
       }
-<<<<<<< HEAD
-    } catch (err: any) {
-      // Surface the failure to the user — silent loss is hostile UX.
-      const verb = creating === 'file' ? '创建文件' : '创建文件夹';
-      window.alert(`${verb}失败：${err?.message || err}`);
-      logAndIgnore(err, { where: 'FileTree.create', path: fullPath });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNodeError(message || '创建失败');
     } finally {
       createInFlightRef.current = false;
       setCreating(null);
       setNewName('');
-=======
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setNodeError(message || '创建失败');
-      return;
->>>>>>> claude/review-repo-contents-tkoLx
     }
   }, [newName, rootPath, node.path, creating, refreshTree, expanded, loadChildren, openFile]);
 
@@ -224,17 +201,12 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
         const loaded = await loadChildren(node);
         setChildren(loaded);
       }
-<<<<<<< HEAD
-    } catch (err: any) {
-      window.alert(`重命名失败：${err.message}`);
-    } finally {
-      renameInFlightRef.current = false;
-      setRenaming(false);
-=======
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setNodeError(`重命名失败：${message}`);
->>>>>>> claude/review-repo-contents-tkoLx
+    } finally {
+      renameInFlightRef.current = false;
+      setRenaming(false);
     }
   }, [newName, node.name, node.path, rootPath, closeFile, refreshTree, expanded, loadChildren]);
 
