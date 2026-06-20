@@ -16,12 +16,7 @@ import type {
 } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
-<<<<<<< HEAD:src/renderer/agent/useAgentEngine.ts
-import { resolveWorkspacePath, classifyToolError, compactMessages } from './agentUtils';
-import { logAndIgnore } from '../utils/logAndIgnore';
-=======
 import { resolveWorkspacePath, classifyToolError, compactMessages } from './taskUtils';
->>>>>>> claude/review-repo-contents-tkoLx:src/renderer/task-engine/useTaskEngine.ts
 import type { GateActionFn } from './useApproval';
 
 export interface TaskEngineDeps {
@@ -53,6 +48,9 @@ export function useTaskEngine(deps: TaskEngineDeps) {
   const [toolExecutions, setToolExecutions] = useState<TaskToolExecution[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  // Token usage of the latest model round-trip this turn — surfaced in the
+  // Agent run-bar so the cost of the current context is glanceable.
+  const [turnTokens, setTurnTokens] = useState(0);
 
   // Guard against state updates after unmount (e.g. when the component is
   // torn down while a long-running task turn is still in flight).
@@ -66,6 +64,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
   const safeSetToolExecutions: typeof setToolExecutions = (v) => { if (mountedRef.current) setToolExecutions(v); };
   const safeSetCheckpoints: typeof setCheckpoints = (v) => { if (mountedRef.current) setCheckpoints(v); };
   const safeSetArtifacts: typeof setArtifacts = (v) => { if (mountedRef.current) setArtifacts(v); };
+  const safeSetTurnTokens: typeof setTurnTokens = (v) => { if (mountedRef.current) setTurnTokens(v); };
 
   // Snapshots of files captured before the current turn modifies them.
   // Instead of holding full file content in memory (which causes OOM on
@@ -194,6 +193,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
     safeSetIsStreaming(true);
     safeSetStreamContent('');
     safeSetToolExecutions([]);
+    safeSetTurnTokens(0);
     // Begin a new turn: reset checkpoint/edit trackers.
     turnSnapshots.current = new Map();
     turnEditedFiles.current = new Set();
@@ -215,53 +215,6 @@ export function useTaskEngine(deps: TaskEngineDeps) {
         const result = await new Promise<any>((resolve, reject) => {
           let content = '';
           const toolCalls: ToolCall[] = [];
-<<<<<<< HEAD:src/renderer/agent/useAgentEngine.ts
-          // Track listener cleanup so a synchronous throw from chatStream (or
-          // an IPC sender-destroyed race) cannot leak the four ipcRenderer.on
-          // listeners. Each path below MUST call cleanupAll before settling.
-          let cleanedUp = false;
-          let unsubs: Array<() => void> = [];
-          const cleanupAll = () => {
-            if (cleanedUp) return;
-            cleanedUp = true;
-            for (const u of unsubs) {
-              try { u(); } catch { /* listener already gone */ }
-            }
-          };
-
-          try {
-            unsubs.push(
-              window.api.ai.onStreamToken((token) => {
-                content += token;
-                safeSetStreamContent(content);
-              }),
-              window.api.ai.onStreamToolCall((tc) => {
-                toolCalls.push(tc);
-              }),
-              window.api.ai.onStreamComplete((res) => {
-                cleanupAll();
-                resolve({ ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
-              }),
-              window.api.ai.onStreamError((err) => {
-                cleanupAll();
-                reject(new Error(err));
-              })
-            );
-
-            window.api.ai.chatStream(activeProviderId!, loopMessages, {
-              model: activeModel!,
-              tools: BUILTIN_TOOLS,
-              systemPrompt: buildSystemPrompt(),
-              workspaceRoot: rootPath || undefined,
-            });
-          } catch (err) {
-            // chatStream can throw synchronously (sender destroyed, IPC
-            // handler failed, etc.) — without this catch, the listeners
-            // would never be removed and would accumulate across turns.
-            cleanupAll();
-            reject(err);
-          }
-=======
           let settled = false;
           let unsubToken = () => {};
           let unsubTool = () => {};
@@ -304,8 +257,15 @@ export function useTaskEngine(deps: TaskEngineDeps) {
             .catch((err) => {
               settle(reject, err instanceof Error ? err : new Error(String(err)));
             });
->>>>>>> claude/review-repo-contents-tkoLx:src/renderer/task-engine/useTaskEngine.ts
         });
+
+        // Reflect the latest round-trip's token usage (prompt + completion) in
+        // the run-bar. Set (not summed) so it reads as "current context size"
+        // rather than double-counting the history re-sent each iteration.
+        if (result?.usage) {
+          const used = (result.usage.promptTokens || 0) + (result.usage.completionTokens || 0);
+          if (used > 0) safeSetTurnTokens(used);
+        }
 
         const assistantMsg: ChatMessageType = {
           id: uuid(),
@@ -532,6 +492,7 @@ export function useTaskEngine(deps: TaskEngineDeps) {
     toolExecutions,
     checkpoints,
     artifacts,
+    turnTokens,
     runTurn,
     abort,
     revertCheckpoint,

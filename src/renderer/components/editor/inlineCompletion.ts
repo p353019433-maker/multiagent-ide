@@ -56,14 +56,10 @@ function disposeInlineCompletionProvider() {
   _disposables = [];
 }
 
-<<<<<<< HEAD:src/renderer/components/editor/aiInlineCompletion.ts
-function installProvider(monaco: MonacoModule) {
-=======
 export function registerInlineCompletion(monaco: MonacoModule) {
   _monaco = monaco;
   disposeInlineCompletionProvider();
 
->>>>>>> claude/review-repo-contents-tkoLx:src/renderer/components/editor/inlineCompletion.ts
   const provider: Monaco.languages.InlineCompletionsProvider = {
     provideInlineCompletions: async (
       model: Monaco.editor.ITextModel,
@@ -176,22 +172,7 @@ export function registerInlineCompletion(monaco: MonacoModule) {
   _disposables = [d1];
 }
 
-<<<<<<< HEAD:src/renderer/components/editor/aiInlineCompletion.ts
-export function registerAiInlineCompletion(monaco: MonacoModule) {
-  _monaco = monaco;
-  // If a config was queued before monaco was ready (common — ChatPanel sets
-  // the provider id during initial mount, before EditorArea lazy-loads
-  // monaco), register the provider immediately so inline completion works.
-  disposeInlineCompletionProvider();
-  if (_config.providerId) {
-    installProvider(monaco);
-  }
-}
-
-export function unregisterAiInlineCompletion() {
-=======
 export function unregisterInlineCompletion() {
->>>>>>> claude/review-repo-contents-tkoLx:src/renderer/components/editor/inlineCompletion.ts
   disposeInlineCompletionProvider();
   _config = { providerId: null, model: null };
 }
@@ -199,23 +180,8 @@ export function unregisterInlineCompletion() {
 export function updateInlineCompletionConfig(config: ProviderConfig) {
   _config = config;
   if (!config.providerId) {
-<<<<<<< HEAD:src/renderer/components/editor/aiInlineCompletion.ts
-    unregisterAiInlineCompletion();
-    return;
-  }
-  // If monaco isn't ready yet, _config is queued; registerAiInlineCompletion
-  // (called later from EditorArea) will install the provider using the
-  // current _config value. Otherwise, (re)install right now.
-  if (_monaco && _disposables.length === 0) {
-    installProvider(_monaco);
-  } else if (_monaco && _disposables.length > 0) {
-    // Config changed but provider is already installed — re-install so the
-    // captured closure (debounce/cooldown via _config) takes the new values.
-    installProvider(_monaco);
-=======
     unregisterInlineCompletion();
   } else if (_disposables.length === 0 && _monaco) {
     registerInlineCompletion(_monaco);
->>>>>>> claude/review-repo-contents-tkoLx:src/renderer/components/editor/inlineCompletion.ts
   }
 }

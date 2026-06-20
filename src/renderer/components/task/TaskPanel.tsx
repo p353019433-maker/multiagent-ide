@@ -14,6 +14,7 @@ import { useTaskEngine } from '../../task-engine/useTaskEngine';
 import TaskSessionTabs from './TaskSessionTabs';
 import { CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
 import {
+  AgentRunBar,
   ApprovalModeStrip,
   ArtifactList,
   CheckpointList,
@@ -125,7 +126,7 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   };
 
   // Task engine: the multi-turn loop, tool execution, checkpoints, streaming.
-  const { isStreaming, streamContent, toolExecutions, checkpoints, artifacts, runTurn, abort, revertCheckpoint } =
+  const { isStreaming, streamContent, toolExecutions, checkpoints, artifacts, turnTokens, runTurn, abort, revertCheckpoint } =
     useTaskEngine({
       activeProviderId,
       activeModel,
@@ -439,6 +440,13 @@ ${suffix.slice(0, 500)}${editsCtx}
       />
 
       <div className="flex-1 overflow-y-auto selectable">
+        <AgentRunBar
+          isStreaming={isStreaming}
+          awaitingApproval={!!pendingApproval}
+          toolCount={toolExecutions.length}
+          runningCount={toolExecutions.filter((e) => e.status === 'running').length}
+          tokens={turnTokens}
+        />
         {!hasRuntimeRows && (
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
             <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-muted-foreground">
