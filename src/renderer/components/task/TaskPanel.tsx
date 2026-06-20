@@ -12,8 +12,10 @@ import { resolveWorkspacePath } from '../../task-engine/taskUtils';
 import { useApproval } from '../../task-engine/useApproval';
 import { useTaskEngine } from '../../task-engine/useTaskEngine';
 import TaskSessionTabs from './TaskSessionTabs';
+import ModelPicker from './ModelPicker';
 import { CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
 import {
+  AgentPlan,
   AgentRunBar,
   ApprovalModeStrip,
   ArtifactList,
@@ -93,7 +95,6 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const effectiveRootPath = activeConversation?.worktree?.path ?? rootPath;
   const messages = activeConversation?.messages || [];
-  const activeProvider = providers.find((p) => p.id === activeProviderId);
   const activeWorktree = activeConversation?.worktree;
 
   // Load project rules (AGENTS.md / .cursorrules) for the current workspace.
@@ -126,7 +127,7 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   };
 
   // Task engine: the multi-turn loop, tool execution, checkpoints, streaming.
-  const { isStreaming, streamContent, toolExecutions, checkpoints, artifacts, turnTokens, runTurn, abort, revertCheckpoint } =
+  const { isStreaming, streamContent, toolExecutions, checkpoints, artifacts, turnTokens, plan, runTurn, abort, revertCheckpoint } =
     useTaskEngine({
       activeProviderId,
       activeModel,
@@ -371,36 +372,15 @@ ${suffix.slice(0, 500)}${editsCtx}
         </div>
         <div className="flex min-w-0 items-center gap-1">
           {providers.length > 0 && (
-            <>
-              <select
-                className="h-6 max-w-[110px] border border-editor-border bg-editor-active px-1.5 text-11 text-editor-text outline-none"
-                value={activeProviderId || ''}
-                onChange={(e) => setActiveProvider(e.target.value)}
-                title="模型服务"
-                aria-label="模型服务"
-              >
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              {activeProvider && (
-                <select
-                  className="h-6 max-w-[140px] border border-editor-border bg-editor-active px-1.5 text-11 text-editor-text outline-none"
-                  value={activeModel || ''}
-                  onChange={(e) => setActiveModel(e.target.value)}
-                  title="模型"
-                  aria-label="模型"
-                >
-                  {activeProvider.models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </>
+            <ModelPicker
+              providers={providers}
+              activeProviderId={activeProviderId}
+              activeModel={activeModel}
+              onSelect={(providerId, model) => {
+                if (providerId !== activeProviderId) setActiveProvider(providerId);
+                setActiveModel(model);
+              }}
+            />
           )}
           <button
             onClick={() => newConversation()}
@@ -447,6 +427,7 @@ ${suffix.slice(0, 500)}${editsCtx}
           runningCount={toolExecutions.filter((e) => e.status === 'running').length}
           tokens={turnTokens}
         />
+        <AgentPlan steps={plan} />
         {!hasRuntimeRows && (
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
             <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-muted-foreground">

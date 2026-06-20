@@ -190,6 +190,35 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     },
   },
 
+  // ── Planning ──
+  {
+    name: 'update_plan',
+    description:
+      '创建或更新当前任务的执行计划（有序待办清单），让用户直观看到多步任务的进度。每次调用都传入【完整】的步骤列表（全量覆盖，不是增量）。适合 3 步以上的任务；琐碎的单步任务不必使用。随进展把步骤标记为 in_progress / completed。',
+    parameters: {
+      type: 'object',
+      properties: {
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              content: { type: 'string', description: '该步骤的简短描述。' },
+              status: {
+                type: 'string',
+                enum: ['pending', 'in_progress', 'completed'],
+                description: '步骤状态：pending 待办 / in_progress 进行中 / completed 完成。',
+              },
+            },
+            required: ['content', 'status'],
+          },
+          description: '完整的有序步骤列表（全量覆盖）。',
+        },
+      },
+      required: ['steps'],
+    },
+  },
+
   // ── Git Integration ──
   {
     name: 'git_status',
@@ -705,6 +734,9 @@ You have access to many tools that let you interact with the user's workspace:
 - extract_symbols: Extract functions, classes, exports, interfaces from TS/JS files
 - codebase_search: Semantic/concept search across the workspace — use this first when you don't know the exact keyword ("where is X handled?"). Falls back to full-text search.
 
+**Planning:**
+- update_plan: Maintain a short ordered plan (todo list) for multi-step tasks so the user can see progress. Pass the FULL step list on every call; mark steps in_progress/completed as you go.
+
 **Git:**
 - git_status: See what's changed, current branch
 - git_diff: View changes vs HEAD
@@ -745,6 +777,7 @@ You have access to many tools that let you interact with the user's workspace:
 6. Always read a file before editing it — never guess its contents.
 7. For multi-step tasks, plan ahead and execute tools in logical order.
 8. If a tool fails, read the error, adjust your approach, and retry — do not repeat the exact same failing call.
+9. For multi-step tasks (roughly 3+ steps), call update_plan early to lay out a short ordered plan, then update each step's status as you progress. Skip it for trivial single-step tasks.
 
 ## Approval & Safety
 The user controls an approval mode. Writes, shell commands, and external (GitHub) actions may require the user's approval before they run; destructive shell commands (rm -rf, git push --force, curl | sh, sudo, etc.) always require explicit approval. If an action is rejected, do not retry it — explain and propose an alternative. Prefer the least destructive command that accomplishes the task.

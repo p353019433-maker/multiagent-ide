@@ -76,6 +76,12 @@ export interface Checkpoint {
   files: { path: string; before: string | null }[];
 }
 
+/** One step of an Agent execution plan, surfaced in the task panel. */
+export interface PlanStep {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 export interface Conversation {
   id: string;
   title: string;
