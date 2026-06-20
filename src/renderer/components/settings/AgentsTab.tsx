@@ -110,7 +110,7 @@ export default function AgentsTab() {
         <span className="font-mono normal-case tabular-nums">{enabledCount}/{agents.length} 启用</span>
       </div>
       <p className="border-b border-editor-border px-3 py-2 text-11 text-muted-foreground">
-        每个智能体 = 一个 CLI 外壳(Claude Code / Codex / Antigravity)或纯 API。开启的会参与下一次讨论;兼容性请自行确认。
+        每个智能体 = 一个 CLI 外壳(Claude Code / Codex / Antigravity)或纯 API。开启的会参与下一次讨论;兼容性请自行确认。Antigravity 共享 Google 登录,只能添加一个。
       </p>
 
       {agents.map((a) => (
@@ -161,7 +161,11 @@ export default function AgentsTab() {
       </div>
       {!addingType ? (
         <div className="flex flex-wrap gap-1.5 px-3 py-2">
-          {ADD_TYPES.map((k) => (
+          {ADD_TYPES.filter((k) => {
+            // Antigravity shares one Google login → only one allowed.
+            if (k === 'antigravity') return !agents.some((a) => a.kind === 'antigravity');
+            return true;
+          }).map((k) => (
             <button
               key={k}
               onClick={() => openForm(k)}
@@ -187,7 +191,7 @@ export default function AgentsTab() {
           <div className="space-y-1.5">
             <input className={FIELD} placeholder="名称(可选)" value={name} onChange={(e) => setName(e.target.value)} />
             {addingType === 'antigravity' ? (
-              <p className="text-10 text-muted-foreground">用本机 Google 登录(agy)驱动,无需 API key。</p>
+              <p className="text-10 text-muted-foreground">用本机 Google 登录(agy)驱动,无需 API key。共享同一登录,多开会互相影响,只允许添加一个。</p>
             ) : (
               <>
                 <input
