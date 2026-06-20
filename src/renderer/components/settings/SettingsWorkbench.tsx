@@ -7,6 +7,7 @@ import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
 import { ArrowLeft, X } from 'lucide-react';
+import AgentsTab from './AgentsTab';
 
 /** Common embedding model names by provider, shown as quick hints. */
 const EMBEDDING_MODEL_HINTS = [
@@ -17,7 +18,7 @@ const EMBEDDING_MODEL_HINTS = [
   'bge-m3',
 ];
 
-export type SettingsTab = 'providers' | 'editor' | 'index';
+export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index';
 
 interface Props {
   onClose: () => void;
@@ -201,6 +202,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
   const navItems: { id: typeof tab; label: string }[] = [
     { id: 'providers', label: '模型服务' },
+    { id: 'agents', label: '智能体' },
     { id: 'editor', label: '编辑器' },
     { id: 'index', label: '代码索引' },
   ];
@@ -463,6 +465,8 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
               </div>
             </form>
           )}
+
+          {tab === 'agents' && <AgentsTab />}
 
           {tab === 'index' && (
             <div>

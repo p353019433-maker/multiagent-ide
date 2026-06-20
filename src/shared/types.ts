@@ -18,6 +18,32 @@ export interface ModelProvider {
 export type AIProvider = ModelProvider;
 
 // ============================================================
+// Multi-Agent System
+// ============================================================
+
+export type AgentKind = 'api' | 'cli';
+export type CliTool = 'claude-code' | 'codex';
+
+/**
+ * A participant in the multi-agent system. An `api` agent is a (provider, model)
+ * binding — one API connection can back several agents via different models. A
+ * `cli` agent is driven by a local CLI tool (Claude Code / Codex).
+ */
+export interface Agent {
+  id: string;
+  name: string;
+  /** Whether this agent joins the next discussion / run. */
+  enabled: boolean;
+  kind: AgentKind;
+  /** kind==='api': the provider (API connection) this agent uses. */
+  providerId?: string;
+  /** kind==='cli': which local CLI drives this agent. */
+  cliTool?: CliTool;
+  /** Model name passed to the provider/CLI (empty = CLI default). */
+  model: string;
+}
+
+// ============================================================
 // Chat Message Types
 // ============================================================
 

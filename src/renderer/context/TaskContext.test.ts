@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelProvider } from '@shared/types';
+import type { ModelProvider, Agent } from '@shared/types';
 import {
+  BUILTIN_CLI_AGENTS,
   normalizeProviderForSave,
+  removeAgentById,
+  seedAgents,
   selectModelForProvider,
   selectProviderAfterDelete,
+  setAgentEnabled,
+  upsertAgent,
   upsertProvider,
 } from './TaskContext';
 
@@ -104,5 +109,62 @@ describe('selectProviderAfterDelete', () => {
       activeProviderId: null,
       activeModel: null,
     });
+  });
+});
+
+const agent = (id: string, over: Partial<Agent> = {}): Agent => ({
+  id,
+  name: id,
+  enabled: true,
+  kind: 'api',
+  providerId: 'p1',
+  model: 'm',
+  ...over,
+});
+
+describe('seedAgents', () => {
+  it('returns the built-in CLI agents when nothing is stored', () => {
+    expect(seedAgents(undefined).map((a) => a.id)).toEqual(BUILTIN_CLI_AGENTS.map((a) => a.id));
+    expect(seedAgents([]).map((a) => a.id)).toEqual(BUILTIN_CLI_AGENTS.map((a) => a.id));
+  });
+
+  it('returns stored agents untouched when present', () => {
+    const stored = [agent('a1')];
+    expect(seedAgents(stored)).toBe(stored);
+  });
+
+  it('seeds a fresh copy so mutating the result does not touch the defaults', () => {
+    const seeded = seedAgents(undefined);
+    seeded[0].enabled = true;
+    expect(BUILTIN_CLI_AGENTS[0].enabled).toBe(false);
+  });
+});
+
+describe('upsertAgent', () => {
+  it('appends a new agent', () => {
+    const a1 = agent('a1');
+    const a2 = agent('a2');
+    expect(upsertAgent([a1], a2)).toEqual([a1, a2]);
+  });
+
+  it('replaces an existing agent in place', () => {
+    const a1 = agent('a1');
+    const a2 = agent('a2');
+    const updated = { ...a1, name: 'renamed' };
+    expect(upsertAgent([a1, a2], updated)).toEqual([updated, a2]);
+  });
+});
+
+describe('removeAgentById', () => {
+  it('drops the matching agent', () => {
+    expect(removeAgentById([agent('a1'), agent('a2')], 'a1')).toEqual([agent('a2')]);
+  });
+});
+
+describe('setAgentEnabled', () => {
+  it('flips only the matching agent', () => {
+    const out = setAgentEnabled([agent('a1', { enabled: true }), agent('a2', { enabled: true })], 'a1', false);
+    expect(out[0].enabled).toBe(false);
+    expect(out[1].enabled).toBe(true);
   });
 });

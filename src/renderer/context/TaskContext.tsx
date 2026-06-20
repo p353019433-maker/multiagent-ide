@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
-import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask } from '@shared/types';
+import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask, Agent } from '@shared/types';
 import { useWorkspace } from './WorkspaceContext';
 import { runHeadlessTask } from '../task-engine/headlessTaskRunner';
 import {
@@ -23,6 +23,11 @@ interface TaskContextValue {
   saveProvider: (provider: ModelProviderConfig, apiKey: string) => Promise<void>;
   deleteProvider: (id: string) => Promise<void>;
   testProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
+
+  agents: Agent[];
+  saveAgent: (agent: Agent) => void;
+  deleteAgent: (id: string) => void;
+  toggleAgent: (id: string, enabled: boolean) => void;
 
   newConversation: (providerId?: string, model?: string) => string;
   newWorktreeConversation: (worktreePath: string, branch: string, baseBranch: string) => Promise<string>;
@@ -95,6 +100,33 @@ export function selectProviderAfterDelete(
   };
 }
 
+// ── Multi-agent roster (pure helpers) ──
+
+/** Built-in CLI agents; always present, toggled off until the user wires them. */
+export const BUILTIN_CLI_AGENTS: Agent[] = [
+  { id: 'cli-claude-code', name: 'Claude Code CLI', enabled: false, kind: 'cli', cliTool: 'claude-code', model: '' },
+  { id: 'cli-codex', name: 'Codex CLI', enabled: false, kind: 'cli', cliTool: 'codex', model: '' },
+];
+
+/** Stored agents, or the built-in CLI agents on first run. */
+export function seedAgents(stored: Agent[] | undefined): Agent[] {
+  if (stored && stored.length) return stored;
+  return BUILTIN_CLI_AGENTS.map((a) => ({ ...a }));
+}
+
+export function upsertAgent(agents: Agent[], agent: Agent): Agent[] {
+  const idx = agents.findIndex((a) => a.id === agent.id);
+  return idx >= 0 ? agents.map((a) => (a.id === agent.id ? agent : a)) : [...agents, agent];
+}
+
+export function removeAgentById(agents: Agent[], id: string): Agent[] {
+  return agents.filter((a) => a.id !== id);
+}
+
+export function setAgentEnabled(agents: Agent[], id: string, enabled: boolean): Agent[] {
+  return agents.map((a) => (a.id === id ? { ...a, enabled } : a));
+}
+
 export function TaskContextProvider({ children }: { children: React.ReactNode }) {
   const [providers, setProviders] = useState<ModelProviderConfig[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
@@ -102,6 +134,7 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [orchestrationSessions, setOrchestrationSessions] = useState<OrchestrationSession[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const { rootPath } = useWorkspace();
 
   const providersRef = useRef<ModelProviderConfig[]>([]);
@@ -151,6 +184,14 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
         prevConvsRef.current = storedConvs;
         setConversations(storedConvs);
         setActiveConversationId(storedConvs[0].id);
+      }
+
+      // Load the multi-agent roster; seed built-in CLI agents on first run.
+      const storedAgents = (await window.api.store.get('agents')) as Agent[] | undefined;
+      const seededAgents = seedAgents(storedAgents);
+      setAgents(seededAgents);
+      if (!storedAgents || !storedAgents.length) {
+        window.api.store.set('agents', seededAgents);
       }
     })();
 
@@ -236,6 +277,30 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
 
   const testProvider = useCallback(async (id: string) => {
     return window.api.ai.testConnection(id);
+  }, []);
+
+  const saveAgent = useCallback((agent: Agent) => {
+    setAgents((prev) => {
+      const next = upsertAgent(prev, agent);
+      void window.api.store.set('agents', next);
+      return next;
+    });
+  }, []);
+
+  const deleteAgent = useCallback((id: string) => {
+    setAgents((prev) => {
+      const next = removeAgentById(prev, id);
+      void window.api.store.set('agents', next);
+      return next;
+    });
+  }, []);
+
+  const toggleAgent = useCallback((id: string, enabled: boolean) => {
+    setAgents((prev) => {
+      const next = setAgentEnabled(prev, id, enabled);
+      void window.api.store.set('agents', next);
+      return next;
+    });
   }, []);
 
   const newConversation = useCallback(
@@ -531,6 +596,10 @@ Response:`;
         saveProvider,
         deleteProvider,
         testProvider,
+        agents,
+        saveAgent,
+        deleteAgent,
+        toggleAgent,
         newConversation,
         newWorktreeConversation,
         setActiveConversation,

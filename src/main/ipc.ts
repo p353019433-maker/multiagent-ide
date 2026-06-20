@@ -89,6 +89,7 @@ function assertAppOrigin(event: IpcMainInvokeEvent): void {
 
 const ALLOWED_STORE_KEYS = new Set([
   'providers',
+  'agents',
   'activeProviderId',
   'activeModel',
   'approvalMode',
