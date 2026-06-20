@@ -178,6 +178,11 @@ const api = {
     reindex: (root: string) => ipcRenderer.invoke('codebase:reindex', root),
   },
 
+  // CLI agents (Claude Code / Codex / Antigravity, headless)
+  cliAgent: {
+    run: (cwd: string, params: unknown) => ipcRenderer.invoke('cliagent:run', cwd, params),
+  },
+
   // GitHub
   github: {
     listIssues: (token: string, owner: string, repo: string, state?: string) =>

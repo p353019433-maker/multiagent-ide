@@ -153,6 +153,18 @@ declare global {
         search: (root: string, query: string, limit?: number) => Promise<CodebaseSearchResult>;
         reindex: (root: string) => Promise<{ ok: boolean; error?: string; chunks?: boolean }>;
       };
+      cliAgent: {
+        run: (
+          cwd: string,
+          params: {
+            tool: 'claude-code' | 'codex' | 'antigravity';
+            prompt: string;
+            model?: string;
+            baseURL?: string;
+            apiKey?: string;
+          }
+        ) => Promise<{ ok: boolean; output: string; error?: string }>;
+      };
       github: {
         listIssues: (token: string, owner: string, repo: string, state?: string) => Promise<any>;
         getIssue: (token: string, owner: string, repo: string, number: number) => Promise<any>;

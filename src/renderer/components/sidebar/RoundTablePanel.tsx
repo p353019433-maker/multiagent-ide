@@ -8,6 +8,7 @@ import {
   adoptImplementation,
   cleanupImplementations,
   runImplementation,
+  type ImplAgent,
   type ImplementationResult,
 } from '../../task-engine/agentImplementation';
 
@@ -17,9 +18,8 @@ import {
  * diffs can be compared and one adopted (Phase 3a).
  */
 export default function RoundTablePanel() {
-  const { agents } = useTaskWorkspace();
-  const { rootPath } = useWorkspace();
-  const [question, setQuestion] = useState('');
+  const { agents, providers } = useTaskWorkspace();
+  const { rootPath } = useWorkspace();  const [question, setQuestion] = useState('');
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
   const [messages, setMessages] = useState<DiscussionMessage[]>([]);
@@ -36,6 +36,9 @@ export default function RoundTablePanel() {
   const enabled: DiscussionAgent[] = agents
     .filter((a) => a.enabled && !!a.providerId && !!a.model)
     .map((a) => ({ id: a.id, name: a.name, providerId: a.providerId as string, model: a.model }));
+
+  // Implementation can also include CLI shells (login or backed), not just API.
+  const implementable = agents.filter((a) => a.enabled && (a.kind === 'api' ? !!a.providerId && !!a.model : true));
 
   const run = async () => {
     if (running || !question.trim() || enabled.length === 0) return;
@@ -75,12 +78,24 @@ export default function RoundTablePanel() {
     });
 
   const implement = async () => {
-    if (implementing || !plan || !rootPath || enabled.length === 0) return;
+    if (implementing || !plan || !rootPath || implementable.length === 0) return;
     setImplementing(true);
     setImpls([]);
     setNotice(null);
     try {
-      await runImplementation({ agents: enabled, plan, rootPath, tag: uuid().slice(0, 6), onUpdate: upsertImpl });
+      const implAgents: ImplAgent[] = await Promise.all(
+        implementable.map(async (a) => {
+          let baseURL: string | undefined;
+          let apiKey: string | undefined;
+          if (a.providerId) {
+            const p = providers.find((x) => x.id === a.providerId);
+            baseURL = p?.baseURL || undefined;
+            if (p) apiKey = (await window.api.store.decryptAndGet(p.apiKeyRef)) ?? undefined;
+          }
+          return { id: a.id, name: a.name, kind: a.kind, model: a.model, providerId: a.providerId, baseURL, apiKey };
+        })
+      );
+      await runImplementation({ agents: implAgents, plan, rootPath, tag: uuid().slice(0, 6), onUpdate: upsertImpl });
     } catch (e) {
       setNotice({ tone: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -144,12 +159,12 @@ export default function RoundTablePanel() {
               {rootPath ? (
                 <button
                   onClick={implement}
-                  disabled={implementing || enabled.length === 0}
+                  disabled={implementing || implementable.length === 0}
                   className="ml-auto inline-flex h-6 items-center gap-1 bg-editor-accent px-2 text-10 text-primary-foreground hover:opacity-90 disabled:opacity-40"
-                  title="让每个 agent 在各自 worktree 实现该方案"
+                  title="让每个启用的 agent(含 CLI)在各自 worktree 实现该方案"
                 >
                   <Hammer size={11} strokeWidth={1.8} />
-                  {implementing ? '实现中…' : '让 agent 实现'}
+                  {implementing ? '实现中…' : `让 agent 实现 (${implementable.length})`}
                 </button>
               ) : (
                 <span className="ml-auto text-10 text-muted-foreground">需打开 git 项目才能实现</span>

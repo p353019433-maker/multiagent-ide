@@ -17,6 +17,7 @@ import type { GitHubService } from './services/github-service';
 import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
 import type { FileWatcherService } from './services/file-watcher-service';
+import type { CliAgentService } from './services/cli-agent-service';
 
 const allowedRoots = new Set<string>();
 
@@ -134,6 +135,7 @@ export interface IpcDeps {
   analysisService: AnalysisService;
   codebaseSearchService: CodebaseSearchService;
   fileWatcherService: FileWatcherService;
+  cliAgentService: CliAgentService;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -149,6 +151,7 @@ export function registerIpc(deps: IpcDeps): void {
   registerContextIpc(deps);
   registerRulesIpc();
   registerCodebaseIpc(deps);
+  registerCliAgentIpc(deps);
 }
 
 function registerDialogIpc(): void {
@@ -574,5 +577,30 @@ function registerCodebaseIpc({ codebaseSearchService }: IpcDeps): void {
   ipcMain.handle('codeintel:references', async (event, root: string, name: string) => {
     assertAppOrigin(event);
     return codebaseSearchService.findReferences(await assertAllowedRoot(root), name);
+  });
+}
+
+function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
+  ipcMain.handle('cliagent:run', async (event, cwd: string, params: unknown) => {
+    assertAppOrigin(event);
+    const safeCwd = await assertAllowedRoot(cwd);
+    const p = (params || {}) as {
+      tool?: unknown;
+      prompt?: unknown;
+      model?: unknown;
+      baseURL?: unknown;
+      apiKey?: unknown;
+    };
+    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity') {
+      return { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
+    }
+    return cliAgentService.run({
+      tool: p.tool,
+      cwd: safeCwd,
+      prompt: String(p.prompt ?? ''),
+      model: p.model ? String(p.model) : undefined,
+      baseURL: p.baseURL ? String(p.baseURL) : undefined,
+      apiKey: p.apiKey ? String(p.apiKey) : undefined,
+    });
   });
 }

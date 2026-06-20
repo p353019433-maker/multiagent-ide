@@ -12,12 +12,27 @@
  */
 
 import { runHeadlessTask } from './headlessTaskRunner';
-import type { DiscussionAgent } from './agentDiscussion';
+import type { AgentKind } from '@shared/types';
+
+/**
+ * An agent ready to implement a plan. API agents run via the headless task loop;
+ * CLI agents (claude-code / codex / antigravity) are driven by their tool.
+ * baseURL/apiKey are an optional custom backend for the CLI shells.
+ */
+export interface ImplAgent {
+  id: string;
+  name: string;
+  kind: AgentKind;
+  model: string;
+  providerId?: string;
+  baseURL?: string;
+  apiKey?: string;
+}
 
 export type ImplStatus = 'running' | 'ok' | 'failed';
 
 export interface ImplementationResult {
-  agent: DiscussionAgent;
+  agent: ImplAgent;
   branch: string;
   worktreePath: string;
   status: ImplStatus;
@@ -28,7 +43,7 @@ export interface ImplementationResult {
 }
 
 export interface RunImplementationParams {
-  agents: DiscussionAgent[];
+  agents: ImplAgent[];
   plan: string;
   rootPath: string;
   /** Short tag for branch names (e.g. a uuid slice). */
@@ -65,16 +80,28 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
       const task =
         '请在当前工作区实现下面这份已达成共识的方案。只做方案范围内的改动,完成后用一句话说明你改了什么。\n\n' +
         `【统一方案】\n${p.plan}`;
-      const res = await runHeadlessTask({ providerId: agent.providerId, model: agent.model, workspaceRoot: wt, task });
+
+      let editedFiles: string[] = [];
+      let note: string | undefined;
+      if (agent.kind === 'api') {
+        if (!agent.providerId) throw new Error('API 智能体缺少 API 连接');
+        const res = await runHeadlessTask({ providerId: agent.providerId, model: agent.model, workspaceRoot: wt, task });
+        editedFiles = res.editedFiles;
+        note = res.note;
+      } else {
+        // CLI shell: the tool edits files in the worktree itself.
+        const res = await window.api.cliAgent.run(wt, {
+          tool: agent.kind,
+          prompt: task,
+          model: agent.model || undefined,
+          baseURL: agent.baseURL,
+          apiKey: agent.apiKey,
+        });
+        if (!res.ok) throw new Error(res.error || `${agent.kind} 执行失败`);
+        note = res.output ? res.output.trim().slice(0, 200) : undefined;
+      }
       const diff = await window.api.git.diff(wt).catch(() => '');
-      const done: ImplementationResult = {
-        ...running,
-        worktreePath: wt,
-        status: 'ok',
-        diff,
-        editedFiles: res.editedFiles,
-        note: res.note,
-      };
+      const done: ImplementationResult = { ...running, worktreePath: wt, status: 'ok', diff, editedFiles, note };
       p.onUpdate?.(done);
       return done;
     } catch (e) {
