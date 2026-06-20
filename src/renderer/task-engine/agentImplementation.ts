@@ -142,3 +142,54 @@ export async function cleanupImplementations(rootPath: string, results: Implemen
     await window.api.git.worktreeRemove(rootPath, r.worktreePath, r.branch).catch(() => undefined);
   }
 }
+
+/**
+ * Integrate multiple agent implementations into one best-of: an integrator agent
+ * (the first successful one, or a chosen providerId+model) reads all the diffs,
+ * picks the best approach per function/section, and produces a unified final file.
+ * Returns a new ImplementationResult on the 'integrated' branch; the caller can
+ * adopt it like any other result.
+ */
+export async function integrateImplementations(
+  rootPath: string,
+  results: ImplementationResult[],
+  plan: string,
+  integratorProviderId?: string,
+  integratorModel?: string
+): Promise<ImplementationResult> {
+  const ok = results.filter((r) => r.status === 'ok' && r.diff);
+  if (ok.length < 2) throw new Error('需要至少 2 份成功的实现才能整合');
+
+  const integrator = ok[0].agent; // fallback: first successful agent
+  const providerId = integratorProviderId ?? integrator.providerId;
+  const model = integratorModel ?? integrator.model;
+  if (!providerId) throw new Error('整合需要一个 API 连接');
+
+  const branch = 'ma-integrated';
+  const worktreePath = worktreePathFor(rootPath, branch);
+  const base = await window.api.git.currentBranch(rootPath).catch(() => '');
+  const add = await window.api.git.worktreeAdd(rootPath, worktreePath, branch, base || undefined);
+  if (!add.success) throw new Error(`无法建 worktree: ${add.message}`);
+
+  const wt = add.path || worktreePath;
+  const labelled = ok.map((r) => `### ${r.agent.name} 的改动\n${r.diff}`).join('\n\n');
+  const prompt =
+    '你是整合 agent。下面是同一任务的多份独立实现的 git diff。整合出一份最优的改动:' +
+    '逐个文件、逐个函数取最稳妥/最正确的实现,风格统一、无重复。直接在当前 worktree 改文件,不要解释。\n\n' +
+    `【统一方案】\n${plan}\n\n【各 agent 的 diff】\n${labelled}`;
+
+  const skillsSuffix = await loadSkillsMenu(rootPath);
+  const res = await runHeadlessTask({ providerId, model, workspaceRoot: wt, task: prompt, systemPromptSuffix: skillsSuffix });
+  const diff = await window.api.git.diff(wt).catch(() => '');
+
+  return {
+    agent: { id: 'integrated', name: '整合', kind: 'api', providerId, model },
+    branch,
+    worktreePath: wt,
+    status: 'ok',
+    diff,
+    editedFiles: res.editedFiles,
+    note: res.note,
+  };
+}
+

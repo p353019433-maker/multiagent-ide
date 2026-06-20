@@ -7,6 +7,7 @@ import { runDiscussion, type DiscussionAgent, type DiscussionMessage } from '../
 import {
   adoptImplementation,
   cleanupImplementations,
+  integrateImplementations,
   runImplementation,
   type ImplAgent,
   type ImplementationResult,
@@ -117,6 +118,18 @@ export default function RoundTablePanel() {
     setNotice({ tone: 'ok', text: '已清理本次 worktree' });
   };
 
+  const integrate = async () => {
+    if (!rootPath || impls.filter((r) => r.status === 'ok' && r.diff).length < 2) return;
+    setNotice(null);
+    try {
+      const integrated = await integrateImplementations(rootPath, impls, plan);
+      setImpls((prev) => [...prev, integrated]);
+      setNotice({ tone: 'ok', text: `已整合 ${impls.filter((r) => r.status === 'ok').length} 份实现 → ${integrated.branch}` });
+    } catch (e) {
+      setNotice({ tone: 'err', text: `整合失败：${e instanceof Error ? e.message : String(e)}` });
+    }
+  };
+
   const STATUS_LABEL: Record<ImplementationResult['status'], string> = { running: '实现中…', ok: '完成', failed: '失败' };
 
   return (
@@ -184,6 +197,15 @@ export default function RoundTablePanel() {
           <div className="border-t border-editor-border">
             <div className="flex items-center gap-2 bg-editor-sidebar px-3 py-1.5">
               <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">实现对比</span>
+              {impls.filter((r) => r.status === 'ok' && r.diff).length >= 2 && !impls.some((r) => r.agent.id === 'integrated') && (
+                <button
+                  onClick={integrate}
+                  className="inline-flex items-center gap-1 text-10 text-editor-accent hover:text-editor-accent/80"
+                  title="把各 agent 的改动整合成 best-of"
+                >
+                  <GitMerge size={11} strokeWidth={1.8} /> 整合
+                </button>
+              )}
               <button onClick={cleanup} className="ml-auto inline-flex items-center gap-1 text-10 text-muted-foreground hover:text-red-400" title="删除本次所有 worktree">
                 <Trash2 size={11} strokeWidth={1.8} /> 清理
               </button>
