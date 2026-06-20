@@ -433,6 +433,12 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const done = steps.filter((s) => s.status === 'completed').length;
       return `计划已更新：${steps.length} 步（完成 ${done}）`;
     }
+    case 'use_skill': {
+      if (!rootPath) throw new Error('未打开工作区');
+      const name = String(args.name ?? '');
+      const body = await window.api.skills.read(rootPath, name);
+      return `# 技能「${name}」正文（请严格遵循）\n\n${body.slice(0, 16000)}`;
+    }
 
     // ── GitHub ──
     case 'github_list_issues': {

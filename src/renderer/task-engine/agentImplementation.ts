@@ -12,6 +12,7 @@
  */
 
 import { runHeadlessTask } from './headlessTaskRunner';
+import { loadSkillsMenu } from './skills';
 import type { AgentKind } from '@shared/types';
 
 /**
@@ -63,6 +64,8 @@ export function worktreePathFor(rootPath: string, branch: string): string {
 /** Each agent implements the plan in its own worktree (in parallel). */
 export async function runImplementation(p: RunImplementationParams): Promise<ImplementationResult[]> {
   const base = await window.api.git.currentBranch(p.rootPath).catch(() => '');
+  // Skills menu (progressive disclosure) shared by every API agent's prompt.
+  const skillsSuffix = await loadSkillsMenu(p.rootPath);
 
   const tasks = p.agents.map(async (agent, i): Promise<ImplementationResult> => {
     const branch = implBranch(p.tag, i);
@@ -85,7 +88,7 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
       let note: string | undefined;
       if (agent.kind === 'api') {
         if (!agent.providerId) throw new Error('API 智能体缺少 API 连接');
-        const res = await runHeadlessTask({ providerId: agent.providerId, model: agent.model, workspaceRoot: wt, task });
+        const res = await runHeadlessTask({ providerId: agent.providerId, model: agent.model, workspaceRoot: wt, task, systemPromptSuffix: skillsSuffix });
         editedFiles = res.editedFiles;
         note = res.note;
       } else {

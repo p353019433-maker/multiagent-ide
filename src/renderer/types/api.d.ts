@@ -165,6 +165,10 @@ declare global {
           }
         ) => Promise<{ ok: boolean; output: string; error?: string }>;
       };
+      skills: {
+        list: (root: string) => Promise<{ name: string; description: string }[]>;
+        read: (root: string, name: string) => Promise<string>;
+      };
       github: {
         listIssues: (token: string, owner: string, repo: string, state?: string) => Promise<any>;
         getIssue: (token: string, owner: string, repo: string, number: number) => Promise<any>;

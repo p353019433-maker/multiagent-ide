@@ -9,6 +9,7 @@ import type { ChatMessage as ChatMessageType } from '@shared/types';
 import { TASK_SYSTEM_PROMPT } from '@shared/tools';
 import { setInlineCompletionSource, updateInlineCompletionConfig } from '../editor/inlineCompletion';
 import { resolveWorkspacePath } from '../../task-engine/taskUtils';
+import { loadSkillsMenu } from '../../task-engine/skills';
 import { useApproval } from '../../task-engine/useApproval';
 import { useTaskEngine } from '../../task-engine/useTaskEngine';
 import TaskSessionTabs from './TaskSessionTabs';
@@ -75,6 +76,8 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Project rules (AGENTS.md / .cursorrules), appended to the system prompt.
   const projectRules = useRef<{ file: string; content: string } | null>(null);
+  // Installed-skills menu (.claude/skills), appended so the agent can use_skill.
+  const skillsMenu = useRef('');
 
   // Approval gate (mode + pending-approval state + decision logic).
   const {
@@ -101,6 +104,7 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   useEffect(() => {
     if (!rootPath) {
       projectRules.current = null;
+      skillsMenu.current = '';
       return;
     }
     window.api.rules
@@ -111,19 +115,26 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
       .catch(() => {
         projectRules.current = null;
       });
+    loadSkillsMenu(rootPath)
+      .then((m) => {
+        skillsMenu.current = m;
+      })
+      .catch(() => {
+        skillsMenu.current = '';
+      });
   }, [rootPath]);
 
-  // Build the effective system prompt: base task prompt + project rules.
+  // Build the effective system prompt: base task prompt + project rules + skills.
   const buildSystemPrompt = (): string => {
+    let prompt = TASK_SYSTEM_PROMPT;
     if (projectRules.current?.content) {
-      return (
-        TASK_SYSTEM_PROMPT +
+      prompt +=
         `\n\n## Project Rules (from ${projectRules.current.file})\n` +
         'The user has defined project-specific rules. Follow them strictly:\n\n' +
-        projectRules.current.content
-      );
+        projectRules.current.content;
     }
-    return TASK_SYSTEM_PROMPT;
+    if (skillsMenu.current) prompt += skillsMenu.current;
+    return prompt;
   };
 
   // Task engine: the multi-turn loop, tool execution, checkpoints, streaming.

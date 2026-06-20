@@ -18,6 +18,7 @@ import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
 import type { FileWatcherService } from './services/file-watcher-service';
 import type { CliAgentService } from './services/cli-agent-service';
+import type { SkillsService } from './services/skills-service';
 
 const allowedRoots = new Set<string>();
 
@@ -136,6 +137,7 @@ export interface IpcDeps {
   codebaseSearchService: CodebaseSearchService;
   fileWatcherService: FileWatcherService;
   cliAgentService: CliAgentService;
+  skillsService: SkillsService;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -152,6 +154,7 @@ export function registerIpc(deps: IpcDeps): void {
   registerRulesIpc();
   registerCodebaseIpc(deps);
   registerCliAgentIpc(deps);
+  registerSkillsIpc(deps);
 }
 
 function registerDialogIpc(): void {
@@ -602,5 +605,16 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       baseURL: p.baseURL ? String(p.baseURL) : undefined,
       apiKey: p.apiKey ? String(p.apiKey) : undefined,
     });
+  });
+}
+
+function registerSkillsIpc({ skillsService }: IpcDeps): void {
+  ipcMain.handle('skills:list', async (event, root: string) => {
+    assertAppOrigin(event);
+    return skillsService.list(await assertAllowedRoot(root));
+  });
+  ipcMain.handle('skills:read', async (event, root: string, name: string) => {
+    assertAppOrigin(event);
+    return skillsService.read(await assertAllowedRoot(root), String(name));
   });
 }

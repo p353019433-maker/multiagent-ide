@@ -183,6 +183,12 @@ const api = {
     run: (cwd: string, params: unknown) => ipcRenderer.invoke('cliagent:run', cwd, params),
   },
 
+  // Skills (.claude/skills) for the IDE's own agents
+  skills: {
+    list: (root: string) => ipcRenderer.invoke('skills:list', root),
+    read: (root: string, name: string) => ipcRenderer.invoke('skills:read', root, name),
+  },
+
   // GitHub
   github: {
     listIssues: (token: string, owner: string, repo: string, state?: string) =>

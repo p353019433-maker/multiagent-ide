@@ -13,6 +13,7 @@ import { CodebaseSearchService } from './services/codebase-search-service';
 import { registerIpc } from './ipc';
 import { FileWatcherService } from './services/file-watcher-service';
 import { CliAgentService } from './services/cli-agent-service';
+import { SkillsService } from './services/skills-service';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -73,6 +74,7 @@ app.whenReady().then(() => {
   const codebaseSearchService = new CodebaseSearchService(indexService, aiService, fileService, storeService);
   const fileWatcherService = new FileWatcherService();
   const cliAgentService = new CliAgentService();
+  const skillsService = new SkillsService();
 
   registerIpc({
     getMainWindow: () => mainWindow,
@@ -87,6 +89,7 @@ app.whenReady().then(() => {
     codebaseSearchService,
     fileWatcherService,
     cliAgentService,
+    skillsService,
   });
 
   createWindow();

@@ -218,6 +218,18 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: ['steps'],
     },
   },
+  {
+    name: 'use_skill',
+    description:
+      '加载一个已安装技能（.claude/skills/<name>/SKILL.md）的完整正文,并严格按其指引执行。当任务匹配系统提示「可用技能」里列出的某个技能时调用;name 用技能的目录名。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '技能名（.claude/skills/ 下的目录名）。' },
+      },
+      required: ['name'],
+    },
+  },
 
   // ── Git Integration ──
   {
@@ -736,6 +748,7 @@ You have access to many tools that let you interact with the user's workspace:
 
 **Planning:**
 - update_plan: Maintain a short ordered plan (todo list) for multi-step tasks so the user can see progress. Pass the FULL step list on every call; mark steps in_progress/completed as you go.
+- use_skill: Load and follow an installed skill's full SKILL.md. When the system prompt lists "可用技能", call use_skill for the matching one BEFORE acting.
 
 **Git:**
 - git_status: See what's changed, current branch
