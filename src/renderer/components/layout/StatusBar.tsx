@@ -2,12 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { GitBranch, Circle, Folder, FileText } from 'lucide-react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
+import { subscribeCursor, DEFAULT_CURSOR, type CursorState } from '../../editor/cursorPosition';
 
 export default function StatusBar() {
   const { rootPath, rootName } = useWorkspace();
   const { openFiles, activeFilePath } = useEditor();
   const [branch, setBranch] = useState('');
+  const [cursor, setCursor] = useState<CursorState>(DEFAULT_CURSOR);
   const activeFile = openFiles.find((file) => file.path === activeFilePath);
+
+  // Cursor position arrives via a leaf-only pub/sub bus (see cursorPosition),
+  // so per-keystroke updates re-render only this status bar, not the tree.
+  useEffect(() => subscribeCursor(setCursor), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +59,10 @@ export default function StatusBar() {
               <span className="max-w-[220px] truncate">{activeFile.path.split('/').pop()}</span>
               {activeFile.isDirty && <Circle size={7} fill="currentColor" strokeWidth={0} />}
             </div>
+            <span className="font-mono tabular-nums" title="行 / 列">
+              行 {cursor.lineNumber}，列 {cursor.column}
+              {cursor.selectionLength > 0 ? `（已选 ${cursor.selectionLength}）` : ''}
+            </span>
             <span className="hidden font-mono sm:inline">{activeFile.language}</span>
           </>
         ) : (

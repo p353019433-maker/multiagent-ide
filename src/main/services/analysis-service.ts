@@ -1,7 +1,6 @@
 /**
  * Analysis service — lint diagnostics and symbol extraction.
  *
-<<<<<<< HEAD
  * Extracted from index.ts. On macOS and Linux, all shell execution goes
  * through TerminalService.runFile with argument arrays (no shell), so
  * agent-supplied file names can't inject commands.
@@ -10,10 +9,6 @@
  * that require shell resolution. The isSafePath() guard below is the only
  * thing standing between a crafted file name and arbitrary cmd.exe
  * execution, so it must be comprehensive.
-=======
- * Extracted from index.ts. All shell execution goes through TerminalService.runFile
- * (argument arrays, no shell) so tool-supplied file names can't inject commands.
->>>>>>> claude/review-repo-contents-tkoLx
  */
 
 import path from 'path';

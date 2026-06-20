@@ -1,8 +1,5 @@
 import React, { useState, useCallback } from 'react';
-<<<<<<< HEAD
-=======
 import { ArrowLeft, ArrowRight, Globe, LoaderCircle, RotateCw, X } from 'lucide-react';
->>>>>>> claude/review-repo-contents-tkoLx
 
 interface Props {
   visible: boolean;
@@ -10,21 +7,17 @@ interface Props {
   initialUrl?: string;
 }
 
-<<<<<<< HEAD
 /**
  * Built-in browser preview. Uses a sandboxed <iframe> (NOT <webview>):
  *   - <webview> requires `webviewTag: true` in webPreferences, which is
  *     explicitly disabled in main/index.ts. The previous implementation was
  *     dead code that would have opened an un-sandboxed web container the
  *     moment that flag was flipped.
- *   - iframe with `sandbox="allow-scripts allow-same-origin"` keeps the
- *     preview functional but isolates it from the host Electron process.
+ *   - the iframe `sandbox` attribute keeps the preview functional but
+ *     isolates it from the host Electron process.
  *
- * Agent's preview_url tool opens pages here instead of system browser.
+ * Agent's preview_url tool opens pages here instead of the system browser.
  */
-=======
-/** The preview_url tool opens pages here instead of the system browser. */
->>>>>>> claude/review-repo-contents-tkoLx
 export default function BrowserPreview({ visible, onClose, initialUrl }: Props) {
   const [url, setUrl] = useState(initialUrl || '');
   const [inputUrl, setInputUrl] = useState(initialUrl || '');
@@ -32,10 +25,7 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
   const [loadFailed, setLoadFailed] = useState(false);
   const [navHistory, setNavHistory] = useState<string[]>([initialUrl || '']);
   const [navIndex, setNavIndex] = useState(0);
-<<<<<<< HEAD
-=======
   const inputRef = React.useRef<HTMLInputElement>(null);
->>>>>>> claude/review-repo-contents-tkoLx
 
   const navigate = useCallback((targetUrl: string) => {
     if (!targetUrl) return;
@@ -43,14 +33,11 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
     if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
       formatted = 'https://' + formatted;
     }
-<<<<<<< HEAD
     // Defense-in-depth: keep iframe src as a plain https/http URL, strip
     // any control characters that some prompt-injection payloads attempt.
     formatted = formatted.replace(/[\u0000-\u001f\u007f]/g, '');
-=======
     setLoading(true);
     setLoadFailed(false);
->>>>>>> claude/review-repo-contents-tkoLx
     setUrl(formatted);
     setInputUrl(formatted);
     const newHistory = navHistory.slice(0, navIndex + 1);
@@ -150,19 +137,6 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
         </button>
       </div>
 
-<<<<<<< HEAD
-      {/* Iframe (sandboxed). Replaces the broken <webview> tag. */}
-      {url ? (
-        <iframe
-          src={url}
-          sandbox="allow-scripts allow-same-origin"
-          referrerPolicy="no-referrer"
-          onLoad={() => setLoading(false)}
-          onLoadStart={() => setLoading(true)}
-          title={title}
-          style={{ flex: 1, border: 'none', background: '#fff' }}
-        />
-=======
       {/* Preview */}
       {url ? (
         <div className="relative flex-1 bg-white">
@@ -171,6 +145,7 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
             src={url}
             title="浏览器预览"
             sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+            referrerPolicy="no-referrer"
             className="h-full w-full border-0 bg-white"
             onLoad={() => setLoading(false)}
             onError={() => {
@@ -187,7 +162,6 @@ export default function BrowserPreview({ visible, onClose, initialUrl }: Props) 
             </div>
           )}
         </div>
->>>>>>> claude/review-repo-contents-tkoLx
       ) : (
         <div className="flex-1 bg-editor-bg">
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">

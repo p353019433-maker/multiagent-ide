@@ -12,6 +12,7 @@ import {
   updateInlineCompletionConfig,
   recordEdit,
 } from './inlineCompletion';
+import { setCursorState, DEFAULT_CURSOR } from '../../editor/cursorPosition';
 
 type MonacoModule = typeof import('monaco-editor');
 
@@ -97,11 +98,32 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
         openPalette('commands');
       });
+
+      // Publish cursor position/selection to the leaf-only bus the StatusBar
+      // subscribes to (keeps per-keystroke changes out of React context).
+      const publishCursor = () => {
+        const ed = editorRef.current;
+        const model = ed?.getModel();
+        const pos = ed?.getPosition();
+        if (!ed || !model || !pos) return;
+        const sel = ed.getSelection();
+        setCursorState({
+          filePath: model.uri.fsPath,
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+          selectionLength: sel ? model.getValueInRange(sel).length : 0,
+          language: model.getLanguageId(),
+        });
+      };
+      editor.onDidChangeCursorPosition(publishCursor);
+      editor.onDidChangeCursorSelection(publishCursor);
+
       setIsMonacoReady(true);
     });
 
     return () => {
       disposed = true;
+      setCursorState(DEFAULT_CURSOR);
       editorRef.current?.dispose();
       modelsRef.current.forEach((m) => m.dispose());
       modelsRef.current.clear();

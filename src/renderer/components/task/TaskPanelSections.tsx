@@ -5,6 +5,71 @@ import { type ApprovalMode, APPROVAL_MODE_META } from '@shared/command-policy';
 import type { PendingApproval } from '../../task-engine/useApproval';
 import DiffPreview from '../editor/DiffPreview';
 
+interface AgentRunBarProps {
+  isStreaming: boolean;
+  awaitingApproval: boolean;
+  toolCount: number;
+  runningCount: number;
+  /** Token usage (prompt + completion) of the latest round-trip this turn. */
+  tokens: number;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1000) {
+    const k = n / 1000;
+    return `${k >= 10 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+  }
+  return String(n);
+}
+
+/**
+ * Sticky run-status strip pinned to the top of the Agent thread. Surfaces the
+ * current run state, pending-approval flag, tool count and latest-turn token
+ * usage so task progress is glanceable while scrolling. Mirrors the Open Design
+ * `agent-runbar`, restyled with the project's own theme tokens. Renders nothing
+ * until there is activity to report.
+ */
+export function AgentRunBar({ isStreaming, awaitingApproval, toolCount, runningCount, tokens }: AgentRunBarProps) {
+  if (!isStreaming && toolCount === 0 && !awaitingApproval) return null;
+
+  const live = isStreaming || awaitingApproval;
+  const stateText = awaitingApproval
+    ? '等待审批'
+    : runningCount > 0
+    ? '正在执行工具'
+    : isStreaming
+    ? '运行中'
+    : '本轮完成';
+
+  return (
+    <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-editor-border bg-editor-bg px-3 py-1.5">
+      <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-foreground">
+        <span
+          className={`h-2 w-2 flex-shrink-0 rounded-full ${live ? 'bg-editor-accent' : 'bg-muted-foreground'} ${
+            isStreaming ? 'animate-pulse' : ''
+          }`}
+        />
+        <span className="truncate">{stateText}</span>
+      </span>
+      <span className="ml-auto flex items-center gap-3 whitespace-nowrap font-mono text-10 text-muted-foreground">
+        {awaitingApproval && (
+          <span className="flex items-center gap-1">
+            <b className="font-semibold tabular-nums text-yellow-400">1</b> 待审批
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <b className="font-semibold tabular-nums text-foreground">{toolCount}</b> 工具
+        </span>
+        {tokens > 0 && (
+          <span className="flex items-center gap-1">
+            <b className="font-semibold tabular-nums text-foreground">{formatTokens(tokens)}</b> token
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 interface ApprovalModeStripProps {
   mode: ApprovalMode;
   /**

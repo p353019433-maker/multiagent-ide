@@ -28,7 +28,6 @@ export class AIService {
     }
   }
 
-<<<<<<< HEAD
   /**
    * Drop any in-flight AbortController for a webContents that has been
    * destroyed. The IPC layer normally triggers this via `ai:abort`, but
@@ -40,12 +39,8 @@ export class AIService {
     this.abortControllers.delete(senderId);
   }
 
-  private getProviders(): AIProvider[] {
-    return (this.store.get('providers') as AIProvider[]) || [];
-=======
   private getProviders(): ModelProvider[] {
     return (this.store.get('providers') as ModelProvider[]) || [];
->>>>>>> claude/review-repo-contents-tkoLx
   }
 
   private async getApiKey(provider: ModelProvider): Promise<string> {

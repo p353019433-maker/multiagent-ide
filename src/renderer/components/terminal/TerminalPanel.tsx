@@ -14,13 +14,10 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-<<<<<<< HEAD
   // Tracks whether the component is still mounted. The pty session is created
   // asynchronously, so without this we'd leak a session if the panel unmounts
   // before `terminal.create` resolves.
   const mountedRef = useRef(true);
-  const [visible, setVisible] = useState(true);
-=======
   const [terminalUnavailable, setTerminalUnavailable] = useState('');
   const { theme } = useTheme();
   const themeRef = useRef(theme);
@@ -32,7 +29,6 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
       termRef.current.options.theme = { ...theme.terminal };
     }
   }, [theme]);
->>>>>>> claude/review-repo-contents-tkoLx
 
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || termRef.current) return;
@@ -63,22 +59,14 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
 
     termRef.current = term;
     fitRef.current = fitAddon;
-<<<<<<< HEAD
 
-    const id = await window.api.terminal.create(cwd);
-    // If the panel unmounted while we were creating the pty, tear down
-    // everything we just built so neither the term nor the pty leaks.
+    // If the panel unmounted while we were creating the pty/terminal, tear
+    // down what we built so neither the term nor the pty session leaks.
     if (!mountedRef.current) {
-      if (id) window.api.terminal.close(id);
+      window.api.terminal.close(id);
       term.dispose();
       return;
     }
-    if (!id) {
-      term.writeln('\r\n⚠️  终端不可用（node-pty 未加载）');
-      return;
-    }
-=======
->>>>>>> claude/review-repo-contents-tkoLx
     sessionIdRef.current = id;
 
     term.onData((data) => {
@@ -122,22 +110,9 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
     };
   }, [cwd]);
 
-  // Re-fit the terminal whenever it becomes visible again — xterm measures its
-  // dimensions from the DOM, and while hidden (display:none) those are zero.
-  useEffect(() => {
-    if (!visible) return;
-    const fit = fitRef.current;
-    const term = termRef.current;
-    const sid = sessionIdRef.current;
-    if (!fit || !term) return;
-    try {
-      fit.fit();
-      if (sid) window.api.terminal.resize(sid, term.cols, term.rows);
-    } catch {
-      // term not ready yet — ResizeObserver will handle it once mounted
-    }
-  }, [visible]);
-
+  // Re-fit whenever the container resizes is handled by the ResizeObserver in
+  // initTerminal; MainLayout unmounts/remounts this panel on toggle, so there is
+  // no hidden→visible transition for a live instance to recover from.
   useEffect(() => {
     mountedRef.current = true;
     const cleanup = initTerminal();
@@ -162,11 +137,8 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
         <div className="flex items-center gap-1">
           <button
             onClick={() => {
-<<<<<<< HEAD
               // Clear only the visible buffer — do NOT close the pty session,
               // which would kill the shell and leave the panel dead.
-=======
->>>>>>> claude/review-repo-contents-tkoLx
               termRef.current?.clear();
             }}
             className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
@@ -176,34 +148,16 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
             <Eraser size={14} strokeWidth={1.8} />
           </button>
           <button
-<<<<<<< HEAD
-            onClick={() => setVisible((v) => !v)}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-editor-active text-gray-400 hover:text-white"
-            title={visible ? '收起终端' : '展开终端'}
-=======
             onClick={onClose}
             className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
             title="关闭终端"
             aria-label="关闭终端"
->>>>>>> claude/review-repo-contents-tkoLx
           >
             <X size={14} strokeWidth={1.8} />
           </button>
         </div>
       </div>
 
-<<<<<<< HEAD
-      {/*
-        The terminal container is always mounted; visibility toggles via CSS.
-        Conditionally unmounting it would discard the DOM node xterm rendered
-        into, leaving a blank panel after collapse/expand.
-      */}
-      <div
-        ref={containerRef}
-        className="flex-1 p-1 overflow-hidden"
-        style={{ display: visible ? 'block' : 'none' }}
-      />
-=======
       <div className="relative flex-1 overflow-hidden">
         {terminalUnavailable && (
           <div className="absolute inset-0 flex items-start border-t border-editor-border bg-editor-bg px-3 py-3 font-mono text-xs text-muted-foreground">
@@ -215,7 +169,6 @@ export default function TerminalPanel({ cwd, onClose }: Props) {
           className={`absolute inset-0 p-1 overflow-hidden ${terminalUnavailable ? 'invisible' : ''}`}
         />
       </div>
->>>>>>> claude/review-repo-contents-tkoLx
     </div>
   );
 }

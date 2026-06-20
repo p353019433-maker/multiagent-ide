@@ -64,10 +64,6 @@ export function resolveWorkspacePath(rootPath: string | null, p: string): string
       resolved.push(seg);
     }
   }
-<<<<<<< HEAD:src/renderer/agent/agentUtils.ts
-
-  return rootPath + '/' + resolved.join('/');
-=======
   const result = rootPath + '/' + resolved.join('/');
 
   // Block access to .git internals — a compromised model/tool call could otherwise
@@ -78,7 +74,6 @@ export function resolveWorkspacePath(rootPath: string | null, p: string): string
   }
 
   return result;
->>>>>>> claude/review-repo-contents-tkoLx:src/renderer/task-engine/taskUtils.ts
 }
 
 /**
