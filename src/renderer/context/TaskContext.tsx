@@ -102,10 +102,12 @@ export function selectProviderAfterDelete(
 
 // ── Multi-agent roster (pure helpers) ──
 
-/** Built-in CLI agents; always present, toggled off until the user wires them. */
+/** Built-in CLI agents (login-based by default); always present, toggled off
+ *  until the user enables them. Users can add more agents of any type. */
 export const BUILTIN_CLI_AGENTS: Agent[] = [
-  { id: 'cli-claude-code', name: 'Claude Code CLI', enabled: false, kind: 'cli', cliTool: 'claude-code', model: '' },
-  { id: 'cli-codex', name: 'Codex CLI', enabled: false, kind: 'cli', cliTool: 'codex', model: '' },
+  { id: 'cli-claude-code', name: 'Claude Code', enabled: false, kind: 'claude-code', model: '' },
+  { id: 'cli-codex', name: 'Codex', enabled: false, kind: 'codex', model: '' },
+  { id: 'cli-antigravity', name: 'Antigravity', enabled: false, kind: 'antigravity', model: '' },
 ];
 
 /** Stored agents, or the built-in CLI agents on first run. */

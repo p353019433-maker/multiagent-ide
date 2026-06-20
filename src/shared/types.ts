@@ -21,13 +21,17 @@ export type AIProvider = ModelProvider;
 // Multi-Agent System
 // ============================================================
 
-export type AgentKind = 'api' | 'cli';
-export type CliTool = 'claude-code' | 'codex';
+export type AgentKind = 'api' | 'claude-code' | 'codex' | 'antigravity';
 
 /**
- * A participant in the multi-agent system. An `api` agent is a (provider, model)
- * binding — one API connection can back several agents via different models. A
- * `cli` agent is driven by a local CLI tool (Claude Code / Codex).
+ * A participant in the multi-agent system:
+ *  - 'api'         — raw API model (no shell), reached via ai-service.
+ *  - 'claude-code' — driven by `claude -p` (own login, or a custom API backend).
+ *  - 'codex'       — driven by `codex exec` (own login, or a custom API backend).
+ *  - 'antigravity' — driven by `agy -p` (Google login; Gemini backend).
+ *
+ * `providerId` links a backing API connection when an API backend is configured;
+ * it is absent for login-based shells (Claude Code / Codex own login, Antigravity).
  */
 export interface Agent {
   id: string;
@@ -35,11 +39,9 @@ export interface Agent {
   /** Whether this agent joins the next discussion / run. */
   enabled: boolean;
   kind: AgentKind;
-  /** kind==='api': the provider (API connection) this agent uses. */
+  /** Backing API connection (provider id) when an API backend is configured. */
   providerId?: string;
-  /** kind==='cli': which local CLI drives this agent. */
-  cliTool?: CliTool;
-  /** Model name passed to the provider/CLI (empty = CLI default). */
+  /** Model name (empty = the CLI/login default). */
   model: string;
 }
 

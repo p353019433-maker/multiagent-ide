@@ -8,6 +8,7 @@ import GitPanel from './GitPanel';
 import ProblemsPanel from './ProblemsPanel';
 import GitHubPanel from './GitHubPanel';
 import TaskRunsPanel from './TaskRunsPanel';
+import RoundTablePanel from './RoundTablePanel';
 import {
   Files,
   FilePlus,
@@ -16,11 +17,12 @@ import {
   FolderOpen,
   FolderPlus,
   ListChecks,
+  MessagesSquare,
   Workflow,
   type LucideIcon,
 } from 'lucide-react';
 
-type SidebarTab = 'explorer' | 'git' | 'github' | 'problems' | 'tasks';
+type SidebarTab = 'explorer' | 'git' | 'github' | 'problems' | 'tasks' | 'roundtable';
 type PendingCreateKind = 'file' | 'folder';
 
 function WorkspaceRequiredState() {
@@ -87,6 +89,7 @@ export default function Sidebar() {
     { id: 'github', label: 'GitHub', Icon: GitPullRequest },
     { id: 'problems', label: '问题', Icon: ListChecks },
     { id: 'tasks', label: '任务', Icon: Workflow },
+    { id: 'roundtable', label: '圆桌', Icon: MessagesSquare },
   ];
   const activeLabel = tabs.find((t) => t.id === activeTab)?.label || '侧边栏';
 
@@ -241,6 +244,8 @@ export default function Sidebar() {
               <WorkspaceRequiredState />
             )
           )}
+
+          {activeTab === 'roundtable' && <RoundTablePanel />}
         </div>
       </div>
     </div>
