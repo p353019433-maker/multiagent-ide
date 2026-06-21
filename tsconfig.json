@@ -21,6 +21,5 @@
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["src/renderer", "src/shared"],
-  "exclude": ["src/renderer/components/layout/MainLayout.backup.tsx"]
+  "include": ["src/renderer", "src/shared"]
 }
