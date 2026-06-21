@@ -8,6 +8,8 @@ interface Props {
   activeModel: string | null;
   /** Select a model; the picker also resolves which provider owns it. */
   onSelect: (providerId: string, model: string) => void;
+  /** Optional prefix shown before the model name, e.g. "主持人". */
+  labelPrefix?: string;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  * active model. Mirrors the Open Design `model-pick` dropdown, styled with the
  * project's own theme tokens. Picking an entry sets both provider and model.
  */
-export default function ModelPicker({ providers, activeProviderId, activeModel, onSelect }: Props) {
+export default function ModelPicker({ providers, activeProviderId, activeModel, onSelect, labelPrefix }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -44,14 +46,19 @@ export default function ModelPicker({ providers, activeProviderId, activeModel, 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-6 max-w-[180px] items-center gap-1.5 border border-editor-border bg-editor-active px-1.5 text-11 text-editor-text outline-none hover:bg-editor-hover"
+        className="flex h-8 max-w-[220px] items-center gap-2 rounded-lg border border-border-strong bg-background px-2.5 text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] outline-none transition-colors hover:bg-[#fcfcfc]"
         title="选择模型"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-editor-accent" />
-        <span className="min-w-0 truncate font-mono">{activeModel || '选择模型'}</span>
-        <ChevronDown size={12} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
+        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-[5px]" style={{ background: '#0d0d0d' }}>
+          <span className="h-1.5 w-1.5 rounded-[1.5px]" style={{ background: '#9fe870' }} />
+        </span>
+        <span className="min-w-0 truncate font-semibold">
+          {labelPrefix ? `${labelPrefix} ` : ''}
+          {activeModel || '选择模型'}
+        </span>
+        <ChevronDown size={12} strokeWidth={1.8} className="flex-none text-foreground/35" />
       </button>
 
       {open && (

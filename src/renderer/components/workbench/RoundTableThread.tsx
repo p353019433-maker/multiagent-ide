@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
-import { ArrowUp, Check, Hammer, Paperclip, Square } from 'lucide-react';
+import { ArrowUp, Check, Clock, Hammer, Paperclip, Square } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
+import { useApproval } from '../../task-engine/useApproval';
+import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
+import ModelPicker from '../task/ModelPicker';
 import { agentVisual } from './agentTheme';
 import type { RoundTableState } from '../../task-engine/useRoundTable';
 import type { AgentKind } from '@shared/types';
@@ -28,7 +31,8 @@ function Stage({ label, state }: { label: string; state: 'done' | 'active' | 'pe
  * Driven by the shared useRoundTable() instance.
  */
 export default function RoundTableThread({ rt }: { rt: RoundTableState }) {
-  const { agents } = useTaskWorkspace();
+  const { agents, providers, activeProviderId, activeModel, setActiveProvider, setActiveModel } = useTaskWorkspace();
+  const { approvalMode, changeApprovalMode } = useApproval();
   const kindById = useMemo(() => {
     const m = new Map<string, AgentKind>();
     agents.forEach((a) => m.set(a.id, a.kind));
@@ -55,6 +59,18 @@ export default function RoundTableThread({ rt }: { rt: RoundTableState }) {
             <Stage label="实现" state={implementState} />
           </span>
         </div>
+        {providers.length > 0 && (
+          <ModelPicker
+            providers={providers}
+            activeProviderId={activeProviderId}
+            activeModel={activeModel}
+            labelPrefix="主持人"
+            onSelect={(providerId, model) => {
+              if (providerId !== activeProviderId) setActiveProvider(providerId);
+              setActiveModel(model);
+            }}
+          />
+        )}
       </div>
 
       {/* status strip */}
@@ -189,7 +205,37 @@ export default function RoundTableThread({ rt }: { rt: RoundTableState }) {
               <button className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-foreground/45 transition-colors hover:bg-foreground/[0.05] hover:text-foreground">
                 <Paperclip size={17} strokeWidth={1.7} />
               </button>
-              <span className="font-mono text-[10.5px] text-foreground/40">讨论 · 收敛 · 并行实现</span>
+              <div className="inline-flex rounded-lg p-0.5" style={{ background: '#f1f1ef' }}>
+                {(['readonly', 'auto', 'full'] as ApprovalMode[]).map((m) => {
+                  const meta = APPROVAL_MODE_META[m];
+                  const active = approvalMode === m;
+                  const danger = m === 'full';
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => changeApprovalMode(m)}
+                      title={meta.hint}
+                      className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all"
+                      style={
+                        active
+                          ? danger
+                            ? { color: '#9a4a00', background: '#fdeccd', boxShadow: '0 1px 2px rgba(154,74,0,.22)' }
+                            : { color: '#0d0d0d', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.12)' }
+                          : { color: 'rgba(13,13,13,.5)' }
+                      }
+                    >
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/60"
+                style={{ background: '#f1f1ef' }}
+              >
+                <Clock size={12} strokeWidth={1.8} />
+                讨论 2 轮
+              </span>
               {rt.running ? (
                 <button
                   onClick={rt.stop}
