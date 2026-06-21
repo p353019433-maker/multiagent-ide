@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import TitleBar from './TitleBar';
 import TaskPanel from '../task/TaskPanel';
+import EditorArea from '../editor/EditorArea';
 import WorkbenchLeft, { type WorkbenchView } from '../workbench/WorkbenchLeft';
 import RoundTableThread from '../workbench/RoundTableThread';
 import ParallelImplTray from '../workbench/ParallelImplTray';
@@ -9,7 +11,7 @@ import { onOpenPalette, type PaletteMode } from '../palette/paletteEvents';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useEditorActions } from '../../context/EditorContext';
+import { useEditorActions, useEditorState } from '../../context/EditorContext';
 import { useRoundTable } from '../../task-engine/useRoundTable';
 import { THEMES } from '../../theme';
 import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
@@ -34,7 +36,18 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   const { rootPath, openFolder } = useWorkspace();
   const { themeName, setThemeName } = useTheme();
   const { saveActiveFile } = useEditorActions();
+  const { openFiles } = useEditorState();
+  const [showEditor, setShowEditor] = useState(false);
+  const prevOpenCount = useRef(0);
   const { providers, activeProviderId, activeModel, newConversation } = useTaskWorkspace();
+
+  // Open the editor drawer when a file is opened (e.g. clicking a changed file);
+  // close it when the last file is closed.
+  useEffect(() => {
+    if (openFiles.length > prevOpenCount.current) setShowEditor(true);
+    else if (openFiles.length === 0) setShowEditor(false);
+    prevOpenCount.current = openFiles.length;
+  }, [openFiles.length]);
   const [embeddingConfig, setEmbeddingConfig] = useState<{ providerId?: string | null; model?: string | null } | null>(null);
 
   // Shared round-table instance so center (discussion) + right (impls) stay in sync.
@@ -134,6 +147,9 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         e.preventDefault();
         newConversation();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+        e.preventDefault();
+        setShowEditor((p) => !p);
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -144,8 +160,15 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   const statusText = rt.running ? '圆桌进行中' : rt.implementing ? '并行实现中' : null;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden text-foreground" style={{ background: 'var(--app-bg)' }}>
-      <TitleBar onOpenSettings={() => onOpenSettings()} branch={branch} statusText={statusText} running={rt.running || rt.implementing} />
+    <div className="relative flex h-screen flex-col overflow-hidden text-foreground" style={{ background: 'var(--app-bg)' }}>
+      <TitleBar
+        onOpenSettings={() => onOpenSettings()}
+        branch={branch}
+        statusText={statusText}
+        running={rt.running || rt.implementing}
+        editorOpen={showEditor}
+        onToggleEditor={() => setShowEditor((p) => !p)}
+      />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* LEFT 300 */}
@@ -164,13 +187,35 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
           <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
         ) : (
           <>
-            <RoundTableThread rt={rt} />
+            <RoundTableThread rt={rt} onConfigure={() => onOpenSettings('agents')} />
             <aside className="w-[340px] flex-none border-l border-border">
               <ParallelImplTray rt={rt} />
             </aside>
           </>
         )}
       </div>
+
+      {showEditor && (
+        <div className="absolute bottom-0 left-0 right-0 top-[46px] z-40 flex">
+          <div className="flex-1 bg-black/10" onClick={() => setShowEditor(false)} />
+          <div className="flex h-full w-[64%] min-w-[440px] flex-col border-l border-border bg-background shadow-[0_0_24px_rgba(0,0,0,.12)]">
+            <div className="flex h-[42px] flex-none items-center justify-between border-b border-border px-4">
+              <span className="text-xs font-semibold text-foreground">代码 · 编辑器</span>
+              <button
+                onClick={() => setShowEditor(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+                title="关闭编辑器 (⌘E)"
+                aria-label="关闭编辑器"
+              >
+                <X size={15} strokeWidth={1.8} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <EditorArea readiness={readiness} onReadinessAction={runReadinessAction} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {paletteMode && <CommandPalette initialMode={paletteMode} commands={paletteCommands} onClose={handlePaletteClose} />}
     </div>

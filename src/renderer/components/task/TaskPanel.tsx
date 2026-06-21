@@ -16,15 +16,8 @@ import TaskSessionTabs from './TaskSessionTabs';
 import ModelPicker from './ModelPicker';
 import DeliveryTray from '../workbench/DeliveryTray';
 import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
-import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
-import {
-  AgentPlan,
-  AgentRunBar,
-  ApprovalModeStrip,
-  ArtifactList,
-  CheckpointList,
-  PendingApprovalView,
-} from './TaskPanelSections';
+import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Square } from 'lucide-react';
+import { AgentPlan, AgentRunBar, PendingApprovalView } from './TaskPanelSections';
 import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 
 interface Props {

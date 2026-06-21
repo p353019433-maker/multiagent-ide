@@ -1,12 +1,14 @@
 import React from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
-import { Folder, Settings as SettingsIcon } from 'lucide-react';
+import { Code2, Folder, Settings as SettingsIcon } from 'lucide-react';
 
 interface Props {
   onOpenSettings: () => void;
   branch: string | null;
   statusText: string | null;
   running: boolean;
+  editorOpen?: boolean;
+  onToggleEditor?: () => void;
 }
 
 /**
@@ -14,7 +16,7 @@ interface Props {
  * (titleBarStyle: hiddenInset), so we leave the left inset and render the
  * project/branch pill, a pulsing run-status dot, settings and avatar.
  */
-export default function TitleBar({ onOpenSettings, branch, statusText, running }: Props) {
+export default function TitleBar({ onOpenSettings, branch, statusText, running, editorOpen, onToggleEditor }: Props) {
   const { rootName } = useWorkspace();
 
   return (
@@ -47,6 +49,19 @@ export default function TitleBar({ onOpenSettings, branch, statusText, running }
             />
             {statusText}
           </span>
+        )}
+        {onToggleEditor && (
+          <button
+            onClick={onToggleEditor}
+            title="代码编辑器 (⌘E)"
+            aria-label="代码编辑器"
+            aria-pressed={editorOpen}
+            className={`flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-border-strong shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc] ${
+              editorOpen ? 'bg-secondary text-foreground' : 'bg-background text-foreground/50 hover:text-foreground'
+            }`}
+          >
+            <Code2 size={15} strokeWidth={1.7} />
+          </button>
         )}
         <button
           onClick={onOpenSettings}

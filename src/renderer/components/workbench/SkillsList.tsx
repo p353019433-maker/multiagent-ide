@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Hexagon } from 'lucide-react';
+import { skillTag } from './workbenchUtils';
 
 interface SkillMeta {
   name: string;
   description?: string;
-}
-
-/** Derive a 元技能/项目 tag from the skill name (SkillMeta has no kind field). */
-function skillTag(name: string): string {
-  return /^(darwin|meta|skill-)/i.test(name) || name.endsWith('-skill') ? '元技能' : '项目';
 }
 
 /**

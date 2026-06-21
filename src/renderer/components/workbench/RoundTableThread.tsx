@@ -30,7 +30,7 @@ function Stage({ label, state }: { label: string; state: 'done' | 'active' | 'pe
  * and the moderator's converged-plan card with the "让 agent 实现" trigger.
  * Driven by the shared useRoundTable() instance.
  */
-export default function RoundTableThread({ rt }: { rt: RoundTableState }) {
+export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableState; onConfigure?: () => void }) {
   const { agents, providers, activeProviderId, activeModel, setActiveProvider, setActiveModel } = useTaskWorkspace();
   const { approvalMode, changeApprovalMode } = useApproval();
   const kindById = useMemo(() => {
@@ -92,9 +92,24 @@ export default function RoundTableThread({ rt }: { rt: RoundTableState }) {
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-1 pt-5 selectable">
         <div className="mx-auto flex max-w-[760px] flex-col gap-4">
           {rt.enabled.length === 0 && rt.messages.length === 0 && (
-            <p className="text-[13.5px] leading-relaxed text-foreground/50">
-              去左侧名册启用至少一个带 API 后端的智能体，然后在下方提出议题，让它们互相讨论、收敛出统一方案，再各自在 worktree 实现。
-            </p>
+            <div className="mt-8 flex flex-col items-center gap-3 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: '#f3ede2' }}>
+                <Hammer size={22} strokeWidth={1.6} style={{ color: '#c2632a' }} />
+              </span>
+              <div className="text-sm font-semibold text-foreground">还没有可参与讨论的智能体</div>
+              <p className="max-w-[420px] text-[13px] leading-relaxed text-foreground/50">
+                圆桌需要至少一个带 API 后端的智能体。配置好后，在左侧名册启用它们，再在下方提出议题——它们会互相讨论、收敛出统一方案，并各自在 worktree 实现。
+              </p>
+              {onConfigure && (
+                <button
+                  onClick={onConfigure}
+                  className="mt-1 rounded-[10px] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#262626]"
+                  style={{ background: '#0d0d0d' }}
+                >
+                  去设置添加智能体
+                </button>
+              )}
+            </div>
           )}
 
           {/* topic card */}

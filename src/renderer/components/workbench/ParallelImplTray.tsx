@@ -1,22 +1,11 @@
 import React, { useState } from 'react';
 import { Check, GitMerge, Trash2 } from 'lucide-react';
 import { agentVisual } from './agentTheme';
+import { diffStat } from './workbenchUtils';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import type { RoundTableState } from '../../task-engine/useRoundTable';
 import type { ImplementationResult } from '../../task-engine/agentImplementation';
 import type { AgentKind } from '@shared/types';
-
-/** +N −N from a unified diff (skip the +++/--- file headers). */
-function diffStat(diff?: string): { add: number; del: number } {
-  if (!diff) return { add: 0, del: 0 };
-  let add = 0;
-  let del = 0;
-  for (const line of diff.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) add++;
-    else if (line.startsWith('-') && !line.startsWith('---')) del++;
-  }
-  return { add, del };
-}
 
 function ImplCard({ r, rt, kind }: { r: ImplementationResult; rt: RoundTableState; kind: AgentKind }) {
   const [showDiff, setShowDiff] = useState(false);

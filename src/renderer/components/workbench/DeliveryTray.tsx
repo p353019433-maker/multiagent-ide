@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText } from 'lucide-react';
 import { ArtifactList, CheckpointList } from '../task/TaskPanelSections';
+import { changedFiles } from './workbenchUtils';
 import type { Artifact, Checkpoint, TaskToolExecution } from '@shared/types';
 
 interface Props {
@@ -13,7 +14,6 @@ interface Props {
 
 type Tab = 'delivery' | 'verify' | 'checkpoint';
 
-const WRITE_TOOLS = new Set(['write_file', 'replace_in_file', 'search_and_replace', 'create_file', 'apply_patch']);
 const TOOL_TAG: Record<string, string> = {
   write_file: '写',
   create_file: '新',
@@ -21,18 +21,6 @@ const TOOL_TAG: Record<string, string> = {
   search_and_replace: '改',
   apply_patch: '改',
 };
-
-/** Changed files from this turn's write-type tool executions (dedup, last wins). */
-function changedFiles(execs: TaskToolExecution[]): { file: string; tool: string }[] {
-  const seen = new Map<string, string>();
-  for (const e of execs) {
-    if (!WRITE_TOOLS.has(e.name)) continue;
-    const a = e.arguments as Record<string, unknown>;
-    const f = (a.path || a.file || a.filePath || a.file_path) as string | undefined;
-    if (f) seen.set(f, e.name);
-  }
-  return [...seen.entries()].map(([file, tool]) => ({ file, tool }));
-}
 
 /**
  * Chat-mode right tray (340): 本轮交付 / 验证记录 / 检查点. Reads the live task
