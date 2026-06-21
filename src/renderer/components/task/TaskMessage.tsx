@@ -50,6 +50,29 @@ function CodeBlock({ children, language }: { children: string; language?: string
   );
 }
 
+/** Inline unified-diff block: per-line +add (green) / −del (red) tinting. */
+function DiffBlock({ children }: { children: string }) {
+  const lines = children.replace(/\n$/, '').split('\n');
+  return (
+    <pre className="my-3 overflow-x-auto rounded-lg border border-editor-border font-mono text-xs leading-relaxed">
+      {lines.map((ln, i) => {
+        const add = ln.startsWith('+') && !ln.startsWith('+++');
+        const del = ln.startsWith('-') && !ln.startsWith('---');
+        const style = add
+          ? { background: '#eaf6e3', color: '#1f6b27' }
+          : del
+            ? { background: '#fdeef0', color: '#9a2533' }
+            : { color: 'rgba(13,13,13,.7)' };
+        return (
+          <div key={i} className="px-3" style={style}>
+            {ln || ' '}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
 export default function TaskMessage({ message }: Props) {
   if (message.role === 'tool') return null;
 
@@ -61,13 +84,13 @@ export default function TaskMessage({ message }: Props) {
   });
 
   return (
-    <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-      <div className="border-r border-editor-border bg-editor-bg px-2 py-3 font-mono text-10 leading-5 text-muted-foreground">
-        <div className={isUser ? 'text-editor-accent' : 'text-muted-foreground'}>{roleLabel}</div>
-        <div>{timeLabel}</div>
+    <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-4 border-b border-border/50 py-4 text-sm">
+      <div className="font-mono text-[9.5px] leading-[1.7]">
+        <div style={{ color: isUser ? '#3f8a2e' : 'rgba(13,13,13,.35)', fontWeight: isUser ? 600 : 400 }}>{roleLabel}</div>
+        <div className="text-foreground/35">{timeLabel}</div>
       </div>
 
-      <div className={`min-w-0 px-4 py-3 ${isUser ? 'bg-editor-bg' : 'bg-editor-sidebar'}`}>
+      <div className="min-w-0">
         {message.images?.length ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {message.images.map((img, i) => (
@@ -111,6 +134,7 @@ export default function TaskMessage({ message }: Props) {
                   const { className, children, ...rest } = props;
                   const match = /language-(\w+)/.exec(className || '');
                   if (match) {
+                    if (match[1] === 'diff') return <DiffBlock>{String(children)}</DiffBlock>;
                     return <CodeBlock language={match[1]}>{String(children)}</CodeBlock>;
                   }
                   return (

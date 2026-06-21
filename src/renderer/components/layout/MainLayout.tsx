@@ -159,20 +159,16 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
           />
         </aside>
 
-        {/* CENTER flex */}
+        {/* CENTER (+ its own right tray) */}
         {view === 'chat' ? (
-          <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-            <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
-          </main>
+          <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
         ) : (
-          <RoundTableThread rt={rt} />
-        )}
-
-        {/* RIGHT 340 (round only) */}
-        {view === 'round' && (
-          <aside className="w-[340px] flex-none border-l border-border">
-            <ParallelImplTray rt={rt} />
-          </aside>
+          <>
+            <RoundTableThread rt={rt} />
+            <aside className="w-[340px] flex-none border-l border-border">
+              <ParallelImplTray rt={rt} />
+            </aside>
+          </>
         )}
       </div>
 

@@ -169,7 +169,9 @@ export function ApprovalModeStrip({ mode, allowExternalInFull, onChange, onChang
                 aria-label={`切换执行策略：${meta.label}`}
                 className={`h-8 border-r border-editor-border border-b-2 px-2 text-11 transition-colors duration-75 last:border-r-0 ${
                   active
-                    ? 'border-b-editor-accent bg-editor-sidebar text-foreground'
+                    ? m === 'full'
+                      ? 'border-b-warn bg-warn-surface font-semibold text-warn'
+                      : 'border-b-foreground/40 bg-secondary text-foreground'
                     : 'border-b-transparent text-muted-foreground hover:bg-editor-hover hover:text-foreground'
                 }`}
               >
@@ -189,7 +191,7 @@ export function ApprovalModeStrip({ mode, allowExternalInFull, onChange, onChang
             aria-label={allowExternalInFull ? '关闭 full 模式外写放行' : '开启 full 模式外写放行'}
             className={`flex h-8 flex-shrink-0 items-center gap-1 border-l border-editor-border px-2 text-10 transition-colors duration-75 ${
               allowExternalInFull
-                ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60'
+                ? 'bg-warn-surface text-warn hover:brightness-95'
                 : 'text-muted-foreground hover:bg-editor-hover hover:text-foreground'
             }`}
           >

@@ -14,7 +14,9 @@ import { useApproval } from '../../task-engine/useApproval';
 import { useTaskEngine } from '../../task-engine/useTaskEngine';
 import TaskSessionTabs from './TaskSessionTabs';
 import ModelPicker from './ModelPicker';
-import { CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
+import DeliveryTray from '../workbench/DeliveryTray';
+import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
+import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Play, Plus, Square } from 'lucide-react';
 import {
   AgentPlan,
   AgentRunBar,
@@ -371,25 +373,20 @@ ${suffix.slice(0, 500)}${editsCtx}
   };
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      <div className="flex h-10 flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-11 font-semibold uppercase tracking-wide text-muted-foreground">
-            任务工作台
-          </span>
-          <span className="font-mono text-10 text-muted-foreground">
-            {messages.length} 记录
+    <div className="flex h-full min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+      <div className="flex h-[54px] flex-shrink-0 items-center justify-between gap-2 border-b border-border px-6">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="min-w-0 truncate text-[14.5px] font-semibold text-foreground">
+            {activeConversation?.title || '新对话'}
           </span>
           {activeWorktree && (
-            <span
-              className="min-w-0 truncate font-mono text-10 text-yellow-500"
-              title={activeWorktree.path}
-            >
+            <span className="flex-none font-mono text-10 text-warn" title={activeWorktree.path}>
               WT {activeWorktree.branch}
             </span>
           )}
         </div>
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1.5">
           {providers.length > 0 && (
             <ModelPicker
               providers={providers}
@@ -403,19 +400,19 @@ ${suffix.slice(0, 500)}${editsCtx}
           )}
           <button
             onClick={() => newConversation()}
-            className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
             title="新建任务"
             aria-label="新建任务"
           >
-            <Plus size={14} strokeWidth={1.8} />
+            <Plus size={15} strokeWidth={1.8} />
           </button>
           <button
             onClick={handleNewWorktreeSession}
-            className="flex h-6 w-6 items-center justify-center text-yellow-500/80 hover:bg-editor-active hover:text-yellow-300"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
             title="新建隔离工作树任务"
             aria-label="新建隔离工作树任务"
           >
-            <GitBranch size={14} strokeWidth={1.8} />
+            <GitBranch size={15} strokeWidth={1.7} />
           </button>
         </div>
       </div>
@@ -431,14 +428,7 @@ ${suffix.slice(0, 500)}${editsCtx}
         />
       )}
 
-      <ApprovalModeStrip
-        mode={approvalMode}
-        allowExternalInFull={allowExternalInFull}
-        onChange={changeApprovalMode}
-        onChangeAllowExternal={changeAllowExternalInFull}
-      />
-
-      <div className="flex-1 overflow-y-auto selectable">
+      {(isStreaming || toolExecutions.length > 0 || !!pendingApproval) && (
         <AgentRunBar
           isStreaming={isStreaming}
           awaitingApproval={!!pendingApproval}
@@ -446,6 +436,10 @@ ${suffix.slice(0, 500)}${editsCtx}
           runningCount={toolExecutions.filter((e) => e.status === 'running').length}
           tokens={turnTokens}
         />
+      )}
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 selectable">
+        <div className="mx-auto w-full max-w-[760px]">
         <AgentPlan steps={plan} />
         {!hasRuntimeRows && (
           <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
@@ -480,141 +474,137 @@ ${suffix.slice(0, 500)}${editsCtx}
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      <CheckpointList checkpoints={checkpoints} onRevert={revertCheckpoint} />
-      <ArtifactList artifacts={artifacts} onOpen={openFile} />
       <PendingApprovalView
         pendingApproval={pendingApproval}
         onAccept={handleApprove}
         onReject={handleReject}
       />
 
-      <div className="border-t border-editor-border bg-editor-bg">
-        <div className="flex min-h-7 items-center justify-between border-b border-editor-border px-3">
-          <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
-            运行请求
-          </span>
-          {pendingImages.length > 0 && (
-            <span className="font-mono text-10 text-muted-foreground">
-              {pendingImages.length} IMG
-            </span>
+      {/* composer — floating card */}
+      <div className="flex-none bg-background px-6 pb-5 pt-3">
+        <div className="mx-auto max-w-[760px]">
+          {worktreeNotice && (
+            <div className={`mb-2 rounded-lg px-3 py-1.5 text-11 ${worktreeNotice.tone === 'success' ? 'text-diffadd' : 'text-diffdel'}`}>
+              {worktreeNotice.text}
+            </div>
           )}
-        </div>
-        {worktreeNotice && (
-          <div
-            className={`border-b px-3 py-1.5 text-xs ${
-              worktreeNotice.tone === 'success'
-                ? 'border-emerald-800/70 text-emerald-300'
-                : 'border-red-900/80 text-red-300'
-            }`}
-          >
-            {worktreeNotice.text}
-          </div>
-        )}
-        {!activeProviderId || !activeModel ? (
-          <div className="px-3 py-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">模型服务未就绪</span>
-              <button
-                onClick={() => onReadinessAction('openSettings')}
-                className="h-7 border border-editor-border px-2 text-xs text-editor-accent hover:bg-editor-hover"
-              >
-                配置模型
-              </button>
-            </div>
-            <div className="border-y border-editor-border">
-              {readiness.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => onReadinessAction(item.actionId)}
-                  className="grid min-h-8 w-full grid-cols-[18px_minmax(0,1fr)_52px] items-center gap-2 border-b border-editor-border py-1 text-left text-11 text-muted-foreground transition-colors last:border-b-0 hover:bg-editor-hover"
-                >
-                  <ReadinessIcon status={item.status} />
-                  <span className="min-w-0 truncate">{item.label}</span>
-                  <span className="text-right font-mono text-10 text-muted-foreground">
-                    {STATUS_LABEL[item.status]}
-                  </span>
+          {!activeProviderId || !activeModel ? (
+            <div className="rounded-[14px] border border-border-strong bg-background p-3 shadow-card">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">模型服务未就绪</span>
+                <button onClick={() => onReadinessAction('openSettings')} className="btn-codex h-7 text-xs">
+                  配置模型
                 </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="px-3 py-2">
-            {pendingImages.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5 border-b border-editor-border pb-2">
-                {pendingImages.map((img, i) => (
-                  <div key={i} className="relative group">
-                    <img
-                      src={img}
-                      alt="attachment"
-                      className="h-12 w-12 object-cover border border-editor-border"
-                    />
-                    <button
-                      onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
-                      className="absolute -right-px -top-px h-4 w-4 bg-red-600 text-10 leading-none text-white opacity-0 group-hover:opacity-100"
-                      title="移除附件"
-                    >
-                      ✕
-                    </button>
-                  </div>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-border">
+                {readiness.items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => onReadinessAction(item.actionId)}
+                    className="grid min-h-8 w-full grid-cols-[18px_minmax(0,1fr)_52px] items-center gap-2 border-b border-border py-1 pl-2 pr-3 text-left text-11 text-muted-foreground transition-colors last:border-b-0 hover:bg-foreground/[0.04]"
+                  >
+                    <ReadinessIcon status={item.status} />
+                    <span className="min-w-0 truncate">{item.label}</span>
+                    <span className="text-right font-mono text-10 text-muted-foreground">{STATUS_LABEL[item.status]}</span>
+                  </button>
                 ))}
               </div>
-            )}
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder="任务说明或 @文件引用 (Shift+Enter 换行)"
-              className="w-full resize-none border border-editor-border bg-editor-sidebar px-3 py-2.5 text-sm leading-relaxed text-editor-text outline-none transition-colors hover:bg-editor-active focus:border-editor-accent"
-              style={{ minHeight: '80px', maxHeight: '200px' }}
-              disabled={isStreaming}
-            />
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <label
-                className="flex h-7 w-8 cursor-pointer items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
-                title="附加图片"
-                aria-label="附加图片"
-              >
-                <Paperclip size={14} strokeWidth={1.8} />
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files) addImageFiles(e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              {isStreaming ? (
-                <button
-                  onClick={handleAbort}
-                  className="flex h-7 w-8 items-center justify-center bg-red-600 text-white hover:bg-red-700"
-                  title="停止"
-                  aria-label="停止任务"
-                >
-                  <Square size={13} strokeWidth={1.8} />
-                </button>
-              ) : (
-                <button
-                  onClick={handleRunTask}
-                  disabled={!input.trim() && pendingImages.length === 0}
-                  className="flex h-7 w-8 items-center justify-center bg-editor-accent text-primary-foreground hover:opacity-90 disabled:opacity-40"
-                  title="运行任务"
-                  aria-label="运行任务"
-                >
-                  <Play size={13} strokeWidth={1.8} />
-                </button>
-              )}
             </div>
-          </div>
-        )}
+          ) : (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-[10.5px] text-foreground/40">
+                  {activeFilePath ? `@${activeFilePath.split('/').slice(-1)[0]}` : '询问、编辑或派发任务给 Agent'}
+                </span>
+              </div>
+              <div className="rounded-[14px] border border-border-strong bg-background shadow-float focus-within:border-foreground/25">
+                {pendingImages.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+                    {pendingImages.map((img, i) => (
+                      <div key={i} className="group relative">
+                        <img src={img} alt="attachment" className="h-12 w-12 rounded-md border border-border object-cover" />
+                        <button
+                          onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                          className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-10 leading-none text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          style={{ background: '#c1374a' }}
+                          title="移除附件"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder="询问、编辑或派发任务给 Agent…  (Shift+Enter 换行)"
+                  className="max-h-[160px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-sm leading-relaxed text-foreground outline-none"
+                  style={{ minHeight: '52px' }}
+                  disabled={isStreaming}
+                />
+                <div className="flex items-center gap-2 px-3 pb-2.5 pr-2.5">
+                  <label className="flex h-7 w-7 flex-none cursor-pointer items-center justify-center rounded-md text-foreground/45 transition-colors hover:bg-foreground/[0.05] hover:text-foreground" title="附加图片" aria-label="附加图片">
+                    <Paperclip size={17} strokeWidth={1.7} />
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files) addImageFiles(e.target.files); e.target.value = ''; }} />
+                  </label>
+                  <div className="inline-flex rounded-lg p-0.5" style={{ background: '#f1f1ef' }}>
+                    {(['readonly', 'auto', 'full'] as ApprovalMode[]).map((m) => {
+                      const meta = APPROVAL_MODE_META[m];
+                      const active = approvalMode === m;
+                      const danger = m === 'full';
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => changeApprovalMode(m)}
+                          title={meta.hint}
+                          className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all"
+                          style={
+                            active
+                              ? danger
+                                ? { color: '#9a4a00', background: '#fdeccd', boxShadow: '0 1px 2px rgba(154,74,0,.22)' }
+                                : { color: '#0d0d0d', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.12)' }
+                              : { color: 'rgba(13,13,13,.5)' }
+                          }
+                        >
+                          {meta.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {isStreaming ? (
+                    <button onClick={handleAbort} className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white" style={{ background: '#c1374a' }} title="停止" aria-label="停止任务">
+                      <Square size={14} strokeWidth={2} />
+                    </button>
+                  ) : (
+                    <button onClick={handleRunTask} disabled={!input.trim() && pendingImages.length === 0} className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white transition-colors hover:bg-[#262626] disabled:opacity-30" style={{ background: '#0d0d0d' }} title="运行任务" aria-label="运行任务">
+                      <ArrowUp size={16} strokeWidth={2} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+      </div>
+
+      <aside className="w-[340px] flex-none border-l border-border">
+        <DeliveryTray
+          toolExecutions={toolExecutions}
+          checkpoints={checkpoints}
+          artifacts={artifacts}
+          onRevert={revertCheckpoint}
+          onOpen={openFile}
+        />
+      </aside>
     </div>
   );
 }

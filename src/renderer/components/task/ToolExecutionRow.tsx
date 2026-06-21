@@ -25,34 +25,37 @@ export default function ToolExecutionRow({ execution }: Props) {
     rejected: 'no',
   }[execution.status];
 
-  const statusColor = {
-    pending: 'text-muted-foreground',
-    running: 'text-yellow-400',
-    success: 'text-green-400',
-    error: 'text-red-400',
-    rejected: 'text-orange-400',
-  }[execution.status];
+  const statusHex =
+    {
+      pending: '#c08a14',
+      running: '#c08a14',
+      success: '#3f8a2e',
+      error: '#c1374a',
+      rejected: '#9a4a00',
+    }[execution.status] || '#c08a14';
 
   const argKeys = Object.keys(execution.arguments);
 
   return (
-    <div className="border-b border-editor-border bg-editor-sidebar text-xs">
+    <div className="border-b border-border/50 bg-background text-xs">
       <button
-        className="grid w-full min-h-8 cursor-pointer grid-cols-[64px_minmax(0,1fr)_minmax(0,120px)_auto_auto] items-center gap-2 text-left transition-colors hover:bg-editor-hover"
+        className="grid min-h-[34px] w-full cursor-pointer grid-cols-[46px_minmax(0,1fr)_auto] items-center gap-2.5 px-1 text-left transition-colors hover:bg-foreground/[0.03]"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className={`border-r border-editor-border/70 px-2 py-2 font-mono text-10 ${statusColor}`}>
+        <span className="font-mono text-10 font-semibold" style={{ color: statusHex }}>
           {statusMark}
         </span>
-        <span className="min-w-0 truncate font-mono text-editor-accent">{execution.name}</span>
-        <span className="hidden min-w-0 truncate text-11 text-muted-foreground sm:block">
-          {argKeys.slice(0, 3).join(', ')}
-          {argKeys.length > 3 && ` +${argKeys.length - 3}`}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex-none font-mono text-xs text-tool">{execution.name}</span>
+          <span className="min-w-0 truncate text-11 text-foreground/45">
+            {argKeys.slice(0, 3).join(', ')}
+            {argKeys.length > 3 && ` +${argKeys.length - 3}`}
+          </span>
         </span>
-        <span className={`px-2 text-11 font-medium ${statusColor}`}>
-          {STATUS_NAMES[execution.status] || execution.status}
-        </span>
-        <span className="pr-2 text-muted-foreground">
+        <span className="flex items-center gap-1 pr-0.5 text-foreground/35">
+          <span className="font-mono text-10" style={{ color: statusHex }}>
+            {STATUS_NAMES[execution.status] || execution.status}
+          </span>
           {expanded ? <ChevronDown size={13} strokeWidth={1.8} /> : <ChevronRight size={13} strokeWidth={1.8} />}
         </span>
       </button>
