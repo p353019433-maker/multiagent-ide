@@ -1,45 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    /* Wise Design System - Light (低饱和度) */
-    --background: 0 0% 100%; /* #ffffff 纯白 */
-    --foreground: 210 10% 6%; /* #0e0f0c Near Black */
+    /* ── Codex workbench · gray-white light ──────────────────────────────
+       绿色不再做品牌色，只做状态点/采用；主按钮黑色；其余中性灰白。 */
 
-    --surface: 210 17% 98%; /* #f9fafb 浅灰表面 */
-    --surface-foreground: 210 10% 6%;
+    --app-bg: #f9f9f9;            /* 窗口底 / 右栏底 */
+    --background: 0 0% 100%;      /* #ffffff 中央主面 / 卡片 */
+    --foreground: 0 0% 5%;        /* #0d0d0d 主文字 */
 
-    --popover: 210 17% 98%;
-    --popover-foreground: 210 10% 6%;
+    --surface: 60 5% 92%;         /* #ececea 左侧栏 */
+    --surface-foreground: 0 0% 5%;
 
-    --primary: 150 47% 35%; /* #2d8a3e Wise 低饱和深绿 */
+    --popover: 0 0% 100%;         /* 白卡 / 浮层 */
+    --popover-foreground: 0 0% 5%;
+
+    --primary: 0 0% 5%;           /* #0d0d0d 实心主按钮 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 10% 95%;
-    --secondary-foreground: 210 10% 27%;
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 17%;
 
-    --muted: 210 10% 95%;
-    --muted-foreground: 210 3% 52%; /* #868685 Wise Gray */
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 50%; /* ≈ rgba(13,13,13,.5) 次级文字 */
 
-    --accent: 150 47% 35%; /* #2d8a3e 强调色同主色 */
-    --accent-foreground: 0 0% 100%;
+    --accent: 0 0% 92%;           /* hover/active 的中性浅灰叠层 */
+    --accent-foreground: 0 0% 5%;
 
-    --destructive: 354 70% 54%; /* #d03238 Danger Red */
+    --destructive: 354 70% 54%;   /* #d03238 */
     --destructive-foreground: 0 0% 98%;
 
-    --border: 210 10% 6% / 0.12; /* rgba(14,15,12,0.12) Wise 标准细线 */
-    --input: 210 10% 6% / 0.12;
-    --ring: 150 47% 35%; /* #2d8a3e 焦点环同主色 */
+    --border: 0 0% 5% / 0.08;     /* rgba(13,13,13,.08) 细线 */
+    --border-strong: 0 0% 5% / 0.12;
+    --input: 0 0% 5% / 0.12;
+    --ring: 0 0% 5% / 0.25;       /* 中性焦点环 */
 
-    --radius: 0.375rem;
+    --radius: 0.625rem;           /* 10px：按钮/段控；卡片用显式 11–14px */
+
+    /* ── 语义色（直接存最终值，tailwind 直引 var，避免 HSL 换算误差）── */
+    --status-green: #5fb83d;          /* 状态点 / 采用 */
+    --editor-accent-hsl: 103 50% 48%; /* ≈#5fb83d，供 editor-accent 支持 /opacity 修饰 */
+    --status-green-strong: #3f8a2e;   /* TASK / 完成勾 / 序号 */
+    --status-green-surface: #e6f4dd;  /* 成功底 */
+    --warn-fg: #9a4a00;               /* 完全权限（高风险）字 */
+    --warn-fg-soft: #c08a14;          /* 进行中 字 */
+    --warn-surface: #fdeccd;          /* 完全权限 底 */
+    --warn-surface-soft: #fdeecf;     /* 进行中 底 */
+    --diff-add-fg: #2f8a4e;
+    --diff-add-surface: #eaf6e3;
+    --diff-del-fg: #c1374a;
+    --diff-del-surface: #fdeef0;
+    --link: #2563c9;                  /* 链接蓝 */
+    --tool: #0a6e64;                  /* 工具名 蓝绿 */
+
+    /* motion */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
   }
-
-  /* Wise motion tokens */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
 }
 
 @layer base {
@@ -48,13 +70,16 @@
   }
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: var(--app-bg);
     overflow: hidden;
     user-select: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 }
 
-/* 键盘可达性：仅键盘聚焦时显示主题色焦点环（鼠标点击不显示） */
+/* 键盘可达性：仅键盘聚焦时显示焦点环（鼠标点击不显示） */
 :focus-visible {
   outline: 1px solid hsl(var(--ring));
   outline-offset: -1px;
@@ -69,20 +94,31 @@
   user-select: text;
 }
 
-/* Scrollbar styling */
+/* Window drag regions (frameless / hiddenInset title bar) */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Scrollbar styling (Codex：细、圆头、低对比) */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 3px;
+  background: rgba(13, 13, 13, 0.16);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: rgba(13, 13, 13, 0.28);
+  background-clip: padding-box;
 }
 
 /* Monaco editor container */
@@ -98,7 +134,7 @@
 }
 .resize-handle:hover,
 .resize-handle.dragging {
-  background: hsl(var(--ring)); /* 跟随主题 accent */
+  background: rgba(13, 13, 13, 0.16);
 }
 .resize-handle.w-\[3px\] {
   cursor: col-resize;
@@ -107,33 +143,50 @@
   cursor: row-resize;
 }
 
-/* Codex-style button - flat, tight, subtle hover (apply with btn-codex class) */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
 @layer components {
+  /* 主按钮：实心黑底白字（plan 最强操作点） */
   .btn-codex {
     @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium;
-    @apply bg-primary text-primary-foreground rounded border-none cursor-pointer;
+    @apply bg-primary text-primary-foreground rounded-lg border-none cursor-pointer;
     transition: background var(--duration-fast), opacity var(--duration-fast);
     font-feature-settings: "calt" 1;
   }
   .btn-codex:hover:not(:disabled) {
-    filter: brightness(0.92);
+    background: #262626;
   }
   .btn-codex:active:not(:disabled) {
-    opacity: 0.8;
+    opacity: 0.85;
   }
   .btn-codex:disabled {
     @apply opacity-40 cursor-not-allowed;
   }
   .btn-codex:focus-visible {
-    @apply outline-2 outline-primary outline-offset-2;
+    @apply outline-2 outline-offset-2;
+    outline-color: hsl(var(--ring));
   }
 
-  /* Secondary variant - muted background */
+  /* 次级按钮：白底细边 */
   .btn-codex-secondary {
-    @apply bg-secondary text-secondary-foreground;
+    @apply bg-background text-foreground border border-editor-border;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   }
   .btn-codex-secondary:hover:not(:disabled) {
-    @apply bg-muted;
+    background: #fcfcfc;
+  }
+
+  /* 卡片阴影工具 */
+  .shadow-card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+  .shadow-float {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 }
-

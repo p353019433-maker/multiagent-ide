@@ -1,116 +1,68 @@
 import React from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
-import {
-  ChevronRight,
-  Monitor,
-  PanelRight,
-  Search,
-  Settings as SettingsIcon,
-  SquareTerminal,
-} from 'lucide-react';
+import { Folder, Settings as SettingsIcon } from 'lucide-react';
 
 interface Props {
   onOpenSettings: () => void;
-  onToggleTaskPanel: () => void;
-  onToggleTerminal: () => void;
-  onToggleSearch: () => void;
-  onToggleBrowser: () => void;
-  onOpenQuickOpen: () => void;
-  showTaskPanel: boolean;
-  showTerminal: boolean;
-  showSearch: boolean;
-  showBrowser: boolean;
+  branch: string | null;
+  statusText: string | null;
+  running: boolean;
 }
 
-function titleButtonClass(active: boolean): string {
-  return `flex h-8 w-8 items-center justify-center border-l border-editor-border border-b-2 transition-colors duration-75 ${
-    active
-      ? 'border-b-editor-accent bg-editor-bg text-foreground'
-      : 'border-b-transparent text-muted-foreground hover:bg-editor-hover hover:text-foreground'
-  }`;
-}
-
-export default function TitleBar({
-  onOpenSettings,
-  onToggleTaskPanel,
-  onToggleTerminal,
-  onToggleSearch,
-  onToggleBrowser,
-  onOpenQuickOpen,
-  showTaskPanel,
-  showTerminal,
-  showSearch,
-  showBrowser,
-}: Props) {
+/**
+ * Codex workbench title bar (46px). macOS draws the real traffic lights
+ * (titleBarStyle: hiddenInset), so we leave the left inset and render the
+ * project/branch pill, a pulsing run-status dot, settings and avatar.
+ */
+export default function TitleBar({ onOpenSettings, branch, statusText, running }: Props) {
   const { rootName } = useWorkspace();
 
   return (
-    <div className="grid h-8 grid-cols-[minmax(0,1fr)_minmax(150px,420px)_minmax(0,1fr)] items-center bg-editor-sidebar border-b border-editor-border drag-region">
-      <div className="flex min-w-0 items-center gap-1.5 px-2 no-drag sm:px-3">
-        <span className="text-xs font-medium text-editor-text">Code IDE</span>
-        {rootName && (
-          <>
-            <ChevronRight size={13} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
-            <span className="truncate text-11 text-muted-foreground">{rootName}</span>
-          </>
-        )}
-      </div>
-
-      <button
-        onClick={onOpenQuickOpen}
-        className="no-drag hidden h-6 min-w-0 items-center gap-2 border border-editor-border bg-editor-bg px-2 text-11 text-muted-foreground transition-colors hover:bg-editor-hover hover:text-foreground md:flex"
-        title="搜索文件和命令 (Cmd+P)"
-        aria-label="搜索文件和命令"
-      >
-        <Search size={14} strokeWidth={1.8} />
-        <span className="truncate">{rootName ? `搜索 ${rootName}` : '搜索文件和命令'}</span>
-        <span className="hidden flex-shrink-0 font-mono text-10 text-muted-foreground lg:inline">
-          Cmd P
-        </span>
-      </button>
-
-      <div className="flex shrink-0 items-center justify-end no-drag justify-self-end">
-        <button
-          onClick={onToggleSearch}
-          className={titleButtonClass(showSearch)}
-          title="搜索 (Cmd+Shift+F)"
-          aria-label="搜索"
-        >
-          <Search size={14} strokeWidth={1.8} />
-        </button>
-        <button
-          onClick={onToggleTerminal}
-          className={titleButtonClass(showTerminal)}
-          title={showTerminal ? '收起终端' : '显示终端'}
-          aria-label={showTerminal ? '收起终端' : '显示终端'}
-        >
-          <SquareTerminal size={14} strokeWidth={1.8} />
-        </button>
-        <button
-          onClick={onToggleTaskPanel}
-          className={titleButtonClass(showTaskPanel)}
-          title={showTaskPanel ? '收起任务面板' : '显示任务面板'}
-          aria-label={showTaskPanel ? '收起任务面板' : '显示任务面板'}
-        >
-          <PanelRight size={14} strokeWidth={1.8} />
-        </button>
-        <button
-          onClick={onToggleBrowser}
-          className={titleButtonClass(showBrowser)}
-          title={showBrowser ? '收起浏览器' : '内置浏览器'}
-          aria-label={showBrowser ? '收起浏览器' : '内置浏览器'}
-        >
-          <Monitor size={14} strokeWidth={1.8} />
-        </button>
+    <header
+      className="drag-region flex items-center justify-between border-b border-border px-4"
+      style={{ height: 46, background: 'var(--app-bg)' }}
+    >
+      {/* left inset clears the macOS traffic lights */}
+      <div className="flex items-center gap-3.5 pl-[68px]">
+        <div className="h-4 w-px" style={{ background: 'rgba(13,13,13,.10)' }} />
         <button
           onClick={onOpenSettings}
-          className={titleButtonClass(false)}
-          title="设置"
-          aria-label="设置"
+          className="no-drag flex items-center gap-2 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
+          title="项目"
         >
-          <SettingsIcon size={14} strokeWidth={1.8} />
+          <Folder size={14} strokeWidth={1.6} className="text-foreground/50" />
+          <span className="text-[13px] font-semibold text-foreground">{rootName || 'ai-code-ide'}</span>
+          {branch && (
+            <span className="border-l border-border-strong pl-2 font-mono text-10 text-foreground/40">{branch}</span>
+          )}
         </button>
       </div>
-    </div>
+
+      <div className="no-drag flex items-center gap-2.5">
+        {statusText && (
+          <span className="flex items-center gap-1.5 text-xs font-medium text-foreground/60">
+            <span
+              className={`h-[7px] w-[7px] rounded-full ${running ? 'animate-pulse-dot' : ''}`}
+              style={{ background: 'var(--status-green)' }}
+            />
+            {statusText}
+          </span>
+        )}
+        <button
+          onClick={onOpenSettings}
+          title="设置"
+          aria-label="设置"
+          className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-border-strong bg-background text-foreground/50 shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc] hover:text-foreground"
+        >
+          <SettingsIcon size={15} strokeWidth={1.7} />
+        </button>
+        <span
+          className="flex h-[29px] w-[29px] items-center justify-center rounded-full text-[11px] font-semibold text-white"
+          style={{ background: '#0d0d0d' }}
+        >
+          AI
+        </span>
+      </div>
+    </header>
   );
 }

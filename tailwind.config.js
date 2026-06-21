@@ -6,10 +6,28 @@ export default {
     extend: {
       colors: {
         border: 'hsl(var(--border))',
+        'border-strong': 'hsl(var(--border-strong))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        app: 'var(--app-bg)',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
+        // 语义状态色（直接引最终值）
+        status: {
+          DEFAULT: 'var(--status-green)',
+          strong: 'var(--status-green-strong)',
+          surface: 'var(--status-green-surface)',
+        },
+        warn: {
+          DEFAULT: 'var(--warn-fg)',
+          soft: 'var(--warn-fg-soft)',
+          surface: 'var(--warn-surface)',
+          'surface-soft': 'var(--warn-surface-soft)',
+        },
+        diffadd: { DEFAULT: 'var(--diff-add-fg)', surface: 'var(--diff-add-surface)' },
+        diffdel: { DEFAULT: 'var(--diff-del-fg)', surface: 'var(--diff-del-surface)' },
+        link: 'var(--link)',
+        tool: 'var(--tool)',
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
@@ -40,7 +58,7 @@ export default {
           active: 'hsl(var(--accent))',
           border: 'hsl(var(--border))',
           text: 'hsl(var(--foreground))',
-          accent: 'hsl(var(--primary))',
+          accent: 'hsl(var(--editor-accent-hsl) / <alpha-value>)', // 品牌"绿色"现在只是状态色（保留 /opacity）
           hover: 'hsl(var(--accent))',
         },
       },
