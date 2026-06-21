@@ -150,15 +150,17 @@ export const THEMES: Record<ThemeName, ThemeConfig> = {
     name: 'light',
     display: 'Light',
     editorTheme: 'vs',
+    // Codex workbench · 灰白体系：中央纯白、侧栏 #ececea、主色黑（按钮）、
+    // 绿色只做状态点（见 globals.css --status-green，不走主题注入）。
     colors: {
       bg: '#ffffff',
-      sidebar: '#f3f3f3',
-      border: '#e0e0e0',
-      hover: '#e8e8e8',
-      active: '#e4e6f1',
-      accent: '#0066b8',
-      text: '#333333',
-      dimText: '#999999',
+      sidebar: '#ececea',
+      border: '#e7e7e5',
+      hover: '#f0f0ee',
+      active: '#ededeb',
+      accent: '#0d0d0d',
+      text: '#0d0d0d',
+      dimText: '#7e7e7c',
     },
     // 取 VS Code Light+ 的经典配色
     syntax: {
