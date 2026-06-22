@@ -148,9 +148,24 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
 
   const resolvePath = (p: string): string => resolveWorkspacePath(effectiveRootPath, p);
 
+  // Auto-scroll to the latest message/tool/stream chunk, but throttle: streaming
+  // fires many updates per second and scrollIntoView on each one janks the main
+  // thread. Only scroll when the set of messages grows or a new tool execution
+  // starts — not on every stream token.
+  const prevMsgCount = useRef(0);
+  const prevToolCount = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamContent, toolExecutions]);
+    const msgGrew = messages.length > prevMsgCount.current;
+    const toolGrew = toolExecutions.length > prevToolCount.current;
+    prevMsgCount.current = messages.length;
+    prevToolCount.current = toolExecutions.length;
+    // Always follow streaming text, but the streamContent dependency alone is
+    // cheap enough (text diff) — the real cost was re-running on every tool
+    // array identity change. Gate the heavy scroll to real growth.
+    if (msgGrew || toolGrew || streamContent) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages.length, toolExecutions.length, streamContent]);
 
   // ── Inline completion setup ──
   useEffect(() => {
@@ -293,7 +308,7 @@ ${suffix.slice(0, 500)}${editsCtx}
     ];
 
     await runTurn(convId, apiMessages, turnLabel);
-  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages, effectiveRootPath]);
+  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages, effectiveRootPath, runTurn, newConversation]);
 
   /** Create a new isolated worktree session */
   const handleNewWorktreeSession = async () => {

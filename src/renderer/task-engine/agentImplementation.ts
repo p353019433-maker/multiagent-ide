@@ -128,12 +128,26 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
   return Promise.all(tasks);
 }
 
-/** Commit a worktree's changes and squash-merge its branch into the repo. */
+/**
+ * Commit a worktree's changes and squash-merge its branch into the repo.
+ *
+ * Refuses to adopt when the *target* working tree has uncommitted changes — a
+ * dirty main tree would produce a confusing merge conflict and mix the agent's
+ * work with the user's in-flight edits. The caller surfaces the refusal.
+ */
 export async function adoptImplementation(
   rootPath: string,
   r: ImplementationResult
 ): Promise<{ ok: boolean; message: string }> {
   try {
+    // Guard: refuse to merge into a dirty target tree.
+    const status = await window.api.git.status(rootPath);
+    if (status && status.trim() !== '') {
+      return {
+        ok: false,
+        message: '目标工作区有未提交的改动，请先提交或暂存后再采用实现（避免冲突）。',
+      };
+    }
     await window.api.git.stageAll(r.worktreePath);
     await window.api.git.commit(r.worktreePath, `multi-agent: 采用 ${r.agent.name} 的实现`);
     const merged = await window.api.git.worktreeMerge(rootPath, r.branch, 'squash');
@@ -143,11 +157,36 @@ export async function adoptImplementation(
   }
 }
 
-/** Remove all worktrees from a run (and their branches). Best-effort. */
-export async function cleanupImplementations(rootPath: string, results: ImplementationResult[]): Promise<void> {
+export interface CleanupResult {
+  removed: number;
+  failed: { branch: string; error: string }[];
+}
+
+/**
+ * Remove all worktrees from a run (and their branches). Best-effort, but now
+ * *surfaces* failures instead of silently swallowing them — an orphaned
+ * worktree with uncommitted changes would otherwise accumulate on disk while
+ * the user believes cleanup succeeded.
+ */
+export async function cleanupImplementations(
+  rootPath: string,
+  results: ImplementationResult[]
+): Promise<CleanupResult> {
+  let removed = 0;
+  const failed: { branch: string; error: string }[] = [];
   for (const r of results) {
-    await window.api.git.worktreeRemove(rootPath, r.worktreePath, r.branch).catch(() => undefined);
+    try {
+      const res = await window.api.git.worktreeRemove(rootPath, r.worktreePath, r.branch);
+      if (res.success) {
+        removed++;
+      } else {
+        failed.push({ branch: r.branch, error: res.message || 'worktreeRemove returned failure' });
+      }
+    } catch (e) {
+      failed.push({ branch: r.branch, error: e instanceof Error ? e.message : String(e) });
+    }
   }
+  return { removed, failed };
 }
 
 /**

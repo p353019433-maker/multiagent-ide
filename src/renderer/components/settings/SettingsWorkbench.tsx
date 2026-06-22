@@ -31,19 +31,19 @@ const PRESET_PROVIDERS: { name: string; type: ProviderType; baseURL: string; mod
     name: 'OpenAI',
     type: 'openai',
     baseURL: 'https://api.openai.com/v1',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
+    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
   },
   {
     name: 'Anthropic',
     type: 'anthropic',
     baseURL: 'https://api.anthropic.com',
-    models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    models: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022'],
   },
   {
     name: 'DeepSeek',
     type: 'openai',
     baseURL: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
+    models: ['deepseek-chat', 'deepseek-reasoner'],
   },
   {
     name: 'Google Gemini',
@@ -55,7 +55,7 @@ const PRESET_PROVIDERS: { name: string; type: ProviderType; baseURL: string; mod
     name: 'Ollama（本地）',
     type: 'openai',
     baseURL: 'http://localhost:11434/v1',
-    models: ['llama3', 'codellama', 'mistral', 'deepseek-coder-v2'],
+    models: ['llama3.3', 'qwen2.5-coder', 'deepseek-r1', 'mistral'],
   },
 ];
 
@@ -105,9 +105,10 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
   }, []);
 
   useEffect(() => {
-    window.api.store.get('embeddingConfig').then((c: any) => {
-      if (c?.providerId) setEmbedProviderId(c.providerId);
-      if (c?.model) setEmbedModel(c.model);
+    window.api.store.get('embeddingConfig').then((c: unknown) => {
+      const cfg = c as { providerId?: string; model?: string } | null;
+      if (cfg?.providerId) setEmbedProviderId(cfg.providerId);
+      if (cfg?.model) setEmbedModel(cfg.model);
     });
   }, []);
 

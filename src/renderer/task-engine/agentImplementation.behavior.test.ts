@@ -32,6 +32,7 @@ interface ApiMock {
   worktreeRemove: ReturnType<typeof vi.fn>;
   diff: ReturnType<typeof vi.fn>;
   currentBranch: ReturnType<typeof vi.fn>;
+  status: ReturnType<typeof vi.fn>;
   stageAll: ReturnType<typeof vi.fn>;
   commit: ReturnType<typeof vi.fn>;
   worktreeMerge: ReturnType<typeof vi.fn>;
@@ -47,6 +48,8 @@ function installApi(overrides: Partial<ApiMock> = {}): ApiMock {
     worktreeRemove: vi.fn(async () => ({ success: true, message: '' })),
     diff: vi.fn(async () => 'diff --git a/f b/f\n+new'),
     currentBranch: vi.fn(async () => 'main'),
+    // Default: clean working tree (empty status) so adopt proceeds to merge.
+    status: vi.fn(async () => ''),
     stageAll: vi.fn(async () => ''),
     commit: vi.fn(async () => ''),
     worktreeMerge: vi.fn(async () => ({ success: true, message: 'merged' })),
@@ -62,6 +65,7 @@ function installApi(overrides: Partial<ApiMock> = {}): ApiMock {
         worktreeRemove: mock.worktreeRemove,
         diff: mock.diff,
         currentBranch: mock.currentBranch,
+        status: mock.status,
         stageAll: mock.stageAll,
         commit: mock.commit,
         worktreeMerge: mock.worktreeMerge,

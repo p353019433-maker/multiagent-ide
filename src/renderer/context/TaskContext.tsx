@@ -445,7 +445,7 @@ Response:`;
               'You are a task decomposition engine. Return ONLY a JSON array of subtask strings. No explanations. No markdown. Just the array.',
             maxTokens: 400,
             temperature: 0.1,
-          } as any
+          }
         );
 
         const raw = result?.content?.trim() || '[]';
