@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { Bot, Plus, Terminal, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
+import { agentVisual } from '../workbench/agentTheme';
 import type { Agent, AgentKind, ModelProvider, ProviderType } from '@shared/types';
 
 const FIELD =
-  'h-8 w-full border border-editor-border bg-editor-bg px-2 text-sm text-foreground outline-none focus:border-editor-accent';
+  'h-9 w-full rounded-lg border border-border-strong bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-foreground/30';
 
 const TYPE_LABEL: Record<AgentKind, string> = {
   'claude-code': 'Claude Code',
@@ -22,11 +23,41 @@ const BACKEND_FORMAT: Partial<Record<AgentKind, ProviderType>> = {
 
 const ADD_TYPES: AgentKind[] = ['claude-code', 'codex', 'antigravity', 'api'];
 
+/** One-line backend descriptor, matching the design wording. */
+function subline(a: Agent, providers: ModelProvider[]): string {
+  if (a.kind === 'antigravity') return '用本机 Google 登录(agy)驱动，无需 API key。';
+  if (a.kind === 'api') {
+    const p = a.providerId ? providers.find((x) => x.id === a.providerId) : undefined;
+    if (a.providerId && !p) return '连接已删除';
+    return `${a.model || '模型'} · 纯 API`;
+  }
+  // claude-code / codex shells
+  const label = agentVisual(a.kind).label; // "Claude Code" / "Codex CLI"
+  return `${label} 外壳${a.model ? ' · ' + a.model : ''}`;
+}
+
+function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onClick}
+      className="relative flex-none rounded-full transition-colors"
+      style={{ width: 34, height: 19, background: on ? 'var(--status-green)' : 'rgba(13,13,13,.18)' }}
+    >
+      <span
+        className="absolute rounded-full bg-white transition-all"
+        style={{ top: 2, left: on ? 17 : 2, width: 15, height: 15, boxShadow: '0 1px 2px rgba(0,0,0,.25)' }}
+      />
+    </button>
+  );
+}
+
 /**
- * Agent roster + type-first "add agent" flow: pick a type, then configure the
- * API. Shells (Claude Code / Codex) take an optional backend — empty means the
- * tool's own login; Antigravity is Google-login (no key); 纯 API is a raw model.
- * A configured API backend is stored as a backing provider (key encrypted).
+ * Agent roster (settings): enable toggles + type-first "add agent" flow. Styled
+ * to the gray-white workbench — card of rows with type chips/badges, pill add
+ * buttons, and the Antigravity single-instance note.
  */
 export default function AgentsTab() {
   const { agents, providers, saveProvider, saveAgent, deleteAgent, deleteProvider, toggleAgent } = useTaskWorkspace();
@@ -63,7 +94,6 @@ export default function AgentsTab() {
       setErr('纯 API 需要填写接口地址和模型');
       return;
     }
-    // api always has a backend; shells get one only if a baseURL was entered.
     const wantsBackend = kind === 'api' || (kind !== 'antigravity' && !!baseURL.trim());
     let providerId: string | undefined;
     if (wantsBackend) {
@@ -81,8 +111,7 @@ export default function AgentsTab() {
       await saveProvider(prov, apiKey);
     }
     const finalName =
-      name.trim() ||
-      (kind === 'antigravity' ? 'Antigravity' : `${TYPE_LABEL[kind]}${model.trim() ? ' · ' + model.trim() : ''}`);
+      name.trim() || (kind === 'antigravity' ? 'Antigravity' : `${TYPE_LABEL[kind]}${model.trim() ? ' · ' + model.trim() : ''}`);
     saveAgent({ id: uuid(), name: finalName, enabled: true, kind, providerId, model: model.trim() });
     resetForm();
   };
@@ -92,152 +121,160 @@ export default function AgentsTab() {
     deleteAgent(a.id);
   };
 
-  const backendLabel = (a: Agent): string => {
-    if (a.providerId) {
-      const p = providers.find((x) => x.id === a.providerId);
-      return p ? `${p.baseURL || p.name}${a.model ? ' · ' + a.model : ''}` : '连接已删除';
-    }
-    if (a.kind === 'antigravity') return `Google 登录${a.model ? ' · ' + a.model : ''}`;
-    return `自身登录${a.model ? ' · ' + a.model : ''}`;
-  };
-
   const isBuiltin = (a: Agent) => a.id.startsWith('cli-');
+  const addable = ADD_TYPES.filter((k) => (k === 'antigravity' ? !agents.some((a) => a.kind === 'antigravity') : true));
 
   return (
     <div>
-      <div className="flex h-8 items-center gap-2 border-b border-editor-border bg-editor-sidebar px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground">
-        智能体
-        <span className="font-mono normal-case tabular-nums">{enabledCount}/{agents.length} 启用</span>
+      <div className="border-b border-border px-6 py-5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">智能体</h1>
+          <span className="flex-none font-mono text-11 text-foreground/45">
+            {enabledCount}/{agents.length || 4} 启用
+          </span>
+        </div>
+        <p className="mt-1 text-[13px] leading-relaxed text-foreground/55">
+          每个 = 一个 CLI 外壳或纯 API。启用的参与下一次圆桌。
+        </p>
       </div>
-      <p className="border-b border-editor-border px-3 py-2 text-11 text-muted-foreground">
-        每个智能体 = 一个 CLI 外壳(Claude Code / Codex / Antigravity)或纯 API。开启的会参与下一次讨论;兼容性请自行确认。Antigravity 共享 Google 登录,只能添加一个。
-      </p>
 
-      {agents.map((a) => (
-        <div key={a.id} className="grid grid-cols-[56px_minmax(0,1fr)_40px] items-center border-b border-editor-border">
-          <button
-            onClick={() => toggleAgent(a.id, !a.enabled)}
-            role="switch"
-            aria-checked={a.enabled}
-            aria-label={`切换 ${a.name}`}
-            title={a.enabled ? '已启用' : '已禁用'}
-            className={`mx-3 flex h-5 w-9 items-center rounded-full px-0.5 transition-colors ${
-              a.enabled ? 'justify-end bg-editor-accent' : 'justify-start bg-editor-border'
-            }`}
-          >
-            <span className="h-4 w-4 rounded-full bg-white" />
-          </button>
-          <div className="min-w-0 py-2">
-            <div className="flex items-center gap-1.5">
-              {a.kind === 'api' ? (
-                <Bot size={12} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
-              ) : (
-                <Terminal size={12} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground" />
-              )}
-              <span className="truncate text-sm text-foreground">{a.name}</span>
-              <span className="flex-shrink-0 border border-editor-border px-1 text-10 text-muted-foreground">
-                {TYPE_LABEL[a.kind]}
-              </span>
-            </div>
-            <div className="truncate font-mono text-10 text-muted-foreground">{backendLabel(a)}</div>
+      <div className="px-6 py-5">
+        {agents.length > 0 && (
+          <div className="overflow-hidden rounded-[14px] border border-border bg-background shadow-card">
+            {agents.map((a, i) => {
+              const v = agentVisual(a.kind);
+              return (
+                <div key={a.id} className={i < agents.length - 1 ? 'border-b border-border/60' : ''}>
+                  <div className="flex items-center gap-3 px-4 py-3.5">
+                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]" style={{ background: v.iconBg }}>
+                      <v.Icon size={18} strokeWidth={1.7} style={{ color: v.iconColor }} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground">{a.name}</span>
+                        <span
+                          className="flex-none rounded font-mono text-[9px] font-semibold"
+                          style={{ color: v.badgeColor, background: v.badgeBg, padding: '1px 5px' }}
+                        >
+                          {v.badge}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[12px] text-foreground/50">{subline(a, providers)}</div>
+                    </div>
+                    <Toggle on={a.enabled} onClick={() => toggleAgent(a.id, !a.enabled)} label={`切换 ${a.name}`} />
+                    {!isBuiltin(a) && (
+                      <button
+                        onClick={() => remove(a)}
+                        className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.05] hover:text-[#c1374a]"
+                        title="移除"
+                        aria-label={`移除 ${a.name}`}
+                      >
+                        <Trash2 size={14} strokeWidth={1.8} />
+                      </button>
+                    )}
+                  </div>
+                  {a.kind === 'antigravity' && (
+                    <div className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px]" style={{ color: '#9a4a00', background: '#fdeccd' }}>
+                      ⚠ 共享同一登录，多开会互相影响，只允许一个。
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="flex justify-center">
-            {!isBuiltin(a) && (
+        )}
+
+        {/* add buttons */}
+        {!addingType && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {addable.map((k) => {
+              const v = agentVisual(k);
+              return (
+                <button
+                  key={k}
+                  onClick={() => openForm(k)}
+                  className="flex items-center gap-2 rounded-lg border border-border-strong bg-background px-3 py-2 text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
+                >
+                  <span className="rounded font-mono text-[9px] font-semibold" style={{ color: v.badgeColor, background: v.badgeBg, padding: '1px 5px' }}>
+                    {v.badge}
+                  </span>
+                  添加 {TYPE_LABEL[k]}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* add form */}
+        {addingType && (
+          <div className="mt-3 rounded-[14px] border border-border bg-background p-4 shadow-card">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">新建 {TYPE_LABEL[addingType]}</span>
               <button
-                onClick={() => remove(a)}
-                className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-red-400"
-                title="移除"
-                aria-label={`移除 ${a.name}`}
+                onClick={resetForm}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-foreground/45 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+                aria-label="取消"
               >
-                <Trash2 size={13} strokeWidth={1.8} />
+                <X size={15} strokeWidth={1.8} />
               </button>
-            )}
-          </div>
-        </div>
-      ))}
-
-      <div className="flex h-8 items-center border-b border-editor-border bg-editor-sidebar px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground">
-        添加智能体
-      </div>
-      {!addingType ? (
-        <div className="flex flex-wrap gap-1.5 px-3 py-2">
-          {ADD_TYPES.filter((k) => {
-            // Antigravity shares one Google login → only one allowed.
-            if (k === 'antigravity') return !agents.some((a) => a.kind === 'antigravity');
-            return true;
-          }).map((k) => (
-            <button
-              key={k}
-              onClick={() => openForm(k)}
-              className="btn-codex h-7 text-xs"
-            >
-              <Plus size={12} strokeWidth={1.8} />
-              {TYPE_LABEL[k]}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="px-3 py-2">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-xs text-foreground">新建 {TYPE_LABEL[addingType]}</span>
-            <button
-              onClick={resetForm}
-              className="flex h-5 w-5 items-center justify-center text-muted-foreground hover:text-foreground"
-              aria-label="取消"
-            >
-              <X size={13} strokeWidth={1.8} />
-            </button>
-          </div>
-          <div className="space-y-1.5">
-            <input className={FIELD} placeholder="名称(可选)" value={name} onChange={(e) => setName(e.target.value)} />
-            {addingType === 'antigravity' ? (
-              <p className="text-10 text-muted-foreground">用本机 Google 登录(agy)驱动,无需 API key。共享同一登录,多开会互相影响,只允许添加一个。</p>
-            ) : (
-              <>
-                <input
-                  className={FIELD}
-                  placeholder={addingType === 'api' ? '接口地址 baseURL(必填)' : '后端 baseURL(留空=用自身登录)'}
-                  value={baseURL}
-                  onChange={(e) => setBaseURL(e.target.value)}
-                  spellCheck={false}
-                />
-                {(addingType === 'api' || !!baseURL.trim()) && (
+            </div>
+            <div className="space-y-2">
+              <input className={FIELD} placeholder="名称(可选)" value={name} onChange={(e) => setName(e.target.value)} />
+              {addingType === 'antigravity' ? (
+                <p className="text-11 leading-relaxed text-foreground/50">
+                  用本机 Google 登录(agy)驱动，无需 API key。共享同一登录，多开会互相影响，只允许添加一个。
+                </p>
+              ) : (
+                <>
                   <input
                     className={FIELD}
-                    type="password"
-                    placeholder="API Key"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    autoComplete="new-password"
+                    placeholder={addingType === 'api' ? '接口地址 baseURL(必填)' : '后端 baseURL(留空=用自身登录)'}
+                    value={baseURL}
+                    onChange={(e) => setBaseURL(e.target.value)}
+                    spellCheck={false}
                   />
-                )}
-                {addingType === 'api' && (
-                  <select className={FIELD} value={format} onChange={(e) => setFormat(e.target.value as ProviderType)}>
-                    <option value="openai">OpenAI 兼容</option>
-                    <option value="anthropic">Anthropic</option>
-                  </select>
-                )}
-              </>
-            )}
-            <input
-              className={FIELD}
-              placeholder={addingType === 'api' ? '模型(必填)' : '模型(可选)'}
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              spellCheck={false}
-            />
-            {err && <p className="text-11 text-red-400">{err}</p>}
-            <div className="flex justify-end gap-2 pt-0.5">
-              <button onClick={resetForm} className="btn-codex h-7 bg-secondary text-secondary-foreground">
-                取消
-              </button>
-              <button onClick={submit} className="btn-codex h-7">
-                保存
-              </button>
+                  {(addingType === 'api' || !!baseURL.trim()) && (
+                    <input
+                      className={FIELD}
+                      type="password"
+                      placeholder="API Key"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  )}
+                  {addingType === 'api' && (
+                    <select className={FIELD} value={format} onChange={(e) => setFormat(e.target.value as ProviderType)}>
+                      <option value="openai">OpenAI 兼容</option>
+                      <option value="anthropic">Anthropic</option>
+                    </select>
+                  )}
+                </>
+              )}
+              <input
+                className={FIELD}
+                placeholder={addingType === 'api' ? '模型(必填)' : '模型(可选)'}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                spellCheck={false}
+              />
+              {err && <p className="text-11 text-[#c1374a]">{err}</p>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={resetForm}
+                  className="rounded-lg border border-border-strong bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-[#fcfcfc]"
+                >
+                  取消
+                </button>
+                <button onClick={submit} className="btn-codex px-3 py-1.5 text-xs">
+                  <Plus size={13} strokeWidth={2} />
+                  保存
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

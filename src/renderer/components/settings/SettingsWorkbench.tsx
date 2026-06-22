@@ -6,7 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Users } from 'lucide-react';
 import AgentsTab from './AgentsTab';
 
 /** Common embedding model names by provider, shown as quick hints. */
@@ -82,7 +82,7 @@ const createApiKeyRef = () => `apiKey:${uuid()}`;
 
 export default function SettingsWorkbench({ onClose, initialTab = 'providers' }: Props) {
   const { providers, saveProvider, deleteProvider, testProvider } = useTaskWorkspace();
-  const { rootPath } = useWorkspace();
+  const { rootPath, rootName } = useWorkspace();
   const { themeName, setThemeName } = useTheme();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [editing, setEditing] = useState<ModelProvider | null>(null);
@@ -200,11 +200,11 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
     }
   };
 
-  const navItems: { id: typeof tab; label: string }[] = [
-    { id: 'providers', label: '模型服务' },
-    { id: 'agents', label: '智能体' },
-    { id: 'editor', label: '编辑器' },
-    { id: 'index', label: '代码索引' },
+  const navItems: { id: typeof tab; label: string; icon: typeof Users }[] = [
+    { id: 'providers', label: '模型供应商', icon: Boxes },
+    { id: 'agents', label: '智能体', icon: Users },
+    { id: 'editor', label: '编辑器 / 外观', icon: SettingsIcon },
+    { id: 'index', label: '代码索引', icon: Search },
   ];
   const activeNavLabel = navItems.find((item) => item.id === tab)?.label || '设置';
 
@@ -235,38 +235,47 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <aside className="w-full flex-shrink-0 border-b border-editor-border bg-editor-sidebar lg:w-52 lg:border-b-0 lg:border-r">
-          <div className="flex h-8 items-center border-b border-editor-border px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground">
-            首选项
+        <aside className="flex w-full flex-shrink-0 flex-col border-b border-border lg:w-[220px] lg:border-b-0 lg:border-r" style={{ background: 'var(--app-bg)' }}>
+          <div className="px-3 pb-1 pt-3 text-10 font-bold uppercase tracking-[0.06em] text-foreground/40">设置</div>
+          <div className="flex gap-1 overflow-x-auto px-2 lg:block lg:space-y-0.5">
+            {navItems.map((item) => {
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setTab(item.id)}
+                  className={`flex flex-shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors lg:w-full ${
+                    active
+                      ? 'bg-background font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.06)]'
+                      : 'text-foreground/55 hover:bg-foreground/[0.04] hover:text-foreground'
+                  }`}
+                >
+                  <item.icon size={15} strokeWidth={1.7} className={active ? '' : 'text-foreground/45'} />
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
-          <div className="flex overflow-x-auto lg:block">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                className={`flex h-8 flex-shrink-0 items-center border-r border-editor-border px-3 text-left text-xs transition-colors lg:w-full lg:border-b lg:border-r-0 ${
-                  tab === item.id
-                    ? 'bg-editor-active text-foreground'
-                    : 'text-muted-foreground hover:bg-editor-hover hover:text-foreground'
-                }`}
-                onClick={() => setTab(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
+          <div className="mt-auto flex items-center gap-2.5 border-t border-border px-3 py-3">
+            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{ background: '#0d0d0d' }}>
+              AI
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-xs font-medium text-foreground">{rootName || 'AI Code IDE'}</div>
+              <div className="truncate text-10 text-foreground/45">本地工作区</div>
+            </div>
           </div>
         </aside>
 
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="flex h-8 items-center justify-between border-b border-editor-border bg-editor-bg px-3">
-            <span className="text-10 font-semibold uppercase tracking-wide text-muted-foreground">
-              {activeNavLabel}
-            </span>
-            {tab === 'providers' && (
-              <span className="font-mono text-10 text-muted-foreground">
-                {providers.length} SERVICES
-              </span>
-            )}
-          </div>
+          {tab !== 'agents' && (
+            <div className="flex h-[46px] items-center justify-between border-b border-border px-6">
+              <span className="text-[15px] font-semibold text-foreground">{activeNavLabel}</span>
+              {tab === 'providers' && (
+                <span className="font-mono text-10 text-muted-foreground">{providers.length} 个服务</span>
+              )}
+            </div>
+          )}
           <div className="w-full">
           {tab === 'providers' && !editing && (
             <div>
