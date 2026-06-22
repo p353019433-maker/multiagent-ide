@@ -44,6 +44,15 @@ export interface RunDiscussionParams {
   rounds?: number;
   /** Workspace root for CLI shells; falls back to a temp dir if not provided. */
   rootPath?: string | null;
+  /**
+   * Per-call timeout in ms. A single hanging ai.chat / cliAgent.run is raced
+   * against this; on expiry the call fails with a timeout error and the round
+   * continues, so one stuck agent can't block the whole discussion.
+   * Default 120000 (2 min); the moderator gets `moderatorTimeoutMs`.
+   */
+  callTimeoutMs?: number;
+  /** Moderator step timeout (default 180000 / 3 min — it ingests the transcript). */
+  moderatorTimeoutMs?: number;
   onMessage?: (m: DiscussionMessage) => void;
   onPhase?: (phase: string) => void;
   /** Fired once per agent invocation (discuss turn or moderator) with timing +
@@ -85,6 +94,8 @@ export interface DiscussionResult {
 const DISCUSS_TOKENS = 2500;
 const MODERATOR_TOKENS = 8000;
 const DEFAULT_ROUNDS = 2;
+const DEFAULT_CALL_TIMEOUT_MS = 120_000; // 2 min per discuss turn
+const DEFAULT_MODERATOR_TIMEOUT_MS = 180_000; // 3 min — moderator ingests the whole transcript
 
 /**
  * Strip a reasoning model's `<think>` channel. Returns '' when the reply is only
@@ -127,13 +138,29 @@ export function sampleText(s: string, n = 200): { head?: string; tail?: string }
   return { head: s.slice(0, n), tail: s.slice(-n) };
 }
 
-async function askApi(agent: DiscussionAgent, system: string, user: string, maxTokens: number): Promise<{ text: string; rawLength: number; error?: string }> {
+async function withTimeout<T>(p: Promise<T>, timeoutMs: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} 超时（${timeoutMs}ms）`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function askApi(agent: DiscussionAgent, system: string, user: string, maxTokens: number, timeoutMs: number): Promise<{ text: string; rawLength: number; error?: string }> {
   if (!agent.providerId) return { text: '', rawLength: 0, error: 'API agent missing providerId' };
   try {
-    const res = (await window.api.ai.chat(
-      agent.providerId,
-      [{ role: 'user', content: user }],
-      { model: agent.model, systemPrompt: system, maxTokens, temperature: 0.4 }
+    const res = (await withTimeout(
+      window.api.ai.chat(
+        agent.providerId,
+        [{ role: 'user', content: user }],
+        { model: agent.model, systemPrompt: system, maxTokens, temperature: 0.4 }
+      ),
+      timeoutMs,
+      `${agent.name} (ai.chat)`
     )) as { content?: string } | null;
     const raw = res?.content ?? '';
     const text = stripThink(raw);
@@ -145,7 +172,7 @@ async function askApi(agent: DiscussionAgent, system: string, user: string, maxT
   }
 }
 
-async function askCli(agent: DiscussionAgent, system: string, user: string, rootPath: string): Promise<{ text: string; rawLength: number; error?: string }> {
+async function askCli(agent: DiscussionAgent, system: string, user: string, rootPath: string, timeoutMs: number): Promise<{ text: string; rawLength: number; error?: string }> {
   // CLIs don't have a separate system-prompt channel, so we inline it.
   // We explicitly forbid file edits so this phase is read-only — only the
   // implementation phase touches the worktree.
@@ -154,14 +181,18 @@ async function askCli(agent: DiscussionAgent, system: string, user: string, root
     `严格只输出讨论文字,不要修改任何文件,不要运行 git,不要调用工具。\n\n` +
     `---\n${user}`;
   try {
-    const res = await window.api.cliAgent.run(rootPath, {
-      // ask() only routes CLI shells here (kind !== 'api'); narrow for the IPC type.
-      tool: agent.kind as 'claude-code' | 'codex' | 'antigravity',
-      prompt,
-      model: agent.model || undefined,
-      baseURL: agent.baseURL,
-      apiKey: agent.apiKey,
-    });
+    const res = await withTimeout(
+      window.api.cliAgent.run(rootPath, {
+        // ask() only routes CLI shells here (kind !== 'api'); narrow for the IPC type.
+        tool: agent.kind as 'claude-code' | 'codex' | 'antigravity',
+        prompt,
+        model: agent.model || undefined,
+        baseURL: agent.baseURL,
+        apiKey: agent.apiKey,
+      }),
+      timeoutMs,
+      `${agent.name} (cliAgent.run)`
+    );
     if (!res.ok) return { text: '', rawLength: (res.output ?? '').length, error: res.error || `${agent.kind} exited non-zero` };
     const raw = res.output ?? '';
     return { text: condenseCliOutput(raw), rawLength: raw.length };
@@ -175,12 +206,12 @@ async function askCli(agent: DiscussionAgent, system: string, user: string, root
  * logging. ask() returns `text` (the cleaned reply that becomes a transcript
  * entry) plus diagnostics (`rawLength`, `error`).
  */
-async function ask(agent: DiscussionAgent, system: string, user: string, maxTokens: number, rootPath: string | null | undefined): Promise<{ text: string; rawLength: number; error?: string }> {
-  if (agent.kind === 'api') return askApi(agent, system, user, maxTokens);
+async function ask(agent: DiscussionAgent, system: string, user: string, maxTokens: number, rootPath: string | null | undefined, timeoutMs: number): Promise<{ text: string; rawLength: number; error?: string }> {
+  if (agent.kind === 'api') return askApi(agent, system, user, maxTokens, timeoutMs);
   // CLI shells need a cwd. Without a workspace they can't run — that's a real
   // limitation of the CLI tools themselves, surface it as "no contribution".
   if (!rootPath) return { text: '', rawLength: 0, error: 'CLI agent requires an open workspace' };
-  return askCli(agent, system, user, rootPath);
+  return askCli(agent, system, user, rootPath, timeoutMs);
 }
 
 export async function runDiscussion(params: RunDiscussionParams): Promise<DiscussionResult> {
@@ -194,16 +225,20 @@ export async function runDiscussion(params: RunDiscussionParams): Promise<Discus
     `你是多 agent 协作中的「${a.name}」。和其他 agent 自由讨论用户问题,简明给出你的观点(不超过 150 字),` +
     `可赞同或反驳他人。目标是大家收敛出一个统一方案。`;
 
+  const callTimeoutMs = params.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+  const moderatorTimeoutMs = params.moderatorTimeoutMs ?? DEFAULT_MODERATOR_TIMEOUT_MS;
+
   /** ask() + timing + onCall. Returns the cleaned reply text (may be ''). */
   const timedAsk = async (
     a: DiscussionAgent,
     round: number,
     system: string,
     user: string,
-    maxTokens: number
+    maxTokens: number,
+    timeoutMs: number
   ): Promise<string> => {
     const t0 = Date.now();
-    const res = await ask(a, system, user, maxTokens, rootPath);
+    const res = await ask(a, system, user, maxTokens, rootPath, timeoutMs);
     const durationMs = Date.now() - t0;
     const sample = sampleText(res.text);
     onCall?.({
@@ -229,7 +264,7 @@ export async function runDiscussion(params: RunDiscussionParams): Promise<Discus
       round === 1
         ? question
         : `用户问题：${question}\n\n目前讨论：\n${transcriptText(transcript)}\n\n请回应其他 agent、推动收敛(不超过 120 字)。`;
-    const replies = await Promise.all(agents.map((a) => timedAsk(a, round, sysFor(a), user, DISCUSS_TOKENS)));
+    const replies = await Promise.all(agents.map((a) => timedAsk(a, round, sysFor(a), user, DISCUSS_TOKENS, callTimeoutMs)));
     if (aborted()) break;
     agents.forEach((a, i) => {
       const text = replies[i];
@@ -258,7 +293,8 @@ export async function runDiscussion(params: RunDiscussionParams): Promise<Discus
     0,
     '你是讨论主持人。基于多 agent 的讨论,提炼出各方共识的【统一方案】:3-5 条明确、可执行的要点。只输出方案,不要复述讨论。',
     `用户问题：${question}\n\n完整讨论：\n${transcriptText(transcript)}`,
-    MODERATOR_TOKENS
+    MODERATOR_TOKENS,
+    moderatorTimeoutMs
   );
   onPhase?.(aborted() ? '已取消' : '完成');
   return { transcript, plan, durationMs: Date.now() - startedAt, aborted: aborted() };

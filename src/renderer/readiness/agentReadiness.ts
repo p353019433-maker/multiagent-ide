@@ -1,4 +1,4 @@
-import type { ModelProvider } from '@shared/types';
+import type { ModelProvider, Agent } from '@shared/types';
 
 export type ReadinessItemId = 'workspace' | 'model' | 'indexing' | 'task';
 export type ReadinessStatus = 'done' | 'blocked' | 'optional' | 'ready';
@@ -17,6 +17,13 @@ export interface AgentReadinessInput {
     providerId?: string | null;
     model?: string | null;
   } | null;
+  /**
+   * The multi-agent roster. When at least one enabled CLI shell (claude-code /
+   * codex / antigravity) is present, the "model service" requirement is
+   * satisfied by that CLI — the round-table will run even with no API provider
+   * configured. API agents don't count here (they need their own providerId).
+   */
+  agents?: Agent[];
 }
 
 export interface AgentReadinessItem {

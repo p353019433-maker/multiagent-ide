@@ -38,17 +38,22 @@ function hexToHslTriplet(hex: string): string {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeName, setThemeNameState] = useState<ThemeName>(() => {
-    // One-time migration to the new gray-white workbench: the redesign is a
-    // light design, so move existing installs (whose stored default was 'dark')
-    // onto 'light' once. Explicit theme choices made afterwards are respected.
-    if (!localStorage.getItem('ide-theme-graywhite')) {
-      localStorage.setItem('ide-theme-graywhite', '1');
-      localStorage.setItem('ide-theme', 'light');
-      return 'light';
-    }
     const stored = localStorage.getItem('ide-theme') as ThemeName | null;
     return stored && THEMES[stored] ? stored : 'light';
   });
+
+  // One-time migration to the new gray-white workbench: the redesign is a
+  // light design, so move existing installs (whose stored default was 'dark')
+  // onto 'light' once. Explicit theme choices made afterwards are respected.
+  // Run in an effect (not in the useState initializer) so render stays pure
+  // and React 18 StrictMode double-invocation doesn't write twice.
+  useEffect(() => {
+    if (!localStorage.getItem('ide-theme-graywhite')) {
+      localStorage.setItem('ide-theme-graywhite', '1');
+      localStorage.setItem('ide-theme', 'light');
+      setThemeNameState('light');
+    }
+  }, []);
 
   const theme = useMemo(() => THEMES[themeName], [themeName]);
 

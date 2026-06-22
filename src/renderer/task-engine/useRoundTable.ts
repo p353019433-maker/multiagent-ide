@@ -285,10 +285,18 @@ export function useRoundTable() {
 
   const cleanup = async () => {
     if (!rootPath) return;
-    await cleanupImplementations(rootPath, impls);
+    const res = await cleanupImplementations(rootPath, impls);
     setImpls([]);
     setAdoptedBranch(null);
-    setNotice({ tone: 'ok', text: '已清理本次 worktree' });
+    if (res.failed.length > 0) {
+      const detail = res.failed.map((f) => `${f.branch}：${f.error}`).join('\n');
+      setNotice({
+        tone: 'err',
+        text: `已清理 ${res.removed} 个 worktree，${res.failed.length} 个失败（可能有未提交改动）：\n${detail}`,
+      });
+    } else {
+      setNotice({ tone: 'ok', text: `已清理 ${res.removed} 个 worktree` });
+    }
   };
 
   const canIntegrate = impls.filter((r) => r.status === 'ok' && r.diff).length >= 2 && !impls.some((r) => r.agent.id === 'integrated');

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
 import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask, Agent } from '@shared/types';
 import { useWorkspace } from './WorkspaceContext';
@@ -445,7 +445,7 @@ Response:`;
               'You are a task decomposition engine. Return ONLY a JSON array of subtask strings. No explanations. No markdown. Just the array.',
             maxTokens: 400,
             temperature: 0.1,
-          } as any
+          }
         );
 
         const raw = result?.content?.trim() || '[]';

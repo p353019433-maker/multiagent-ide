@@ -1,7 +1,6 @@
 import React from 'react';
-import { Check, ChevronDown, ChevronRight, FileText, RotateCcw, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, FileText, RotateCcw } from 'lucide-react';
 import type { Artifact, Checkpoint, PlanStep } from '@shared/types';
-import { type ApprovalMode, APPROVAL_MODE_META } from '@shared/command-policy';
 import type { PendingApproval } from '../../task-engine/useApproval';
 import DiffPreview from '../editor/DiffPreview';
 
@@ -134,73 +133,6 @@ export function AgentPlan({ steps }: { steps: PlanStep[] }) {
         </div>
       )}
     </section>
-  );
-}
-
-interface ApprovalModeStripProps {
-  mode: ApprovalMode;
-  /**
-   * Sub-flag: when `mode === 'full'`, the user can opt in to skipping the
-   * manual gate for external/irreversible operations (GitHub writes etc.).
-   * Defaults to false; the toggle only renders for `full`.
-   */
-  allowExternalInFull?: boolean;
-  onChange: (mode: ApprovalMode) => void;
-  onChangeAllowExternal?: (v: boolean) => void;
-}
-
-export function ApprovalModeStrip({ mode, allowExternalInFull, onChange, onChangeAllowExternal }: ApprovalModeStripProps) {
-  return (
-    <div className="grid h-8 flex-shrink-0 grid-cols-[96px_minmax(0,1fr)] border-b border-editor-border bg-editor-bg">
-      <div className="flex min-w-0 items-center gap-1.5 border-r border-editor-border px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground">
-        <ShieldCheck size={13} strokeWidth={1.8} className="flex-shrink-0" />
-        <span className="truncate">执行策略</span>
-      </div>
-      <div className="flex min-w-0">
-        <div className="grid min-w-0 flex-1 grid-cols-3">
-          {(['readonly', 'auto', 'full'] as ApprovalMode[]).map((m) => {
-            const meta = APPROVAL_MODE_META[m];
-            const active = mode === m;
-            return (
-              <button
-                key={m}
-                onClick={() => onChange(m)}
-                title={meta.hint}
-                aria-label={`切换执行策略：${meta.label}`}
-                className={`h-8 border-r border-editor-border border-b-2 px-2 text-11 transition-colors duration-75 last:border-r-0 ${
-                  active
-                    ? m === 'full'
-                      ? 'border-b-warn bg-warn-surface font-semibold text-warn'
-                      : 'border-b-foreground/40 bg-secondary text-foreground'
-                    : 'border-b-transparent text-muted-foreground hover:bg-editor-hover hover:text-foreground'
-                }`}
-              >
-                {meta.label}
-              </button>
-            );
-          })}
-        </div>
-        {mode === 'full' && onChangeAllowExternal ? (
-          <button
-            onClick={() => onChangeAllowExternal(!allowExternalInFull)}
-            title={
-              allowExternalInFull
-                ? '已开启：full 模式下对外/不可逆操作不再询问'
-                : 'full 模式默认仍要求对外/不可逆操作手动确认（GitHub 写、远端 API 等）'
-            }
-            aria-label={allowExternalInFull ? '关闭 full 模式外写放行' : '开启 full 模式外写放行'}
-            className={`flex h-8 flex-shrink-0 items-center gap-1 border-l border-editor-border px-2 text-10 transition-colors duration-75 ${
-              allowExternalInFull
-                ? 'bg-warn-surface text-warn hover:brightness-95'
-                : 'text-muted-foreground hover:bg-editor-hover hover:text-foreground'
-            }`}
-          >
-            <ShieldOff size={11} strokeWidth={1.8} className="flex-shrink-0" />
-            <span className="truncate">{allowExternalInFull ? '外写放行' : '外写拦截'}</span>
-          </button>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

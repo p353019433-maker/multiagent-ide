@@ -39,9 +39,17 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
     return m;
   }, [agents]);
 
-  const discussionState = rt.messages.length > 0 || rt.running ? (rt.plan || !rt.running ? 'done' : 'active') : 'pending';
-  const convergeState = rt.plan ? 'done' : rt.running ? 'active' : 'pending';
-  const implementState = rt.implementing ? 'active' : rt.impls.length > 0 ? 'done' : 'pending';
+  // 'pending' before any activity; 'active' while discussion runs; 'done' once
+  // the plan exists or the run finished. Annotated so the Stage prop type stays
+  // narrow without a cast at the call site.
+  const discussionState: 'done' | 'active' | 'pending' =
+    rt.messages.length > 0 || rt.running
+      ? rt.plan || !rt.running
+        ? 'done'
+        : 'active'
+      : 'pending';
+  const convergeState: 'done' | 'active' | 'pending' = rt.plan ? 'done' : rt.running ? 'active' : 'pending';
+  const implementState: 'done' | 'active' | 'pending' = rt.implementing ? 'active' : rt.impls.length > 0 ? 'done' : 'pending';
 
   const participants = rt.enabled.map((a) => a.name).join(' · ');
   const rounds = rt.messages.reduce((m, x) => Math.max(m, x.round), 0);
@@ -53,7 +61,7 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-[14.5px] font-semibold text-foreground">圆桌讨论</span>
           <span className="flex flex-none items-center gap-[7px]">
-            <Stage label="讨论" state={discussionState as 'done' | 'active' | 'pending'} />
+            <Stage label="讨论" state={discussionState} />
             <span className="text-foreground/20">›</span>
             <Stage label="收敛" state={convergeState} />
             <span className="text-foreground/20">›</span>
@@ -124,8 +132,10 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
           {/* discussion stream */}
           {rt.messages.map((m, i) => {
             const v = agentVisual(kindById.get(m.agentId) ?? 'api');
+            // Composite key: agentId+round is unique per turn; i is a tiebreaker
+            // for safety but the pair alone stabilizes across re-renders.
             return (
-              <div key={i} className="flex gap-[13px]">
+              <div key={`${m.agentId}-${m.round}-${i}`} className="flex gap-[13px]">
                 <span
                   className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-lg"
                   style={{ background: v.iconBg }}
