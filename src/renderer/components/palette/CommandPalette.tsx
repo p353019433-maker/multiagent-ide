@@ -20,6 +20,8 @@ interface FileItem {
   rel: string;
 }
 
+import { trapFocus } from '../../utils/focusTrap';
+
 interface Props {
   initialMode: PaletteMode;
   commands: PaletteCommand[];

@@ -35,6 +35,15 @@ export function recordEdit(snippet: string) {
   _recentEdits.push(s.slice(0, 200));
   if (_recentEdits.length > 5) _recentEdits.shift();
 }
+/**
+ * Clear the recent-edits ring buffer. Call on conversation / worktree switch so
+ * stale edits from a different task don't leak into the "next edit" context of
+ * the new one. The buffer is a module-level singleton that otherwise survives
+ * for the whole renderer-process lifetime.
+ */
+export function resetRecentEdits(): void {
+  _recentEdits.length = 0;
+}
 let _pendingId = 0;
 let _lastRequestTime = 0;
 // FIM models are fast and cheap, so we can fire much more often than request/response models.

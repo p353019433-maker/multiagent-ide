@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { WorkspaceProvider } from './context/WorkspaceContext';
 import { TaskContextProvider } from './context/TaskContext';
 import { EditorProvider } from './context/EditorContext';
 import { ThemeProvider } from './context/ThemeContext';
 import MainLayout from './components/layout/MainLayout';
 import SettingsWorkbench, { type SettingsTab } from './components/settings/SettingsWorkbench';
+import { trapFocus, type FocusTrap } from './utils/focusTrap';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('providers');
   const [settingsVersion, setSettingsVersion] = useState(0);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const focusTrapRef = useRef<FocusTrap | null>(null);
 
   const openSettings = (tab: SettingsTab = 'providers') => {
     setSettingsTab(tab);
@@ -20,6 +23,18 @@ export default function App() {
     setShowSettings(false);
     setSettingsVersion((version) => version + 1);
   };
+
+  // Trap focus inside the settings overlay while it's open; restore to the
+  // triggering element on close so keyboard users don't Tab into the hidden
+  // workbench behind the modal.
+  useEffect(() => {
+    if (!showSettings || !settingsRef.current) return;
+    focusTrapRef.current = trapFocus(settingsRef.current);
+    return () => {
+      focusTrapRef.current?.release();
+      focusTrapRef.current = null;
+    };
+  }, [showSettings]);
 
   return (
     <ThemeProvider>
@@ -35,7 +50,9 @@ export default function App() {
                 />
               </div>
               {showSettings && (
-                <SettingsWorkbench initialTab={settingsTab} onClose={closeSettings} />
+                <div ref={settingsRef} role="dialog" aria-modal="true" aria-label="设置">
+                  <SettingsWorkbench initialTab={settingsTab} onClose={closeSettings} />
+                </div>
               )}
             </div>
           </EditorProvider>

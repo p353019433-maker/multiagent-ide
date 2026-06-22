@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getAgentReadiness } from './agentReadiness';
+import type { Agent } from '@shared/types';
 
 const provider = {
   id: 'openai',
@@ -10,6 +11,16 @@ const provider = {
   models: ['gpt-4o-mini'],
   defaultModel: 'gpt-4o-mini',
 };
+
+const cliAgent = (enabled = true): Agent => ({
+  id: 'cli-claude-code',
+  name: 'Claude Code',
+  enabled,
+  kind: 'claude-code',
+  model: '',
+});
+
+const disabledCliAgent = (): Agent => ({ ...cliAgent(false) });
 
 describe('getAgentReadiness', () => {
   it('blocks on workspace first when nothing is configured', () => {

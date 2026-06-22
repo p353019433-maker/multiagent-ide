@@ -196,3 +196,42 @@ describe('runDiscussion — abort & empty', () => {
     expect(res.aborted).toBe(false);
   });
 });
+
+describe('runDiscussion — per-call timeout', () => {
+  it('fails a single hanging ai.chat with a timeout error and keeps the round going', async () => {
+    // Agent A hangs forever; agent B returns promptly. With a tight callTimeoutMs
+    // the hung call rejects and A contributes nothing, while B still appears in
+    // the transcript. The moderator (API) then converges from B's reply alone.
+    const never = new Promise(() => {});
+    const chat = vi.fn(async (_pid: string, _msgs: unknown[], opts: unknown) => {
+      const o = opts as { systemPrompt?: string };
+      // Moderator prompt is distinguishable; return promptly for it.
+      if (o.systemPrompt?.includes('主持人')) return { content: 'PLAN' };
+      // First discuss call (agent A) hangs; second (agent B) returns.
+      if (chat.mock.calls.length === 1) return never as never;
+      return { content: 'B-r1' };
+    });
+    const skills = { list: vi.fn(async () => []) };
+    (globalThis as any).window = { api: { ai: { chat }, cliAgent: { run: vi.fn() }, skills }, dispatchEvent: vi.fn() };
+
+    const calls: { ok: boolean; error?: string; agentId: string }[] = [];
+    const res = await runDiscussion({
+      agents: [apiAgent('a', 'A'), apiAgent('b', 'B')],
+      question: 'q',
+      rounds: 1,
+      rootPath: ROOT,
+      callTimeoutMs: 30, // tight — the hanging promise rejects quickly
+      onCall: (info) => calls.push({ ok: info.ok, error: info.error, agentId: info.agentId }),
+    });
+    // A failed with a timeout error; B succeeded.
+    const aCall = calls.find((c) => c.agentId === 'a');
+    const bCall = calls.find((c) => c.agentId === 'b');
+    expect(aCall?.ok).toBe(false);
+    expect(aCall?.error).toMatch(/超时/);
+    expect(bCall?.ok).toBe(true);
+    // Only B's reply made it into the transcript.
+    expect(res.transcript.map((m) => m.agentId)).toEqual(['b']);
+    // The moderator still ran and produced a plan.
+    expect(res.plan).toBe('PLAN');
+  });
+});

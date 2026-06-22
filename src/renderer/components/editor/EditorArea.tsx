@@ -11,6 +11,7 @@ import {
   unregisterInlineCompletion,
   updateInlineCompletionConfig,
   recordEdit,
+  resetRecentEdits,
 } from './inlineCompletion';
 import { setCursorState, DEFAULT_CURSOR } from '../../editor/cursorPosition';
 

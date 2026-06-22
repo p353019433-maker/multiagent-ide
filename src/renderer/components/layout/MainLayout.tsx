@@ -40,7 +40,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   const { openFiles } = useEditorState();
   const [showEditor, setShowEditor] = useState(false);
   const prevOpenCount = useRef(0);
-  const { providers, activeProviderId, activeModel, newConversation, newWorktreeConversation } = useTaskWorkspace();
+  const { providers, activeProviderId, activeModel, agents, activeConversationId, newConversation, newWorktreeConversation } = useTaskWorkspace();
   const [showTerminal, setShowTerminal] = useState(false);
   const [worktreeNotice, setWorktreeNotice] = useState<string | null>(null);
 
