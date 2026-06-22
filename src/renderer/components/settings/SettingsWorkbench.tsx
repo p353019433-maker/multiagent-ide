@@ -218,11 +218,11 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
         if (event.key === 'Escape') onClose();
       }}
     >
-      <div className="flex h-[46px] flex-shrink-0 items-center gap-3 border-b border-border px-4" style={{ background: 'var(--app-bg)' }}>
+      <div className="drag-region flex h-[46px] flex-shrink-0 items-center gap-3 border-b border-border pl-[82px] pr-4" style={{ background: 'var(--app-bg)' }}>
         <button
           ref={closeButtonRef}
           onClick={onClose}
-          className="flex items-center gap-1.5 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
+          className="no-drag flex items-center gap-1.5 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
           title="返回主界面 (Esc)"
           aria-label="返回主界面"
         >
