@@ -16,7 +16,7 @@ import TaskSessionTabs from './TaskSessionTabs';
 import ModelPicker from './ModelPicker';
 import DeliveryTray from '../workbench/DeliveryTray';
 import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
-import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Square } from 'lucide-react';
+import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Sparkles, Square } from 'lucide-react';
 import { AgentPlan, AgentRunBar, PendingApprovalView } from './TaskPanelSections';
 import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 
@@ -435,13 +435,8 @@ ${suffix.slice(0, 500)}${editsCtx}
         <div className="mx-auto w-full max-w-[760px]">
         <AgentPlan steps={plan} />
         {!hasRuntimeRows && (
-          <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-            <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-muted-foreground">
-              READY
-            </div>
-            <div className="bg-editor-sidebar px-3 py-2 text-xs text-muted-foreground">
-              {readiness.canRunAgent ? '无活动任务' : '等待就绪'}
-            </div>
+          <div className="py-12 text-center text-[13px] text-foreground/40">
+            {readiness.canRunAgent ? '无活动任务 — 在下方发个任务开始' : '等待模型服务就绪'}
           </div>
         )}
         {messages.map((msg) => (
@@ -449,7 +444,7 @@ ${suffix.slice(0, 500)}${editsCtx}
         ))}
 
         {toolExecutions.length > 0 && (
-          <div>
+          <div className="my-3 overflow-hidden rounded-[10px] border border-border shadow-card">
             {toolExecutions.map((exec) => (
               <ToolExecutionRow key={exec.id} execution={exec} />
             ))}
@@ -457,13 +452,9 @@ ${suffix.slice(0, 500)}${editsCtx}
         )}
 
         {isStreaming && streamContent && (
-          <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-editor-border text-sm">
-            <div className="border-r border-editor-border bg-editor-bg px-2 py-2 font-mono text-10 leading-5 text-editor-accent">
-              RUN
-            </div>
-            <div className="whitespace-pre-wrap bg-editor-sidebar px-3 py-2 text-editor-text">
-              {streamContent}
-            </div>
+          <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-4 py-4 text-sm">
+            <div className="font-mono text-[9.5px] leading-[1.7] text-foreground/35">RUN</div>
+            <div className="min-w-0 whitespace-pre-wrap leading-relaxed text-foreground/90">{streamContent}</div>
           </div>
         )}
 
@@ -572,6 +563,10 @@ ${suffix.slice(0, 500)}${editsCtx}
                       );
                     })}
                   </div>
+                  <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/60" style={{ background: '#f1f1ef' }}>
+                    <Sparkles size={12} strokeWidth={1.8} />
+                    推理 标准
+                  </span>
                   {isStreaming ? (
                     <button onClick={handleAbort} className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white" style={{ background: '#c1374a' }} title="停止" aria-label="停止任务">
                       <Square size={14} strokeWidth={2} />
