@@ -172,7 +172,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* LEFT 300 */}
-        <aside className="flex w-[300px] flex-none flex-col border-r border-border">
+        <aside className="flex w-[300px] flex-none flex-col border-r border-border" style={{ background: '#ececea' }}>
           <WorkbenchLeft
             view={view}
             setView={changeView}

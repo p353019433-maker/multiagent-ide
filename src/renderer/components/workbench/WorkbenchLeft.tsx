@@ -32,7 +32,7 @@ export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, on
   const { conversations, activeConversationId, setActiveConversation, newConversation } = useTaskWorkspace();
 
   return (
-    <div className="flex min-h-0 flex-col" style={{ background: '#ececea' }}>
+    <div className="flex h-full min-h-0 flex-col" style={{ background: '#ececea' }}>
       <div className="flex-none px-3.5 pb-2 pt-3.5">
         <Segmented view={view} setView={setView} />
       </div>
