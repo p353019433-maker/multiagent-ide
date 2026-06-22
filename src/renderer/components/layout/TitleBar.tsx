@@ -4,6 +4,8 @@ import { Code2, Folder, Settings as SettingsIcon } from 'lucide-react';
 
 interface Props {
   onOpenSettings: () => void;
+  /** Open / switch the workspace folder. The project pill is the entry. */
+  onOpenFolder: () => void;
   branch: string | null;
   statusText: string | null;
   running: boolean;
@@ -16,7 +18,7 @@ interface Props {
  * (titleBarStyle: hiddenInset), so we leave the left inset and render the
  * project/branch pill, a pulsing run-status dot, settings and avatar.
  */
-export default function TitleBar({ onOpenSettings, branch, statusText, running, editorOpen, onToggleEditor }: Props) {
+export default function TitleBar({ onOpenSettings, onOpenFolder, branch, statusText, running, editorOpen, onToggleEditor }: Props) {
   const { rootName } = useWorkspace();
 
   return (
@@ -28,12 +30,13 @@ export default function TitleBar({ onOpenSettings, branch, statusText, running, 
       <div className="flex items-center gap-3.5 pl-[68px]">
         <div className="h-4 w-px" style={{ background: 'rgba(13,13,13,.10)' }} />
         <button
-          onClick={onOpenSettings}
+          onClick={onOpenFolder}
           className="no-drag flex items-center gap-2 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
-          title="项目"
+          title={rootName ? '切换文件夹' : '打开文件夹'}
+          aria-label={rootName ? '切换文件夹' : '打开文件夹'}
         >
           <Folder size={14} strokeWidth={1.6} className="text-foreground/50" />
-          <span className="text-[13px] font-semibold text-foreground">{rootName || 'ai-code-ide'}</span>
+          <span className="text-[13px] font-semibold text-foreground">{rootName || '打开文件夹'}</span>
           {branch && (
             <span className="border-l border-border-strong pl-2 font-mono text-10 text-foreground/40">{branch}</span>
           )}

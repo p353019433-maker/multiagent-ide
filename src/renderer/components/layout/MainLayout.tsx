@@ -197,6 +197,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
     <div className="relative flex h-screen flex-col overflow-hidden text-foreground" style={{ background: 'var(--app-bg)' }}>
       <TitleBar
         onOpenSettings={() => onOpenSettings()}
+        onOpenFolder={() => void openFolder()}
         branch={branch}
         statusText={statusText}
         running={rt.running || rt.implementing}
