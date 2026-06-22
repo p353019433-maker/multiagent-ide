@@ -1,5 +1,13 @@
 import { app, BrowserWindow, session } from 'electron';
 import path from 'path';
+// PATH-repair must run BEFORE any service that spawns child processes
+// (CliAgentService, TerminalService, AnalysisService, GitService all do).
+// macOS GUI launches inherit a minimal PATH that's missing /opt/homebrew/bin
+// and ~/.local/bin — without this fix, `claude` / `codex` / `agy` ENOENT
+// even though they're on the user's interactive PATH. See path-fix.ts.
+import { repairPath } from './services/path-fix';
+repairPath();
+
 import { FileService } from './services/file-service';
 import { TerminalService } from './services/terminal-service';
 import { StoreService } from './services/store-service';

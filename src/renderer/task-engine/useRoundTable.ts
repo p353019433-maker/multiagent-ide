@@ -122,13 +122,20 @@ export function useRoundTable() {
 
     try {
       const discussionAgents = await buildDiscussionAgents();
+      // Track per-agent call errors so we can build a precise diagnosis when
+      // the whole run produces nothing — instead of the generic "no reply".
+      const lastErrors = new Map<string, string>();
       const res = await runDiscussion({
         agents: discussionAgents,
         question: questionText,
         rootPath,
         onMessage: (m) => setMessages((prev) => [...prev, m]),
         onPhase: setPhase,
-        onCall: (info) => logEvent(rootPath, { kind: 'discussion-call', runId, ...info }),
+        onCall: (info) => {
+          logEvent(rootPath, { kind: 'discussion-call', runId, ...info });
+          if (info.error) lastErrors.set(info.agentId, info.error);
+          else if (info.ok) lastErrors.delete(info.agentId); // recovered
+        },
         signal: signalRef.current,
       });
       setPlan(res.plan);
@@ -157,10 +164,19 @@ export function useRoundTable() {
       }
 
       if (!res.plan && res.transcript.length === 0) {
+        // Build a precise message: every agent ran but every agent failed,
+        // so the user sees what's actually broken (no API key / CLI not
+        // installed / no workspace), not a generic English fallback.
+        const lines: string[] = [];
+        for (const a of enabledAgents) {
+          const err = lastErrors.get(a.id);
+          lines.push(`• ${a.name}${err ? `：${err}` : '：无响应'}`);
+        }
+        const summary = lines.length > 0 ? lines.join('\n') : '没有任何智能体可参与';
         setNotice({
           tone: 'err',
           text:
-            'No agent produced a reply. Check API keys / CLI installs, and that a workspace is open for CLI shells.',
+            `所有启用的智能体都没产生回复。检查每一项,补好后再试一次:\n${summary}`,
         });
       }
     } finally {
