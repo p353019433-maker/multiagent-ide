@@ -211,7 +211,16 @@ export class CliAgentService {
       };
 
       try {
-        proc = spawn(cmd.file, cmd.args, { cwd: p.cwd, env: { ...process.env, ...cmd.env } });
+        // stdio: stdin MUST be 'ignore' (=> /dev/null). With the default 'pipe',
+        // claude/codex/agy all detect a piped stdin and block waiting for input —
+        // claude warns "no stdin data received in 3s", codex prints
+        // "Reading additional input from stdin..." and hangs. 'ignore' makes the
+        // CLI see EOF immediately and proceed in headless mode.
+        proc = spawn(cmd.file, cmd.args, {
+          cwd: p.cwd,
+          env: { ...process.env, ...cmd.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         cb.onError?.('spawn', `无法启动 ${cmd.file}：${message}`);
