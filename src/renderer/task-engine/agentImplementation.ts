@@ -96,14 +96,34 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
         editedFiles = res.editedFiles;
         note = res.note;
       } else {
-        // CLI shell: the tool edits files in the worktree itself.
-        const res = await window.api.cliAgent.run(wt, {
-          tool: agent.kind,
-          prompt: task,
-          model: agent.model || undefined,
-          baseURL: agent.baseURL,
-          apiKey: agent.apiKey,
-        });
+        // CLI shell: the tool edits files in the worktree itself. Use the
+        // streaming API so connection failures (未安装/未登录/无响应) surface
+        // in seconds instead of silently hanging for the full timeout, and
+        // incremental stdout can be logged for diagnostics.
+        const res = await window.api.cliAgent.runStream(
+          wt,
+          {
+            tool: agent.kind,
+            prompt: task,
+            model: agent.model || undefined,
+            baseURL: agent.baseURL,
+            apiKey: agent.apiKey,
+          },
+          (event) => {
+            if (event.type === 'error') {
+              p.onCall?.({
+                agentId: agent.id,
+                agentName: agent.name,
+                kind: agent.kind,
+                ok: false,
+                durationMs: Date.now() - t0,
+                error: event.message,
+                editedFilesCount: 0,
+                diffLength: 0,
+              });
+            }
+          }
+        );
         if (!res.ok) throw new Error(res.error || `${agent.kind} 执行失败`);
         note = res.output ? res.output.trim().slice(0, 200) : undefined;
       }

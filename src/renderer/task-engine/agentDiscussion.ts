@@ -94,8 +94,24 @@ export interface DiscussionResult {
 const DISCUSS_TOKENS = 2500;
 const MODERATOR_TOKENS = 8000;
 const DEFAULT_ROUNDS = 2;
-const DEFAULT_CALL_TIMEOUT_MS = 120_000; // 2 min per discuss turn
-const DEFAULT_MODERATOR_TIMEOUT_MS = 180_000; // 3 min — moderator ingests the whole transcript
+/**
+ * Per-call timeout defaults. API chat is fast (2 min ceiling); CLI shells
+ * (claude -p / codex exec / agy -p) are agentic and routinely take minutes
+ * on a cold start, so they get 6 min — *longer* than the main process's own
+ * 5-min CLI timeout (cli-agent-service.ts). That ordering is deliberate: the
+ * main-side timeout actually kills the subprocess and returns a meaningful
+ * "超时 5 分钟,已终止" error; the renderer-side race is only a safety net for
+ * when IPC itself dies. If the renderer fired first, the subprocess would be
+ * orphaned (main keeps running it) and the error message would be the
+ * renderer's generic "超时" instead of main's real one.
+ */
+const API_CALL_TIMEOUT_MS = 120_000;
+const CLI_CALL_TIMEOUT_MS = 360_000;
+// Defaults: discuss turn uses the longer CLI bound by default so the race never
+// fires before the main-process CLI timeout (5 min); API calls in askApi pass
+// API_CALL_TIMEOUT_MS explicitly via timedAsk's kind-based selection.
+const DEFAULT_CALL_TIMEOUT_MS = CLI_CALL_TIMEOUT_MS;
+const DEFAULT_MODERATOR_TIMEOUT_MS = 540_000; // 9 min — moderator ingests the whole transcript
 
 /**
  * Strip a reasoning model's `<think>` channel. Returns '' when the reply is only
@@ -180,19 +196,61 @@ async function askCli(agent: DiscussionAgent, system: string, user: string, root
     `${system}\n\n` +
     `严格只输出讨论文字,不要修改任何文件,不要运行 git,不要调用工具。\n\n` +
     `---\n${user}`;
-  try {
-    const res = await withTimeout(
-      window.api.cliAgent.run(rootPath, {
-        // ask() only routes CLI shells here (kind !== 'api'); narrow for the IPC type.
+
+  // Drive the CLI via the streaming IPC. The main process classifies startup
+  // failures (ENOENT / not-logged-in / silent-for-30s / timeout) and emits an
+  // `error` event immediately — so the user sees "未登录 Claude Code" within
+  // seconds instead of waiting timeoutMs for a generic hang. We still wrap in
+  // withTimeout() as a safety net for IPC itself dying, but in normal operation
+  // the main-side error/complete events arrive first.
+  const runPromise = new Promise<{ ok: boolean; output: string; error?: string; errorKind?: string }>((resolve, reject) => {
+    let buffer = '';
+    let errBuf = '';
+    let settled = false;
+    window.api.cliAgent.runStream(
+      rootPath,
+      {
         tool: agent.kind as 'claude-code' | 'codex' | 'antigravity',
         prompt,
         model: agent.model || undefined,
         baseURL: agent.baseURL,
         apiKey: agent.apiKey,
-      }),
-      timeoutMs,
-      `${agent.name} (cliAgent.run)`
-    );
+      },
+      (event) => {
+        if (settled) return;
+        switch (event.type) {
+          case 'stdout':
+            buffer += event.chunk;
+            break;
+          case 'stderr':
+            errBuf += event.chunk;
+            break;
+          case 'error':
+            // Classified startup/runtime error from main — surface immediately.
+            settled = true;
+            reject(new Error(event.message));
+            break;
+          case 'complete':
+            settled = true;
+            resolve(event.result);
+            break;
+          // 'start' / 'exit' are informational for the UI; no action here.
+        }
+      }
+    ).catch((e: unknown) => {
+      if (!settled) {
+        settled = true;
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+    // errBuf is currently unused beyond debugging; keep it in scope so a future
+    // "show CLI stderr in the diagnostics panel" feature can read it. Avoids a
+    // TS unused-var without silencing the whole function.
+    void errBuf;
+  });
+
+  try {
+    const res = await withTimeout(runPromise, timeoutMs, `${agent.name} (cliAgent.runStream)`);
     if (!res.ok) return { text: '', rawLength: (res.output ?? '').length, error: res.error || `${agent.kind} exited non-zero` };
     const raw = res.output ?? '';
     return { text: condenseCliOutput(raw), rawLength: raw.length };
@@ -227,6 +285,14 @@ export async function runDiscussion(params: RunDiscussionParams): Promise<Discus
 
   const callTimeoutMs = params.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
   const moderatorTimeoutMs = params.moderatorTimeoutMs ?? DEFAULT_MODERATOR_TIMEOUT_MS;
+  /**
+   * Per-agent timeout: API chat is fast (<= 2 min budget); CLI shells need
+   * the longer ceiling so they don't race-lose to a too-tight renderer timer
+   * before the main-process CLI service can itself bound the subprocess.
+   * `callTimeoutMs` (if explicitly passed by the caller) overrides both.
+   */
+  const timeoutFor = (a: DiscussionAgent): number =>
+    params.callTimeoutMs ?? (a.kind === 'api' ? API_CALL_TIMEOUT_MS : CLI_CALL_TIMEOUT_MS);
 
   /** ask() + timing + onCall. Returns the cleaned reply text (may be ''). */
   const timedAsk = async (

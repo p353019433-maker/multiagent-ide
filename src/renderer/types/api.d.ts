@@ -8,6 +8,60 @@ interface CodebaseSearchResult {
 
 type FileChangeEvent = { type: 'add' | 'change' | 'unlink'; path: string };
 
+/**
+ * Streaming events from a CLI agent run (mirrors the main-process callback
+ * shape, serialized over IPC onto per-call channels `cliagent:stream-<callId>`).
+ */
+export type CliStreamEvent =
+  | { type: 'start' }
+  | { type: 'stdout'; chunk: string }
+  | { type: 'stderr'; chunk: string }
+  | { type: 'exit'; code: number | null; signal: NodeJS.Signals | null }
+  | { type: 'error'; kind: string; message: string }
+  | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
+
+export interface CliAgentRunParams {
+  tool: 'claude-code' | 'codex' | 'antigravity';
+  prompt: string;
+  model?: string;
+  baseURL?: string;
+  apiKey?: string;
+}
+
+export interface CliAgentRunResult {
+  ok: boolean;
+  output: string;
+  error?: string;
+  errorKind?: string;
+}
+
+/**
+ * Streaming events from a CLI agent run (mirrors the main-process callback
+ * shape, serialized over IPC onto per-call channels `cliagent:stream-<callId>`).
+ */
+export type CliStreamEvent =
+  | { type: 'start' }
+  | { type: 'stdout'; chunk: string }
+  | { type: 'stderr'; chunk: string }
+  | { type: 'exit'; code: number | null; signal: NodeJS.Signals | null }
+  | { type: 'error'; kind: string; message: string }
+  | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
+
+export interface CliAgentRunParams {
+  tool: 'claude-code' | 'codex' | 'antigravity';
+  prompt: string;
+  model?: string;
+  baseURL?: string;
+  apiKey?: string;
+}
+
+export interface CliAgentRunResult {
+  ok: boolean;
+  output: string;
+  error?: string;
+  errorKind?: string;
+}
+
 declare global {
   interface Window {
     api: {
@@ -154,16 +208,19 @@ declare global {
         reindex: (root: string) => Promise<{ ok: boolean; error?: string; chunks?: boolean }>;
       };
       cliAgent: {
-        run: (
+        /** Synchronous fire-and-forget run — resolves with the full output. */
+        run: (cwd: string, params: CliAgentRunParams) => Promise<CliAgentRunResult>;
+        /**
+         * Streaming run. Resolves with the final result; events arrive via
+         * `onEvent` as the CLI runs (start / stdout / stderr / exit / error /
+         * complete). Multiple parallel runs are multiplexed by an internal
+         * callId onto per-call IPC channels.
+         */
+        runStream: (
           cwd: string,
-          params: {
-            tool: 'claude-code' | 'codex' | 'antigravity';
-            prompt: string;
-            model?: string;
-            baseURL?: string;
-            apiKey?: string;
-          }
-        ) => Promise<{ ok: boolean; output: string; error?: string }>;
+          params: CliAgentRunParams,
+          onEvent: (event: CliStreamEvent) => void
+        ) => Promise<CliAgentRunResult>;
       };
       skills: {
         list: (root: string) => Promise<{ name: string; description: string }[]>;

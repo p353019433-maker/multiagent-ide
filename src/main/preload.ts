@@ -1,6 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { GitHubReviewComment } from '../shared/types';
 
+/**
+ * Streaming events from a CLI agent run. Mirrors the main-process
+ * `CliAgentStreamCallbacks` shape, plus a `complete` terminator carrying the
+ * final result.
+ */
+export type CliStreamEvent =
+  | { type: 'start' }
+  | { type: 'stdout'; chunk: string }
+  | { type: 'stderr'; chunk: string }
+  | { type: 'exit'; code: number | null; signal: NodeJS.Signals | null }
+  | { type: 'error'; kind: string; message: string }
+  | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
+
 const api = {
   // Dialog
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
@@ -180,7 +193,30 @@ const api = {
 
   // CLI agents (Claude Code / Codex / Antigravity, headless)
   cliAgent: {
+    /** Synchronous (fire-and-forget) run — resolves with the full output. */
     run: (cwd: string, params: unknown) => ipcRenderer.invoke('cliagent:run', cwd, params),
+    /**
+     * Streaming run. Returns a promise that resolves with the final result;
+     * events arrive via `onEvent` as the CLI runs (start / stdout / stderr /
+     * exit / error / complete). Multiple parallel runs are multiplexed by
+     * `callId` (renderer-side uuid) onto per-call channels.
+     */
+    runStream: (
+      cwd: string,
+      params: unknown,
+      onEvent: (event: CliStreamEvent) => void
+    ): Promise<{ ok: boolean; output: string; error?: string; errorKind?: string }> => {
+      const callId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const channel = `cliagent:stream-${callId}`;
+      const handler = (_: unknown, event: CliStreamEvent) => onEvent(event);
+      ipcRenderer.on(channel, handler);
+      return (ipcRenderer.invoke('cliagent:runStream', callId, cwd, params) as Promise<{
+        ok: boolean;
+        output: string;
+        error?: string;
+        errorKind?: string;
+      }>).finally(() => ipcRenderer.removeListener(channel, handler));
+    },
   },
 
   // Skills (.claude/skills) for the IDE's own agents

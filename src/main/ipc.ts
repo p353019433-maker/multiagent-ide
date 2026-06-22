@@ -17,7 +17,7 @@ import type { GitHubService } from './services/github-service';
 import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
 import type { FileWatcherService } from './services/file-watcher-service';
-import type { CliAgentService } from './services/cli-agent-service';
+import type { CliAgentService, CliAgentResult } from './services/cli-agent-service';
 import type { SkillsService } from './services/skills-service';
 import type { AgentLogService, AgentLogEvent, RoundTranscript } from './services/agent-log-service';
 
@@ -101,6 +101,11 @@ const ALLOWED_STORE_KEYS = new Set([
   'rerankConfig',
   'conversationIndex',
   'conversations',
+  // Persisted UI preferences (which workbench view, editor font/tab/wrap).
+  'workbenchView',
+  'editorSettings',
+  // conversationStore schema-version stamp for the per-conversation migration pipeline.
+  'conversationSchemaVersion',
 ]);
 
 function assertAllowedStoreKey(key: string): string {
@@ -608,6 +613,60 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       baseURL: p.baseURL ? String(p.baseURL) : undefined,
       apiKey: p.apiKey ? String(p.apiKey) : undefined,
     });
+  });
+
+  // Streaming variant. The caller passes a callId (renderer-side uuid). Events
+  // arrive on per-call channels `cliagent:stream-<callId>` so multiple parallel
+  // CLI runs don't interleave. Final {ok, output, error, errorKind} is sent on
+  // the 'complete' event AND returned from the invoke (for the caller's await).
+  ipcMain.handle('cliagent:runStream', async (event, callId: string, cwd: string, params: unknown) => {
+    assertAppOrigin(event);
+    const safeCwd = await assertAllowedRoot(cwd);
+    const sender = event.sender;
+    const safeSend = (channel: string, payload: unknown) => {
+      try {
+        if (!sender.isDestroyed()) sender.send(channel, payload);
+      } catch {
+        // window closed mid-stream
+      }
+    };
+    const p = (params || {}) as {
+      tool?: unknown;
+      prompt?: unknown;
+      model?: unknown;
+      baseURL?: unknown;
+      apiKey?: unknown;
+    };
+    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity') {
+      const err: CliAgentResult = { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
+      safeSend(`cliagent:stream-${callId}`, { type: 'complete', result: err });
+      return err;
+    }
+    const channel = `cliagent:stream-${callId}`;
+    return cliAgentService
+      .runStream(
+        {
+          tool: p.tool,
+          cwd: safeCwd,
+          prompt: String(p.prompt ?? ''),
+          model: p.model ? String(p.model) : undefined,
+          baseURL: p.baseURL ? String(p.baseURL) : undefined,
+          apiKey: p.apiKey ? String(p.apiKey) : undefined,
+        },
+        {
+          onStart: () => safeSend(channel, { type: 'start' }),
+          onStdout: (chunk: string) => safeSend(channel, { type: 'stdout', chunk }),
+          onStderr: (chunk: string) => safeSend(channel, { type: 'stderr', chunk }),
+          onExit: (code: number | null, signal: NodeJS.Signals | null) =>
+            safeSend(channel, { type: 'exit', code, signal }),
+          onError: (kind: unknown, message: string) =>
+            safeSend(channel, { type: 'error', kind, message }),
+        }
+      )
+      .then((result: CliAgentResult) => {
+        safeSend(channel, { type: 'complete', result });
+        return result;
+      });
   });
 }
 

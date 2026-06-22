@@ -217,6 +217,7 @@ export function installBrowserPreviewApi() {
     },
     cliAgent: {
       run: async () => ({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
+      runStream: async () => ({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
     },
     skills: {
       list: async () => [],
