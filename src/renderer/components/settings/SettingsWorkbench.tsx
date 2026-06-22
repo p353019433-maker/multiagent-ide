@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useEditorState, useEditorActions } from '../../context/EditorContext';
 import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
@@ -84,6 +85,8 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
   const { providers, saveProvider, deleteProvider, testProvider } = useTaskWorkspace();
   const { rootPath, rootName } = useWorkspace();
   const { themeName, setThemeName } = useTheme();
+  const { editorSettings } = useEditorState();
+  const { updateEditorSettings } = useEditorActions();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [editing, setEditing] = useState<ModelProvider | null>(null);
   const [apiKey, setApiKey] = useState('');
@@ -568,16 +571,67 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
               <div className={SECTION_HEADER_CLASS}>编辑器</div>
               <div className={SETTING_ROW_CLASS}>
-                <span className={SETTING_LABEL_CLASS}>字号</span>
-                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-muted-foreground`}>14px</span>
+                <label className={SETTING_LABEL_CLASS} htmlFor="editor-fontsize">字号</label>
+                <div className={`${SETTING_VALUE_CLASS} flex items-center gap-2`}>
+                  <input
+                    id="editor-fontsize"
+                    type="range"
+                    min={10}
+                    max={24}
+                    step={1}
+                    value={editorSettings.fontSize}
+                    onChange={(e) => updateEditorSettings({ fontSize: Number(e.target.value) })}
+                    className="h-1.5 w-40 cursor-pointer accent-foreground/70"
+                  />
+                  <span className="font-mono text-sm tabular-nums text-foreground/80">
+                    {editorSettings.fontSize}px
+                  </span>
+                </div>
               </div>
               <div className={SETTING_ROW_CLASS}>
-                <span className={SETTING_LABEL_CLASS}>缩进宽度</span>
-                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-muted-foreground`}>2</span>
+                <label className={SETTING_LABEL_CLASS} htmlFor="editor-tabsize">缩进宽度</label>
+                <div className={`${SETTING_VALUE_CLASS} flex items-center gap-2`}>
+                  <select
+                    id="editor-tabsize"
+                    value={editorSettings.tabSize}
+                    onChange={(e) => updateEditorSettings({ tabSize: Number(e.target.value) })}
+                    className={FIELD_CLASS}
+                    style={{ width: 100 }}
+                  >
+                    {[2, 4, 8].map((n) => (
+                      <option key={n} value={n}>{n} 空格</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className={SETTING_ROW_CLASS}>
                 <span className={SETTING_LABEL_CLASS}>自动换行</span>
-                <span className={`${SETTING_VALUE_CLASS} flex items-center text-sm text-muted-foreground`}>开启</span>
+                <div className={`${SETTING_VALUE_CLASS} flex items-center`}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editorSettings.wordWrap}
+                    onClick={() => updateEditorSettings({ wordWrap: !editorSettings.wordWrap })}
+                    className="relative flex-none rounded-full transition-colors"
+                    style={{
+                      width: 34,
+                      height: 19,
+                      background: editorSettings.wordWrap ? 'var(--status-green)' : 'rgba(13,13,13,.18)',
+                    }}
+                    title="自动换行"
+                  >
+                    <span
+                      className="absolute rounded-full bg-white transition-all"
+                      style={{
+                        top: 2,
+                        left: editorSettings.wordWrap ? 17 : 2,
+                        width: 15,
+                        height: 15,
+                        boxShadow: '0 1px 2px rgba(0,0,0,.25)',
+                      }}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           )}

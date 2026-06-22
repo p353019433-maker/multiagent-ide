@@ -22,9 +22,15 @@ export interface RoundTableNotice {
  * so the Codex workbench can render the roster (left), discussion + converged plan
  * (center) and parallel implementations (right) from one shared instance.
  *
- * Phase 1/2: enabled API-backed agents discuss → converge to a unified plan.
- * Phase 3: every enabled agent (incl. CLI shells) implements it in its own git
- * worktree; diffs are compared and one is adopted (others cleaned up).
+ * Phase 1/2: enabled agents discuss → converge to a unified plan. API agents
+ * talk via ai.chat; CLI shells (claude-code / codex / antigravity) talk via
+ * the cliAgent IPC (their stdout IS their discussion turn).
+ * Phase 3: every enabled agent implements the plan in its own git worktree;
+ * diffs are compared and one is adopted (others cleaned up).
+ *
+ * `enabled` vs `implementable` are intentionally the same set now — earlier the
+ * roster silently dropped any agent without an API connection, which is why
+ * enabling a built-in CLI shell did nothing.
  */
 export function useRoundTable() {
   const { agents, providers } = useTaskWorkspace();
@@ -42,24 +48,45 @@ export function useRoundTable() {
   const [adoptedBranch, setAdoptedBranch] = useState<string | null>(null);
   const [notice, setNotice] = useState<RoundTableNotice | null>(null);
 
-  // Enabled agents with a backing API connection can discuss via ai.chat.
-  // Login-only shells join only the implementation phase.
-  const enabled: DiscussionAgent[] = useMemo(
+  // Every enabled agent participates — API or CLI.
+  // API agents need a providerId+model; CLI shells just need to be enabled
+  // (they bring their own auth via own-login or a configured backend).
+  const enabledAgents = useMemo(
     () =>
-      agents
-        .filter((a) => a.enabled && !!a.providerId && !!a.model)
-        .map((a) => ({ id: a.id, name: a.name, providerId: a.providerId as string, model: a.model })),
+      agents.filter((a) => {
+        if (!a.enabled) return false;
+        if (a.kind === 'api') return !!a.providerId && !!a.model;
+        return true; // claude-code / codex / antigravity
+      }),
     [agents]
   );
 
-  // Implementation can include CLI shells (login or backed), not just API.
-  const implementable = useMemo(
-    () => agents.filter((a) => a.enabled && (a.kind === 'api' ? !!a.providerId && !!a.model : true)),
-    [agents]
-  );
+  /** Build a DiscussionAgent for each enabled agent, decrypting any backing key. */
+  const buildDiscussionAgents = async (): Promise<DiscussionAgent[]> => {
+    return Promise.all(
+      enabledAgents.map(async (a): Promise<DiscussionAgent> => {
+        let baseURL: string | undefined;
+        let apiKey: string | undefined;
+        if (a.providerId) {
+          const p = providers.find((x) => x.id === a.providerId);
+          baseURL = p?.baseURL || undefined;
+          if (p) apiKey = (await window.api.store.decryptAndGet(p.apiKeyRef)) ?? undefined;
+        }
+        return {
+          id: a.id,
+          name: a.name,
+          kind: a.kind,
+          providerId: a.providerId,
+          model: a.model,
+          baseURL,
+          apiKey,
+        };
+      })
+    );
+  };
 
   const run = async () => {
-    if (running || !question.trim() || enabled.length === 0) return;
+    if (running || !question.trim() || enabledAgents.length === 0) return;
     setRunning(true);
     setMessages([]);
     setPlan('');
@@ -69,14 +96,23 @@ export function useRoundTable() {
     setPhase('开始…');
     signalRef.current = { aborted: false };
     try {
+      const discussionAgents = await buildDiscussionAgents();
       const res = await runDiscussion({
-        agents: enabled,
+        agents: discussionAgents,
         question: question.trim(),
+        rootPath,
         onMessage: (m) => setMessages((prev) => [...prev, m]),
         onPhase: setPhase,
         signal: signalRef.current,
       });
       setPlan(res.plan);
+      if (!res.plan && res.transcript.length === 0) {
+        setNotice({
+          tone: 'err',
+          text:
+            'No agent produced a reply. Check API keys / CLI installs, and that a workspace is open for CLI shells.',
+        });
+      }
     } finally {
       setRunning(false);
     }
@@ -109,14 +145,14 @@ export function useRoundTable() {
     });
 
   const implement = async () => {
-    if (implementing || !plan || !rootPath || implementable.length === 0) return;
+    if (implementing || !plan || !rootPath || enabledAgents.length === 0) return;
     setImplementing(true);
     setImpls([]);
     setAdoptedBranch(null);
     setNotice(null);
     try {
       const implAgents: ImplAgent[] = await Promise.all(
-        implementable.map(async (a) => {
+        enabledAgents.map(async (a) => {
           let baseURL: string | undefined;
           let apiKey: string | undefined;
           if (a.providerId) {
@@ -180,8 +216,8 @@ export function useRoundTable() {
     implementing,
     adoptedBranch,
     notice,
-    enabled,
-    implementable,
+    enabled: enabledAgents,
+    implementable: enabledAgents,
     canIntegrate,
     run,
     stop,

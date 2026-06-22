@@ -16,9 +16,18 @@ function getLanguageFromPath(filePath: string): string {
   return map[ext] || 'plaintext';
 }
 
+export interface EditorSettings {
+  fontSize: number;
+  tabSize: number;
+  wordWrap: boolean;
+}
+
+const DEFAULT_EDITOR_SETTINGS: EditorSettings = { fontSize: 14, tabSize: 2, wordWrap: true };
+
 interface EditorStateValue {
   openFiles: OpenFile[];
   activeFilePath: string | null;
+  editorSettings: EditorSettings;
 }
 
 interface EditorActionsValue {
@@ -30,6 +39,7 @@ interface EditorActionsValue {
   saveFileContent: (path: string, content: string) => Promise<void>;
   saveActiveFile: () => Promise<void>;
   reloadFileFromDisk: (path: string, content?: string) => Promise<void>;
+  updateEditorSettings: (patch: Partial<EditorSettings>) => void;
 }
 
 const EditorStateContext = createContext<EditorStateValue | null>(null);
@@ -38,10 +48,40 @@ const EditorActionsContext = createContext<EditorActionsValue | null>(null);
 export function EditorProvider({ children }: { children: React.ReactNode }) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const [editorSettings, setEditorSettings] = useState<EditorSettings>(DEFAULT_EDITOR_SETTINGS);
   const openFilesRef = useRef<OpenFile[]>([]);
   openFilesRef.current = openFiles;
   const activeFilePathRef = useRef<string | null>(null);
   activeFilePathRef.current = activeFilePath;
+
+  // Load persisted editor preferences once. We intentionally don't block
+  // children render on this — the defaults render first, then live-update.
+  useEffect(() => {
+    let cancelled = false;
+    window.api.store
+      .get('editorSettings')
+      .then((stored) => {
+        if (cancelled || !stored || typeof stored !== 'object') return;
+        const s = stored as Partial<EditorSettings>;
+        setEditorSettings({
+          fontSize: typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32 ? s.fontSize : DEFAULT_EDITOR_SETTINGS.fontSize,
+          tabSize: typeof s.tabSize === 'number' && s.tabSize >= 1 && s.tabSize <= 8 ? s.tabSize : DEFAULT_EDITOR_SETTINGS.tabSize,
+          wordWrap: typeof s.wordWrap === 'boolean' ? s.wordWrap : DEFAULT_EDITOR_SETTINGS.wordWrap,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updateEditorSettings = useCallback((patch: Partial<EditorSettings>) => {
+    setEditorSettings((prev) => {
+      const next = { ...prev, ...patch };
+      void window.api.store.set('editorSettings', next);
+      return next;
+    });
+  }, []);
 
   const openFile = useCallback(async (filePath: string) => {
     const existing = openFilesRef.current.find((f) => f.path === filePath);
@@ -147,11 +187,11 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     return cleanup;
   }, [reloadFileFromDisk]);
 
-  const stateValue: EditorStateValue = { openFiles, activeFilePath };
+  const stateValue: EditorStateValue = { openFiles, activeFilePath, editorSettings };
 
   const actionsValue = useMemo<EditorActionsValue>(
-    () => ({ openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk }),
-    [openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk]
+    () => ({ openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk, updateEditorSettings }),
+    [openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk, updateEditorSettings]
   );
 
   return (

@@ -14,3 +14,10 @@ IDENTITY.md
 SOUL.md
 TOOLS.md
 USER.mdvitest.config.mts.timestamp-*
+
+# vitest config rebuild artifacts
+vitest.config.mts.timestamp-*.mjs
+
+# scratch / experiments
+tmp/
+ide-ui-clean.html

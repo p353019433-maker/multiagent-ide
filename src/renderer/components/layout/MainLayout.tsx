@@ -153,8 +153,16 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   const paletteCommands: PaletteCommand[] = [
     { id: 'settings', label: '打开设置', hint: '⌘,', run: () => onOpenSettings() },
     { id: 'newConv', label: '新对话', hint: '⌘N', run: () => newConversation() },
+    { id: 'newWorktree', label: '新建隔离会话 (worktree)', keywords: 'worktree git branch isolate', run: () => void handleNewWorktree() },
+    { id: 'openFolder', label: '打开文件夹…', keywords: 'open folder workspace project', run: () => void openFolder() },
+    { id: 'toggleEditor', label: '切换代码编辑器', hint: '⌘E', keywords: 'editor monaco', run: () => setShowEditor((p) => !p) },
+    { id: 'toggleTerminal', label: '切换终端', keywords: 'terminal pty shell', run: () => setShowTerminal((p) => !p) },
+    { id: 'saveFile', label: '保存当前文件', hint: '⌘S', keywords: 'save file', run: () => void saveActiveFile() },
     { id: 'chatView', label: '切换到 对话', run: () => changeView('chat') },
     { id: 'roundView', label: '切换到 圆桌', run: () => changeView('round') },
+    { id: 'agents', label: '管理智能体…', keywords: 'agent claude codex antigravity api', run: () => onOpenSettings('agents') },
+    { id: 'editorSettings', label: '编辑器 / 外观设置…', keywords: 'theme font tab wrap', run: () => onOpenSettings('editor') },
+    { id: 'indexSettings', label: '代码索引设置…', keywords: 'embedding index search semantic', run: () => onOpenSettings('index') },
     ...Object.values(THEMES).map((t) => ({ id: `theme-${t.name}`, label: `切换主题: ${t.name}`, run: () => setThemeName(t.name) })),
   ];
 

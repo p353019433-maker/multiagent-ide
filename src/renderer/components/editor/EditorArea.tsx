@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, CircleAlert, CircleDot, FileText, FolderOpen, PanelLeft, X } from 'lucide-react';
-import { useEditor } from '../../context/EditorContext';
+import { useEditor, useEditorState } from '../../context/EditorContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTheme } from '../../context/ThemeContext';
 import { applyMonacoTheme, defineMonacoThemes, monacoThemeName } from '../../monacoTheme';
@@ -41,6 +41,7 @@ function ReadinessIcon({ status }: { status: ReadinessStatus }) {
 export default function EditorArea({ readiness, onReadinessAction }: Props) {
   const { openFiles, activeFilePath, updateFileContent, closeFile, setActiveFile, saveActiveFile } =
     useEditor();
+  const { editorSettings } = useEditorState();
   const { rootName } = useWorkspace();
   const { themeName } = useTheme();
   const themeNameRef = React.useRef(themeName);
@@ -70,13 +71,13 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
 
       const editor = monaco.editor.create(containerRef.current, {
         theme: monacoThemeName(themeNameRef.current),
-        fontSize: 14,
+        fontSize: editorSettings.fontSize,
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         minimap: { enabled: true },
         scrollBeyondLastLine: false,
         automaticLayout: true,
-        tabSize: 2,
-        wordWrap: 'on',
+        tabSize: editorSettings.tabSize,
+        wordWrap: editorSettings.wordWrap ? 'on' : 'off',
         lineNumbers: 'on',
         renderWhitespace: 'selection',
         bracketPairColorization: { enabled: true },
@@ -141,6 +142,23 @@ export default function EditorArea({ readiness, onReadinessAction }: Props) {
     if (!monaco || !isMonacoReady) return;
     applyMonacoTheme(monaco, themeName);
   }, [themeName, isMonacoReady]);
+
+  // Apply editor preferences (font size / tab size / word wrap) without re-creating
+  // the editor. `updateOptions` is cheap and keeps the cursor, scroll and models.
+  React.useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !isMonacoReady) return;
+    editor.updateOptions({
+      fontSize: editorSettings.fontSize,
+      tabSize: editorSettings.tabSize,
+      wordWrap: editorSettings.wordWrap ? 'on' : 'off',
+    });
+    // tabSize is per-model in Monaco; the option above only sets the default
+    // for new models. Stamp it onto every existing model too so changes apply
+    // to already-open files.
+    modelsRef.current.forEach((m) => m.updateOptions({ tabSize: editorSettings.tabSize }));
+  }, [editorSettings.fontSize, editorSettings.tabSize, editorSettings.wordWrap, isMonacoReady]);
+
 
   React.useEffect(() => {
     const monaco = monacoRef.current;

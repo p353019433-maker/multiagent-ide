@@ -16,7 +16,7 @@ import TaskSessionTabs from './TaskSessionTabs';
 import ModelPicker from './ModelPicker';
 import DeliveryTray from '../workbench/DeliveryTray';
 import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
-import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Sparkles, Square } from 'lucide-react';
+import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Square } from 'lucide-react';
 import { AgentPlan, AgentRunBar, PendingApprovalView } from './TaskPanelSections';
 import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 
@@ -564,8 +564,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                     })}
                   </div>
                   <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/60" style={{ background: '#f1f1ef' }}>
-                    <Sparkles size={12} strokeWidth={1.8} />
-                    推理 标准
+                    {APPROVAL_MODE_META[approvalMode].hint}
                   </span>
                   {isStreaming ? (
                     <button onClick={handleAbort} className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white" style={{ background: '#c1374a' }} title="停止" aria-label="停止任务">

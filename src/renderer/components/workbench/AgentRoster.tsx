@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { agentVisual } from './agentTheme';
 import type { Agent } from '@shared/types';
@@ -10,6 +10,21 @@ function subline(a: Agent): string {
   if (a.kind === 'api') return a.model || 'API 后端';
   const label = agentVisual(a.kind).label;
   return `${label} · ${a.model || '外壳'}`;
+}
+
+/**
+ * Returns a reason string if an enabled agent can't participate in a round-
+ * table run; null when it can. Pure helper — exported for unit tests / reuse.
+ */
+export function agentBlockedReason(a: Agent): string | null {
+  if (!a.enabled) return null;
+  if (a.kind === 'api') {
+    if (!a.providerId) return '未绑定 API 服务';
+    if (!a.model) return '未指定模型';
+  }
+  // CLI shells: we can't verify the binary is installed from here, but they
+  // don't need a provider — the cliAgent service surfaces install errors at run.
+  return null;
 }
 
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
@@ -32,7 +47,9 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
 
 /**
  * Round-mode agent roster (left column): enabled toggles + type badges
- * (CC/CX/API/agy) + Antigravity singleton note + add-agent entry.
+ * (CC/CX/API/agy) + Antigravity singleton note + add-agent entry. An enabled
+ * agent that can't participate (e.g. an API agent with no provider) shows an
+ * inline warning so users aren't confused by silent no-ops.
  */
 export default function AgentRoster({ onAddAgent }: { onAddAgent: () => void }) {
   const { agents, toggleAgent } = useTaskWorkspace();
@@ -53,6 +70,7 @@ export default function AgentRoster({ onAddAgent }: { onAddAgent: () => void }) 
         )}
         {agents.map((a, i) => {
           const v = agentVisual(a.kind);
+          const blocked = agentBlockedReason(a);
           return (
             <div
               key={a.id}
@@ -73,8 +91,20 @@ export default function AgentRoster({ onAddAgent }: { onAddAgent: () => void }) 
                   >
                     {v.badge}
                   </span>
+                  {blocked && (
+                    <span
+                      title={blocked}
+                      className="flex flex-none items-center gap-0.5 rounded font-mono text-[9px] font-semibold"
+                      style={{ color: '#9a4a00', background: '#fdeccd', padding: '1px 5px' }}
+                    >
+                      <AlertTriangle size={9} strokeWidth={2} />
+                      待配置
+                    </span>
+                  )}
                 </span>
-                <span className="mt-0.5 block truncate text-[10.5px] text-foreground/45">{subline(a)}</span>
+                <span className="mt-0.5 block truncate text-[10.5px] text-foreground/45">
+                  {blocked ? blocked : subline(a)}
+                </span>
               </span>
               <Toggle on={a.enabled} onClick={() => toggleAgent(a.id, !a.enabled)} label={`切换 ${a.name}`} />
             </div>
