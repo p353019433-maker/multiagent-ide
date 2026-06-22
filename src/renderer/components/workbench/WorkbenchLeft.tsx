@@ -12,6 +12,9 @@ interface Props {
   rootPath: string | null;
   indexStatus: string;
   onAddAgent: () => void;
+  onNewWorktree: () => void;
+  onNewRound: () => void;
+  onOpenTerminal: () => void;
 }
 
 function Segmented({ view, setView }: { view: WorkbenchView; setView: (v: WorkbenchView) => void }) {
@@ -28,7 +31,7 @@ function Segmented({ view, setView }: { view: WorkbenchView; setView: (v: Workbe
 }
 
 /** Left column of the Codex workbench — switches content by view. */
-export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, onAddAgent }: Props) {
+export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, onAddAgent, onNewWorktree, onNewRound, onOpenTerminal }: Props) {
   const { conversations, activeConversationId, setActiveConversation, newConversation } = useTaskWorkspace();
 
   return (
@@ -49,7 +52,7 @@ export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, on
               新对话
             </button>
             <button
-              onClick={() => newConversation()}
+              onClick={onNewWorktree}
               title="在隔离 worktree 中开始"
               className="flex w-[38px] flex-none items-center justify-center rounded-[10px] border border-border-strong bg-background text-foreground/50 shadow-[0_1px_2px_rgba(0,0,0,.05)] transition-colors hover:bg-[#f6f6f4] hover:text-foreground"
             >
@@ -86,7 +89,7 @@ export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, on
         <>
           <div className="flex-none px-3.5 pb-2.5 pt-0.5">
             <button
-              onClick={() => newConversation()}
+              onClick={onNewRound}
               className="flex w-full items-center justify-center gap-[7px] rounded-[10px] py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#262626]"
               style={{ background: '#0d0d0d' }}
             >
@@ -102,10 +105,14 @@ export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, on
       )}
 
       <div className="flex flex-none items-center gap-2 border-t border-border px-4 py-2.5">
-        <span className="flex items-center gap-1.5 text-[11.5px] text-foreground/55">
+        <button
+          onClick={onOpenTerminal}
+          className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11.5px] text-foreground/55 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+          title="打开终端"
+        >
           <TerminalSquare size={13} strokeWidth={1.7} />
           终端
-        </span>
+        </button>
         <span className="ml-auto truncate font-mono text-[10.5px] text-foreground/40">{indexStatus}</span>
       </div>
     </div>

@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { TerminalSquare, X } from 'lucide-react';
 import TitleBar from './TitleBar';
 import TaskPanel from '../task/TaskPanel';
 import EditorArea from '../editor/EditorArea';
+import TerminalPanel from '../terminal/TerminalPanel';
 import WorkbenchLeft, { type WorkbenchView } from '../workbench/WorkbenchLeft';
 import RoundTableThread from '../workbench/RoundTableThread';
 import ParallelImplTray from '../workbench/ParallelImplTray';
@@ -39,7 +40,32 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   const { openFiles } = useEditorState();
   const [showEditor, setShowEditor] = useState(false);
   const prevOpenCount = useRef(0);
-  const { providers, activeProviderId, activeModel, newConversation } = useTaskWorkspace();
+  const { providers, activeProviderId, activeModel, newConversation, newWorktreeConversation } = useTaskWorkspace();
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [worktreeNotice, setWorktreeNotice] = useState<string | null>(null);
+
+  // Create an isolated git-worktree session (same flow as the chat header button).
+  const handleNewWorktree = useCallback(async () => {
+    setWorktreeNotice(null);
+    if (!rootPath) {
+      setWorktreeNotice('需要先打开一个 Git 项目');
+      return;
+    }
+    try {
+      const baseBranch = await window.api.git.currentBranch(rootPath);
+      const branch = `task-${Date.now().toString(36)}`;
+      const parentDir = (window as Window & { __WORKTREE_PARENT__?: string }).__WORKTREE_PARENT__ || rootPath;
+      const wtPath = `${parentDir}_wt/${branch}`;
+      const res = await window.api.git.worktreeAdd(rootPath, wtPath, branch, baseBranch);
+      if (!res.success) {
+        setWorktreeNotice(`创建 worktree 失败：${res.message}`);
+        return;
+      }
+      await newWorktreeConversation(wtPath, branch, baseBranch);
+    } catch (e) {
+      setWorktreeNotice(`创建隔离会话失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [rootPath, newWorktreeConversation]);
 
   // Open the editor drawer when a file is opened (e.g. clicking a changed file);
   // close it when the last file is closed.
@@ -179,6 +205,9 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
             rootPath={rootPath}
             indexStatus={indexStatus}
             onAddAgent={() => onOpenSettings('agents')}
+            onNewWorktree={handleNewWorktree}
+            onNewRound={rt.reset}
+            onOpenTerminal={() => setShowTerminal(true)}
           />
         </aside>
 
@@ -215,6 +244,42 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
             </div>
           </div>
         </div>
+      )}
+
+      {showTerminal && (
+        <div className="absolute bottom-0 left-0 right-0 z-40 flex h-[280px] flex-col border-t border-border bg-background shadow-[0_-4px_16px_rgba(0,0,0,.08)]">
+          <div className="flex h-[38px] flex-none items-center justify-between border-b border-border px-4">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <TerminalSquare size={14} strokeWidth={1.7} />
+              终端
+            </span>
+            <button
+              onClick={() => setShowTerminal(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+              title="关闭终端"
+              aria-label="关闭终端"
+            >
+              <X size={15} strokeWidth={1.8} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            {rootPath ? (
+              <TerminalPanel cwd={rootPath} onClose={() => setShowTerminal(false)} />
+            ) : (
+              <div className="p-4 text-xs text-foreground/45">打开项目后可用终端。</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {worktreeNotice && (
+        <button
+          onClick={() => setWorktreeNotice(null)}
+          className="absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg px-3 py-2 text-xs text-white shadow-float"
+          style={{ background: '#0d0d0d' }}
+        >
+          {worktreeNotice}
+        </button>
       )}
 
       {paletteMode && <CommandPalette initialMode={paletteMode} commands={paletteCommands} onClose={handlePaletteClose} />}

@@ -87,6 +87,18 @@ export function useRoundTable() {
     setPhase('停止中…');
   };
 
+  /** Start a fresh round table — clear the discussion, plan and implementations. */
+  const reset = () => {
+    if (running || implementing) return;
+    setQuestion('');
+    setMessages([]);
+    setPlan('');
+    setImpls([]);
+    setAdoptedBranch(null);
+    setNotice(null);
+    setPhase('');
+  };
+
   const upsertImpl = (r: ImplementationResult) =>
     setImpls((prev) => {
       const i = prev.findIndex((x) => x.branch === r.branch);
@@ -173,6 +185,7 @@ export function useRoundTable() {
     canIntegrate,
     run,
     stop,
+    reset,
     implement,
     adopt,
     cleanup,

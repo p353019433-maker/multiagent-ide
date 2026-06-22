@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ArrowUp, Check, Clock, Hammer, Paperclip, Square } from 'lucide-react';
+import { ArrowUp, Check, Clock, Hammer, Square } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { useApproval } from '../../task-engine/useApproval';
 import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
@@ -44,6 +44,7 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
   const implementState = rt.implementing ? 'active' : rt.impls.length > 0 ? 'done' : 'pending';
 
   const participants = rt.enabled.map((a) => a.name).join(' · ');
+  const rounds = rt.messages.reduce((m, x) => Math.max(m, x.round), 0);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
@@ -217,9 +218,6 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
               className="max-h-[120px] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[13.5px] leading-[1.55] text-foreground outline-none"
             />
             <div className="flex items-center gap-2 px-3 pb-2.5 pl-3 pr-2.5">
-              <button className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-foreground/45 transition-colors hover:bg-foreground/[0.05] hover:text-foreground">
-                <Paperclip size={17} strokeWidth={1.7} />
-              </button>
               <div className="inline-flex rounded-lg p-0.5" style={{ background: '#f1f1ef' }}>
                 {(['readonly', 'auto', 'full'] as ApprovalMode[]).map((m) => {
                   const meta = APPROVAL_MODE_META[m];
@@ -249,7 +247,7 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
                 style={{ background: '#f1f1ef' }}
               >
                 <Clock size={12} strokeWidth={1.8} />
-                讨论 2 轮
+                {rounds > 0 ? `讨论 ${rounds} 轮` : '圆桌讨论'}
               </span>
               {rt.running ? (
                 <button
