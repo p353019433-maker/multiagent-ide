@@ -6,7 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import AgentsTab from './AgentsTab';
 
 /** Common embedding model names by provider, shown as quick hints. */
@@ -218,19 +218,20 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
         if (event.key === 'Escape') onClose();
       }}
     >
-      <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-editor-border bg-editor-sidebar px-3">
-        <div id="settings-title" className="text-xs font-medium text-editor-text">
-          设置
-        </div>
+      <div className="flex h-[46px] flex-shrink-0 items-center gap-3 border-b border-border px-4" style={{ background: 'var(--app-bg)' }}>
         <button
           ref={closeButtonRef}
           onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-editor-active hover:text-foreground"
-          title="关闭设置"
-          aria-label="关闭设置"
+          className="flex items-center gap-1.5 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
+          title="返回主界面 (Esc)"
+          aria-label="返回主界面"
         >
-          <X size={14} strokeWidth={1.8} />
+          <ArrowLeft size={14} strokeWidth={1.8} />
+          返回
         </button>
+        <div id="settings-title" className="text-[13px] font-semibold text-foreground">
+          设置
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
