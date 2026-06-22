@@ -14,6 +14,7 @@ import { registerIpc } from './ipc';
 import { FileWatcherService } from './services/file-watcher-service';
 import { CliAgentService } from './services/cli-agent-service';
 import { SkillsService } from './services/skills-service';
+import { AgentLogService } from './services/agent-log-service';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -75,6 +76,7 @@ app.whenReady().then(() => {
   const fileWatcherService = new FileWatcherService();
   const cliAgentService = new CliAgentService();
   const skillsService = new SkillsService();
+  const agentLogService = new AgentLogService();
 
   registerIpc({
     getMainWindow: () => mainWindow,
@@ -90,6 +92,7 @@ app.whenReady().then(() => {
     fileWatcherService,
     cliAgentService,
     skillsService,
+    agentLogService,
   });
 
   createWindow();

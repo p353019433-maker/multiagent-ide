@@ -50,6 +50,8 @@ export interface RunImplementationParams {
   /** Short tag for branch names (e.g. a uuid slice). */
   tag: string;
   onUpdate?: (r: ImplementationResult) => void;
+  /** Fired once per agent implementation attempt with timing + ok/fail. */
+  onCall?: (info: { agentId: string; agentName: string; kind: AgentKind; ok: boolean; durationMs: number; error?: string; editedFilesCount: number; diffLength: number }) => void;
 }
 
 export function implBranch(tag: string, index: number): string {
@@ -68,6 +70,7 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
   const skillsSuffix = await loadSkillsMenu(p.rootPath);
 
   const tasks = p.agents.map(async (agent, i): Promise<ImplementationResult> => {
+    const t0 = Date.now();
     const branch = implBranch(p.tag, i);
     const worktreePath = worktreePathFor(p.rootPath, branch);
     const running: ImplementationResult = { agent, branch, worktreePath, status: 'running', diff: '', editedFiles: [] };
@@ -77,6 +80,7 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
       if (!add.success) {
         const failed: ImplementationResult = { ...running, status: 'failed', error: add.message };
         p.onUpdate?.(failed);
+        p.onCall?.({ agentId: agent.id, agentName: agent.name, kind: agent.kind, ok: false, durationMs: Date.now() - t0, error: `worktreeAdd: ${add.message}`, editedFilesCount: 0, diffLength: 0 });
         return failed;
       }
       const wt = add.path || worktreePath;
@@ -106,14 +110,17 @@ export async function runImplementation(p: RunImplementationParams): Promise<Imp
       const diff = await window.api.git.diff(wt).catch(() => '');
       const done: ImplementationResult = { ...running, worktreePath: wt, status: 'ok', diff, editedFiles, note };
       p.onUpdate?.(done);
+      p.onCall?.({ agentId: agent.id, agentName: agent.name, kind: agent.kind, ok: true, durationMs: Date.now() - t0, editedFilesCount: editedFiles.length, diffLength: diff.length });
       return done;
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       const failed: ImplementationResult = {
         ...running,
         status: 'failed',
-        error: e instanceof Error ? e.message : String(e),
+        error: message,
       };
       p.onUpdate?.(failed);
+      p.onCall?.({ agentId: agent.id, agentName: agent.name, kind: agent.kind, ok: false, durationMs: Date.now() - t0, error: message, editedFilesCount: 0, diffLength: 0 });
       return failed;
     }
   });

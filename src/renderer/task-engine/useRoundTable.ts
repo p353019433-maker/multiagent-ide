@@ -17,6 +17,17 @@ export interface RoundTableNotice {
   text: string;
 }
 
+/** Best-effort append to the diagnostic log; never lets logging block/abort a run. */
+function logEvent(rootPath: string | null, event: Record<string, unknown>): void {
+  if (!rootPath) return;
+  void window.api.agentLog.append(rootPath, event).catch(() => undefined);
+}
+
+/** Per-agent kind/model for the round transcript + the start event. */
+function roster(agents: DiscussionAgent[]): { id: string; name: string; kind: string }[] {
+  return agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind }));
+}
+
 /**
  * Round-table state machine, lifted out of the old narrow-sidebar RoundTablePanel
  * so the Codex workbench can render the roster (left), discussion + converged plan
@@ -95,17 +106,56 @@ export function useRoundTable() {
     setNotice(null);
     setPhase('开始…');
     signalRef.current = { aborted: false };
+
+    const runStartedAt = Date.now();
+    const questionText = question.trim();
+    const runId = uuid().slice(0, 8);
+
+    logEvent(rootPath, {
+      kind: 'discussion-start',
+      runId,
+      question: questionText,
+      agents: enabledAgents.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
+      agentCount: enabledAgents.length,
+      rootPath,
+    });
+
     try {
       const discussionAgents = await buildDiscussionAgents();
       const res = await runDiscussion({
         agents: discussionAgents,
-        question: question.trim(),
+        question: questionText,
         rootPath,
         onMessage: (m) => setMessages((prev) => [...prev, m]),
         onPhase: setPhase,
+        onCall: (info) => logEvent(rootPath, { kind: 'discussion-call', runId, ...info }),
         signal: signalRef.current,
       });
       setPlan(res.plan);
+
+      logEvent(rootPath, {
+        kind: 'discussion-end',
+        runId,
+        transcriptLength: res.transcript.length,
+        planLength: res.plan.length,
+        durationMs: res.durationMs,
+        aborted: res.aborted,
+      });
+
+      // Only dump non-empty rounds to markdown — empty transcripts are noise.
+      if (rootPath && res.transcript.length > 0) {
+        void window.api.agentLog
+          .writeRound(rootPath, {
+            question: questionText,
+            agents: roster(discussionAgents),
+            messages: res.transcript,
+            plan: res.plan,
+            startedAt: runStartedAt,
+            endedAt: Date.now(),
+          })
+          .catch(() => undefined);
+      }
+
       if (!res.plan && res.transcript.length === 0) {
         setNotice({
           tone: 'err',
@@ -120,6 +170,7 @@ export function useRoundTable() {
 
   const stop = () => {
     signalRef.current.aborted = true;
+    logEvent(rootPath, { kind: 'notice', text: '用户取消了圆桌讨论' });
     setPhase('停止中…');
   };
 
@@ -150,6 +201,17 @@ export function useRoundTable() {
     setImpls([]);
     setAdoptedBranch(null);
     setNotice(null);
+
+    const tag = uuid().slice(0, 6);
+    const implStartedAt = Date.now();
+    logEvent(rootPath, {
+      kind: 'implementation-start',
+      tag,
+      agents: enabledAgents.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
+      agentCount: enabledAgents.length,
+      planLength: plan.length,
+    });
+
     try {
       const implAgents: ImplAgent[] = await Promise.all(
         enabledAgents.map(async (a) => {
@@ -163,9 +225,28 @@ export function useRoundTable() {
           return { id: a.id, name: a.name, kind: a.kind, model: a.model, providerId: a.providerId, baseURL, apiKey };
         })
       );
-      await runImplementation({ agents: implAgents, plan, rootPath, tag: uuid().slice(0, 6), onUpdate: upsertImpl });
+      const results = await runImplementation({
+        agents: implAgents,
+        plan,
+        rootPath,
+        tag,
+        onUpdate: upsertImpl,
+        onCall: (info) => {
+          const { kind: agentKind, ...rest } = info;
+          logEvent(rootPath, { kind: 'implementation-call', tag, ...rest, agentKind });
+        },
+      });
+      logEvent(rootPath, {
+        kind: 'implementation-end',
+        tag,
+        okCount: results.filter((r) => r.status === 'ok').length,
+        failCount: results.filter((r) => r.status === 'failed').length,
+        durationMs: Date.now() - implStartedAt,
+      });
     } catch (e) {
-      setNotice({ tone: 'err', text: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      setNotice({ tone: 'err', text: message });
+      logEvent(rootPath, { kind: 'notice', text: `实现阶段异常: ${message}` });
     } finally {
       setImplementing(false);
     }
@@ -179,6 +260,10 @@ export function useRoundTable() {
     setNotice({
       tone: res.ok ? 'ok' : 'err',
       text: res.ok ? `已采用 ${r.agent.name} 的实现：${res.message}` : `采用失败：${res.message}`,
+    });
+    logEvent(rootPath, {
+      kind: 'notice',
+      text: res.ok ? `采用 ${r.agent.name} (${r.branch})` : `采用失败 ${r.agent.name}: ${res.message}`,
     });
   };
 

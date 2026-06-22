@@ -222,6 +222,11 @@ export function installBrowserPreviewApi() {
       list: async () => [],
       read: async () => '',
     },
+    agentLog: {
+      append: async () => undefined,
+      readTail: async () => [],
+      writeRound: async () => null,
+    },
     github: {
       listIssues: async () => [],
       getIssue: async () => null,

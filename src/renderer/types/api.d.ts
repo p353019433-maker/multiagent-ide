@@ -169,6 +169,25 @@ declare global {
         list: (root: string) => Promise<{ name: string; description: string }[]>;
         read: (root: string, name: string) => Promise<string>;
       };
+      agentLog: {
+        append: (root: string, event: Record<string, unknown>) => Promise<void>;
+        readTail: (
+          root: string,
+          limit?: number
+        ) => Promise<{ ts: string; kind: string; [key: string]: unknown }[]>;
+        writeRound: (
+          root: string,
+          transcript: {
+            question: string;
+            agents: { id: string; name: string; kind: string }[];
+            messages: { agentId: string; agentName: string; round: number; text: string }[];
+            plan: string;
+            startedAt: number;
+            endedAt: number;
+            notice?: { tone: 'ok' | 'err'; text: string };
+          }
+        ) => Promise<string | null>;
+      };
       github: {
         listIssues: (token: string, owner: string, repo: string, state?: string) => Promise<any>;
         getIssue: (token: string, owner: string, repo: string, number: number) => Promise<any>;

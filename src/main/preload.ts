@@ -189,6 +189,14 @@ const api = {
     read: (root: string, name: string) => ipcRenderer.invoke('skills:read', root, name),
   },
 
+  // Agent run logs — diagnostic JSONL + per-round markdown transcripts, both
+  // under <workspace>/.ide/. Best-effort; never blocks the agent run.
+  agentLog: {
+    append: (root: string, event: unknown) => ipcRenderer.invoke('agentLog:append', root, event),
+    readTail: (root: string, limit?: number) => ipcRenderer.invoke('agentLog:readTail', root, limit),
+    writeRound: (root: string, transcript: unknown) => ipcRenderer.invoke('agentLog:writeRound', root, transcript),
+  },
+
   // GitHub
   github: {
     listIssues: (token: string, owner: string, repo: string, state?: string) =>

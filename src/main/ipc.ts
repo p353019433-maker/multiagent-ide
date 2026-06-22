@@ -19,6 +19,7 @@ import type { CodebaseSearchService } from './services/codebase-search-service';
 import type { FileWatcherService } from './services/file-watcher-service';
 import type { CliAgentService } from './services/cli-agent-service';
 import type { SkillsService } from './services/skills-service';
+import type { AgentLogService, AgentLogEvent, RoundTranscript } from './services/agent-log-service';
 
 const allowedRoots = new Set<string>();
 
@@ -138,6 +139,7 @@ export interface IpcDeps {
   fileWatcherService: FileWatcherService;
   cliAgentService: CliAgentService;
   skillsService: SkillsService;
+  agentLogService: AgentLogService;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -155,6 +157,7 @@ export function registerIpc(deps: IpcDeps): void {
   registerCodebaseIpc(deps);
   registerCliAgentIpc(deps);
   registerSkillsIpc(deps);
+  registerAgentLogIpc(deps);
 }
 
 function registerDialogIpc(): void {
@@ -616,5 +619,35 @@ function registerSkillsIpc({ skillsService }: IpcDeps): void {
   ipcMain.handle('skills:read', async (event, root: string, name: string) => {
     assertAppOrigin(event);
     return skillsService.read(await assertAllowedRoot(root), String(name));
+  });
+}
+
+function registerAgentLogIpc({ agentLogService }: IpcDeps): void {
+  // The log lives inside the workspace under .ide/, so we keep it in the same
+  // trust domain as the artifacts/checkpoints code — assertAllowedRoot is the
+  // only guard. The IDE itself is the sole writer.
+  ipcMain.handle('agentLog:append', async (event, root: string, evt: unknown) => {
+    assertAppOrigin(event);
+    const safeRoot = await assertAllowedRoot(root);
+    if (!evt || typeof evt !== 'object') return;
+    // The event is opaque — we trust the renderer to pass valid JSON. We do
+    // pin `kind` to a string so corrupt entries can't poison the readTail
+    // schema check.
+    const e = evt as Partial<AgentLogEvent>;
+    if (typeof e.kind !== 'string') return;
+    const stamped: AgentLogEvent = { ...(e as AgentLogEvent), ts: new Date().toISOString() };
+    await agentLogService.append(safeRoot, stamped);
+  });
+  ipcMain.handle('agentLog:readTail', async (event, root: string, limit?: number) => {
+    assertAppOrigin(event);
+    const safeRoot = await assertAllowedRoot(root);
+    const n = typeof limit === 'number' && limit > 0 && limit <= 5000 ? Math.floor(limit) : 200;
+    return agentLogService.readTail(safeRoot, n);
+  });
+  ipcMain.handle('agentLog:writeRound', async (event, root: string, transcript: unknown) => {
+    assertAppOrigin(event);
+    const safeRoot = await assertAllowedRoot(root);
+    if (!transcript || typeof transcript !== 'object') return null;
+    return agentLogService.writeRound(safeRoot, transcript as RoundTranscript);
   });
 }
