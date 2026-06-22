@@ -41,11 +41,31 @@ export default function DiffPreview({
   const themeNameRef = useRef(themeName);
   themeNameRef.current = themeName;
 
+  // Latest content kept in refs so the async construction effect reads current
+  // values, and the content-update effect can setValue without recreating the
+  // whole diff editor on every streamed chunk.
+  const originalRef = useRef(original);
+  const modifiedRef = useRef(modified);
+  const originalModelRef = useRef<import('monaco-editor').editor.ITextModel | null>(null);
+  const modifiedModelRef = useRef<import('monaco-editor').editor.ITextModel | null>(null);
+
+  // Update model content in place when the streamed diff changes — avoids
+  // disposing/recreating the entire IStandaloneDiffEditor on every chunk.
+  useEffect(() => {
+    originalRef.current = original;
+    modifiedRef.current = modified;
+    if (originalModelRef.current) originalModelRef.current.setValue(original);
+    if (modifiedModelRef.current) modifiedModelRef.current.setValue(modified);
+  }, [original, modified]);
+
   useEffect(() => {
     acceptRef.current = onAccept;
     rejectRef.current = onReject;
   }, [onAccept, onReject]);
 
+  // Construct/dispose the diff editor + models. Deps intentionally exclude
+  // `original`/`modified` — content updates are handled by the effect above so
+  // a streaming diff doesn't tear down and rebuild the editor each chunk.
   useEffect(() => {
     if (!containerRef.current || !visible) return;
 
@@ -58,8 +78,10 @@ export default function DiffPreview({
       if (disposed || !containerRef.current) return;
 
       const lang = language || guessLanguage(filePath);
-      originalModel = monaco.editor.createModel(original, lang);
-      modifiedModel = monaco.editor.createModel(modified, lang);
+      originalModel = monaco.editor.createModel(originalRef.current, lang);
+      modifiedModel = monaco.editor.createModel(modifiedRef.current, lang);
+      originalModelRef.current = originalModel;
+      modifiedModelRef.current = modifiedModel;
 
       monacoRef.current = monaco;
       defineMonacoThemes(monaco);
@@ -106,8 +128,10 @@ export default function DiffPreview({
       modifiedModel?.dispose();
       diffEditorRef.current = null;
       monacoRef.current = null;
+      originalModelRef.current = null;
+      modifiedModelRef.current = null;
     };
-  }, [visible, filePath, original, modified, language]);
+  }, [visible, filePath, language]);
 
   // 主题切换时跟随（不重建 diff editor）
   useEffect(() => {

@@ -37,6 +37,32 @@ const MAX_ITERATIONS = 20;
 const HEADLESS_BLOCKED_TOOLS = new Set(['git_push', 'git_merge']);
 
 /**
+ * Headless tool-gate companion: returns true when a `command` action coming
+ * from `toolExecutor.gateAction` is a local worktree git op we should allow
+ * past the default "dangerous → reject" rule.
+ *
+ * Charter §3.4 explicitly allows background agents to "做本地 git" — branch +
+ * commit + worktree-add inside their own worktree is exactly that. `toolExecutor`
+ * tags these as `dangerous: true` so an interactive run still confirms with the
+ * user; headless mode trusts them because they're local and worktree-scoped.
+ * Anything outward / integration-y (push, merge, github_*) stays blocked by
+ * `HEADLESS_BLOCKED_TOOLS` / the `github_` prefix check above.
+ *
+ * `shellRepr` is the `after` string `toolExecutor` passes to `gateAction` —
+ * the shell representation (e.g. `git checkout -b foo`), not the human label.
+ * Pure so it's easy to test.
+ */
+export function isHeadlessLocalGitOk(shellRepr: string): boolean {
+  if (!shellRepr) return false;
+  return (
+    /^git\s+checkout\s+-b\s+\S+/.test(shellRepr) ||
+    /^git\s+switch\s+\S+/.test(shellRepr) ||
+    /^git\s+add\s+-A\s+&&\s+git\s+commit\s+-m\s+/.test(shellRepr) ||
+    /^git\s+worktree\s+add\s+/.test(shellRepr)
+  );
+}
+
+/**
  * Enforce the headless capability policy before a tool runs. Blocks remote /
  * integration tools outright and destructive shell commands via the shared
  * danger classifier; everything else (reads, workspace writes, safe commands,
@@ -113,10 +139,16 @@ export async function runHeadlessTask(params: HeadlessTaskParams): Promise<Headl
     // blocks writes to .git/ (malicious hooks) and rejects dangerous commands
     // caught by the classifier — but allows safe commands so the task can
     // build/test/lint in its worktree without human input.
-    gateAction: async (_toolCallId, label, kind, _before, _after, _action, opts) => {
+    //
+    // Charter §3.4 lets background agents "做本地 git"; `toolExecutor` tags
+    // branch/commit/worktree-add as `dangerous: true` so an interactive run
+    // still confirms. Headless mode trusts those (they're local + worktree-
+    // scoped) via isHeadlessLocalGitOk, which matches the shell repr in `after`.
+    gateAction: async (_toolCallId, label, kind, _before, after, _action, opts) => {
       if (typeof label === 'string' && /[\/\\]\.git[\/\\]/i.test(label)) return false;
       if (kind === 'write' && !opts?.dangerous) return true;
       if (kind === 'command' && !opts?.dangerous) return true;
+      if (kind === 'command' && opts?.dangerous && typeof after === 'string' && isHeadlessLocalGitOk(after)) return true;
       return false;
     },
     writeFileTracked: async (filePath: string, content: string) => {

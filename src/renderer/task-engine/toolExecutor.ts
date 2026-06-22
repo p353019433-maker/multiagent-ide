@@ -8,7 +8,13 @@
 
 import { classifyCommand } from '@shared/command-policy';
 import type { ToolCall, PlanStep } from '@shared/types';
+import { BUILTIN_TOOLS } from '@shared/tools';
 import { applyEdit } from './applyEdit';
+import { validateToolArgs } from './validateToolArgs';
+
+// Build the schema lookup once so dispatch doesn't walk the array per call.
+const TOOL_SCHEMAS: Record<string, (typeof BUILTIN_TOOLS)[number]['parameters']> = {};
+for (const t of BUILTIN_TOOLS) TOOL_SCHEMAS[t.name] = t.parameters;
 
 /** Action kinds for the approval gate (mirrors TaskPanel's pendingApproval). */
 export type GateAction =

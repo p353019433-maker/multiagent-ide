@@ -187,7 +187,14 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     return cleanup;
   }, [reloadFileFromDisk]);
 
-  const stateValue: EditorStateValue = { openFiles, activeFilePath, editorSettings };
+  // Memoize so consumers of `useEditorState` only re-render when one of these
+  // three values actually changes — not on every provider render (e.g. when an
+  // unrelated callback ref fires). The split-context pattern is undermined
+  // without this; the actions value is already memoized below.
+  const stateValue = useMemo<EditorStateValue>(
+    () => ({ openFiles, activeFilePath, editorSettings }),
+    [openFiles, activeFilePath, editorSettings]
+  );
 
   const actionsValue = useMemo<EditorActionsValue>(
     () => ({ openFile, closeFile, setActiveFile, updateFileContent, saveFile, saveFileContent, saveActiveFile, reloadFileFromDisk, updateEditorSettings }),
