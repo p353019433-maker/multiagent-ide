@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { runDebate, STAGE_SEQUENCE, type DebateConfig } from './debate-engine';
+import { runDebate, runDebateFull, STAGE_SEQUENCE, type DebateConfig, type DebateFullConfig } from './debate-engine';
 import { createScratchpad } from '@shared/scratchpad';
 import type { ChatResult } from '@shared/types';
 
@@ -19,6 +19,11 @@ const CONFIG: DebateConfig = {
   proposer: { providerId: 'p2', model: 'm2', temperature: 0.2 },
   critic: { providerId: 'p3', model: 'm3', temperature: 0.7 },
   synthesizer: { providerId: 'p4', model: 'm4', temperature: 0.2 },
+};
+
+const FULL_CONFIG: DebateFullConfig = {
+  ...CONFIG,
+  executor: { providerId: 'p5', model: 'm5', temperature: 0.2 },
 };
 
 beforeEach(() => {
@@ -67,5 +72,37 @@ describe('runDebate', () => {
     });
     expect(errMsg).toBeTruthy();
     expect(result.scratchpad.analysis).toBeNull();
+  });
+});
+
+describe('runDebateFull', () => {
+  it('runs 5 discussion stages then execution', async () => {
+    const { chat } = installApi([
+      '{"requirements":["r"],"constraints":[],"context":""}',
+      '{"approach":"a","files":[],"steps":["s"]}',
+      '{"critiques":[{"severity":"low","issue":"i","suggestion":"g"}]}',
+      '{"revised_proposal":{"approach":"a2","files":[],"steps":["s2"]},"changes":[],"dismissed":[]}',
+      '{"final_plan":{"approach":"a3","steps":[{"action":"create","target":"f.ts","detail":"写文件"}],"rollback":"删"}}',
+      // 6th chat call = execution's first iteration: plain stop, no tool calls.
+      '执行完成',
+    ]);
+    // Mock headless task runner via window.api.fs (writeFile/readFile used by runHeadlessTask).
+    const fs = {
+      readFile: vi.fn(async () => ''),
+      writeFile: vi.fn(async () => {}),
+    };
+    (globalThis as any).window.api.fs = fs;
+
+    const result = await runDebateFull(
+      FULL_CONFIG,
+      '加搜索',
+      '/wt',
+      { onStage: () => {} }
+    );
+    // 5 debate stages + 1 execution iteration = 6 model calls.
+    expect(chat).toHaveBeenCalledTimes(6);
+    expect(result.scratchpad.final_plan).not.toBeNull();
+    expect(result.execution).toBeDefined();
+    expect(result.execution?.content).toBe('执行完成');
   });
 });

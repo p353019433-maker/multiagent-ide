@@ -11,6 +11,7 @@ import {
   parseRoleOutput,
   type DebateRoleName,
 } from '@shared/roles';
+import { runHeadlessTask, type HeadlessTaskResult } from './headlessTaskRunner';
 
 export interface RoleCallConfig {
   providerId: string;
@@ -102,4 +103,39 @@ export async function runDebate(
     }
   }
   return { scratchpad: s, calls };
+}
+
+export interface DebateFullConfig extends DebateConfig {
+  executor: RoleCallConfig;
+}
+
+export interface DebateFullResult extends DebateResult {
+  execution?: HeadlessTaskResult;
+}
+
+/** Run the 5-stage debate, then execute the final plan in a worktree. */
+export async function runDebateFull(
+  config: DebateFullConfig,
+  request: string,
+  workspaceRoot: string,
+  cbs: DebateCallbacks
+): Promise<DebateFullResult> {
+  const debate = await runDebate(config, createScratchpad(request), cbs);
+  if (!debate.scratchpad.final_plan) {
+    cbs.onError?.('辩论未产出 final_plan，跳过执行');
+    return { ...debate };
+  }
+  cbs.onStage?.({ stage: 'executor', start: true });
+  const taskText = debate.scratchpad.final_plan.steps
+    .map((s) => `${s.action} ${s.target}：${s.detail}`)
+    .join('\n');
+  const execution = await runHeadlessTask({
+    providerId: config.executor.providerId,
+    model: config.executor.model,
+    workspaceRoot,
+    task: taskText,
+    systemPromptSuffix: `项目背景：${request}\n回滚方案：${debate.scratchpad.final_plan.rollback}`,
+  });
+  cbs.onStage?.({ stage: 'executor', start: false });
+  return { ...debate, execution };
 }
