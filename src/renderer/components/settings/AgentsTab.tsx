@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X, Pencil } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { agentVisual } from '../workbench/agentTheme';
 import type { Agent, AgentKind, ModelProvider, ProviderType } from '@shared/types';
@@ -64,6 +64,8 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
 export default function AgentsTab() {
   const { agents, providers, saveProvider, saveAgent, deleteAgent, deleteProvider, toggleAgent } = useTaskWorkspace();
   const [addingType, setAddingType] = useState<AgentKind | null>(null);
+  /** When set, the form is editing an existing agent (by id) instead of creating. */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [baseURL, setBaseURL] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -72,9 +74,11 @@ export default function AgentsTab() {
   const [err, setErr] = useState('');
 
   const enabledCount = agents.filter((a) => a.enabled).length;
+  const editing = editingId ? agents.find((a) => a.id === editingId) ?? null : null;
 
   const resetForm = () => {
     setAddingType(null);
+    setEditingId(null);
     setName('');
     setBaseURL('');
     setApiKey('');
@@ -83,15 +87,30 @@ export default function AgentsTab() {
     setErr('');
   };
 
-  const openForm = (kind: AgentKind) => {
+  const openForm = (kind: AgentKind, existing?: Agent) => {
     resetForm();
     setAddingType(kind);
     setFormat(kind === 'claude-code' ? 'anthropic' : 'openai');
+    if (existing) {
+      setEditingId(existing.id);
+      setName(existing.name);
+      setModel(existing.model);
+      // Prefill the backing provider's baseURL (apiKey stays blank — we can't
+      // decrypt into the field; "留空=保持不变" tells the user that).
+      if (existing.providerId) {
+        const p = providers.find((x) => x.id === existing.providerId);
+        if (p) {
+          setBaseURL(p.baseURL);
+          setFormat(p.type);
+        }
+      }
+    }
   };
 
   const submit = async () => {
     if (!addingType) return;
     const kind = addingType;
+    const isEdit = !!editing;
     if (kind === 'api' && (!baseURL.trim() || !model.trim())) {
       setErr('纯 API 需要填写接口地址和模型');
       return;
@@ -99,27 +118,44 @@ export default function AgentsTab() {
     // antigravity and opencode use their own login; we never store backend creds for them.
     const ownLogin = kind === 'antigravity' || kind === 'opencode';
     const wantsBackend = kind === 'api' || (!ownLogin && !!baseURL.trim());
+    const oldProviderId = editing?.providerId;
+
     let providerId: string | undefined;
     if (wantsBackend) {
-      providerId = uuid();
+      // Reuse the existing provider id on edit (upsert); only mint a new one on create.
+      providerId = (isEdit && oldProviderId) || uuid();
       const type: ProviderType = kind === 'api' ? format : BACKEND_FORMAT[kind] ?? 'openai';
       const prov: ModelProvider = {
         id: providerId,
         name: name.trim() || `${TYPE_LABEL[kind]} 后端`,
         type,
         baseURL: baseURL.trim(),
-        apiKeyRef: `apiKey:${uuid()}`,
+        apiKeyRef: `apiKey:${providerId}`,
         models: model.trim() ? [model.trim()] : [],
         defaultModel: model.trim(),
       };
+      // saveProvider only writes the encrypted key when apiKey is non-empty, so
+      // leaving the field blank on edit preserves the previously stored key.
       await saveProvider(prov, apiKey);
+    } else if (isEdit && oldProviderId && !wantsBackend) {
+      // Edit removed the baseURL that used to back this shell — drop the orphan provider.
+      deleteProvider(oldProviderId);
     }
+
     const finalName =
       name.trim() ||
       (kind === 'antigravity' ? 'Antigravity' :
        kind === 'opencode' ? (model.trim() ? `OpenCode · ${model.trim()}` : 'OpenCode') :
        `${TYPE_LABEL[kind]}${model.trim() ? ' · ' + model.trim() : ''}`);
-    saveAgent({ id: uuid(), name: finalName, enabled: true, kind, providerId, model: model.trim() });
+    // On edit, preserve id + enabled; on create, mint a new id and enable by default.
+    saveAgent({
+      id: editing?.id ?? uuid(),
+      name: finalName,
+      enabled: editing?.enabled ?? true,
+      kind,
+      providerId,
+      model: model.trim(),
+    });
     resetForm();
   };
 
@@ -169,6 +205,14 @@ export default function AgentsTab() {
                       <div className="mt-0.5 truncate text-[12px] text-foreground/50">{subline(a, providers)}</div>
                     </div>
                     <Toggle on={a.enabled} onClick={() => toggleAgent(a.id, !a.enabled)} label={`切换 ${a.name}`} />
+                    <button
+                      onClick={() => openForm(a.kind, a)}
+                      className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+                      title="编辑"
+                      aria-label={`编辑 ${a.name}`}
+                    >
+                      <Pencil size={14} strokeWidth={1.8} />
+                    </button>
                     {!isBuiltin(a) && (
                       <button
                         onClick={() => remove(a)}
@@ -216,7 +260,7 @@ export default function AgentsTab() {
         {addingType && (
           <div className="mt-3 rounded-[14px] border border-border bg-background p-4 shadow-card">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-semibold text-foreground">新建 {TYPE_LABEL[addingType]}</span>
+              <span className="text-sm font-semibold text-foreground">{editing ? '编辑' : '新建'} {TYPE_LABEL[addingType]}</span>
               <button
                 onClick={resetForm}
                 className="flex h-6 w-6 items-center justify-center rounded-md text-foreground/45 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
@@ -248,7 +292,7 @@ export default function AgentsTab() {
                     <input
                       className={FIELD}
                       type="password"
-                      placeholder="API Key"
+                      placeholder={editing ? 'API Key（留空=保持不变）' : 'API Key'}
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       autoComplete="new-password"

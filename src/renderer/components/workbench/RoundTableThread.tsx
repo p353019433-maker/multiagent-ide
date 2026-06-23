@@ -213,7 +213,7 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
               {participants ? `参与：${participants}` : '未启用智能体'}
             </span>
           </div>
-          <div className="rounded-[14px] border border-border-strong bg-background shadow-float focus-within:border-foreground/25">
+          <div className="rounded-[14px] border border-border-strong bg-background shadow-float transition-colors duration-150 focus-within:border-[hsl(0_0%_5%/0.18)]">
             <textarea
               value={rt.question}
               onChange={(e) => rt.setQuestion(e.target.value)}

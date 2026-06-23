@@ -88,6 +88,13 @@
 .monaco-container :focus-visible {
   outline: none;
 }
+/* textarea/input：父容器已用 focus-within 描边，自身不要再描一圈 */
+textarea:focus,
+textarea:focus-visible,
+input:focus,
+input:focus-visible {
+  outline: none;
+}
 
 /* Allow text selection in editor and task output */
 .selectable {
