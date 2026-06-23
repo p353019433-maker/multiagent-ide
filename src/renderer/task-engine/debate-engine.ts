@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import type { ChatMessage, ChatResult } from '@shared/types';
+import type { ChatMessage, ChatResult, DebateConfig, DebateRoleConfig } from '@shared/types';
 import {
   createScratchpad,
   mergeScratchpad,
@@ -13,18 +13,12 @@ import {
 } from '@shared/roles';
 import { runHeadlessTask, type HeadlessTaskResult } from './headlessTaskRunner';
 
-export interface RoleCallConfig {
-  providerId: string;
-  model: string;
-  temperature?: number;
-}
-
-export interface DebateConfig {
-  analyst: RoleCallConfig;
-  proposer: RoleCallConfig;
-  critic: RoleCallConfig;
-  synthesizer: RoleCallConfig;
-}
+// Re-export the canonical 5-role config types (analyst/proposer/critic/
+// synthesizer/executor) so the engine module stays the one import site for
+// callers, and keep DebateFullConfig as a backwards-compatible alias of the
+// unified DebateConfig (which already includes executor).
+export type { DebateConfig, DebateRoleConfig } from '@shared/types';
+export type DebateFullConfig = DebateConfig;
 
 /** The 5 discussion stages (execution is separate). */
 export const STAGE_SEQUENCE: DebateRoleName[] = [
@@ -53,7 +47,7 @@ export interface DebateResult {
 /** Call a single role and merge its output into the scratchpad. */
 async function callRole(
   role: DebateRoleName,
-  cfg: RoleCallConfig,
+  cfg: DebateRoleConfig,
   s: Scratchpad,
   isRevision: boolean,
   cbs: DebateCallbacks
@@ -82,7 +76,7 @@ export async function runDebate(
 ): Promise<DebateResult> {
   let s = initial;
   let calls = 0;
-  const stageConfigs: { role: DebateRoleName; cfg: RoleCallConfig; isRevision: boolean }[] = [
+  const stageConfigs: { role: DebateRoleName; cfg: DebateRoleConfig; isRevision: boolean }[] = [
     { role: 'analyst', cfg: config.analyst, isRevision: false },
     { role: 'proposer', cfg: config.proposer, isRevision: false },
     { role: 'critic', cfg: config.critic, isRevision: false },
@@ -105,15 +99,15 @@ export async function runDebate(
   return { scratchpad: s, calls };
 }
 
-export interface DebateFullConfig extends DebateConfig {
-  executor: RoleCallConfig;
-}
-
 export interface DebateFullResult extends DebateResult {
   execution?: HeadlessTaskResult;
+  /** Path of the isolated worktree where execution ran (for adopt/rollback). */
+  worktreePath?: string;
+  /** Branch name of the worktree. */
+  worktreeBranch?: string;
 }
 
-/** Run the 5-stage debate, then execute the final plan in a worktree. */
+/** Run the 5-stage debate, then execute the final plan in an isolated worktree. */
 export async function runDebateFull(
   config: DebateFullConfig,
   request: string,
@@ -126,16 +120,40 @@ export async function runDebateFull(
     return { ...debate };
   }
   cbs.onStage?.({ stage: 'executor', start: true });
+
+  // Create an isolated worktree so the autonomous executor never mutates the
+  // user's main workspace. Mirrors the orchestrate path in TaskContext: the
+  // worktree lives at <root>_wt/<branch>, branched off the current branch.
+  const branch = `debate-${Date.now()}`;
+  const parentDir = workspaceRoot.endsWith('/') ? workspaceRoot.slice(0, -1) : workspaceRoot;
+  const wtPath = `${parentDir}_wt/${branch}`;
+  let worktreePath: string;
+  try {
+    let baseBranch: string | undefined;
+    try {
+      baseBranch = await window.api.git.currentBranch(workspaceRoot);
+    } catch {
+      baseBranch = undefined;
+    }
+    const res = await window.api.git.worktreeAdd(workspaceRoot, wtPath, branch, baseBranch);
+    if (!res.success) throw new Error(res.message);
+    worktreePath = res.path || wtPath;
+  } catch (err) {
+    cbs.onError?.(`创建 worktree 失败：${err instanceof Error ? err.message : String(err)}`);
+    cbs.onStage?.({ stage: 'executor', start: false });
+    return { ...debate };
+  }
+
   const taskText = debate.scratchpad.final_plan.steps
     .map((s) => `${s.action} ${s.target}：${s.detail}`)
     .join('\n');
   const execution = await runHeadlessTask({
     providerId: config.executor.providerId,
     model: config.executor.model,
-    workspaceRoot,
+    workspaceRoot: worktreePath,
     task: taskText,
     systemPromptSuffix: `项目背景：${request}\n回滚方案：${debate.scratchpad.final_plan.rollback}`,
   });
   cbs.onStage?.({ stage: 'executor', start: false });
-  return { ...debate, execution };
+  return { ...debate, execution, worktreePath, worktreeBranch: branch };
 }

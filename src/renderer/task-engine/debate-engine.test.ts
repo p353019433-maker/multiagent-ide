@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { runDebate, runDebateFull, STAGE_SEQUENCE, type DebateConfig, type DebateFullConfig } from './debate-engine';
+import { runDebate, runDebateFull, STAGE_SEQUENCE, type DebateFullConfig } from './debate-engine';
 import { createScratchpad } from '@shared/scratchpad';
-import type { ChatResult } from '@shared/types';
+import type { ChatResult, DebateConfig } from '@shared/types';
 
 /** Mock window.api.ai.chat with a scripted sequence of responses. */
 function installApi(responses: string[]) {
@@ -19,12 +19,10 @@ const CONFIG: DebateConfig = {
   proposer: { providerId: 'p2', model: 'm2', temperature: 0.2 },
   critic: { providerId: 'p3', model: 'm3', temperature: 0.7 },
   synthesizer: { providerId: 'p4', model: 'm4', temperature: 0.2 },
-};
-
-const FULL_CONFIG: DebateFullConfig = {
-  ...CONFIG,
   executor: { providerId: 'p5', model: 'm5', temperature: 0.2 },
 };
+
+const FULL_CONFIG: DebateFullConfig = CONFIG;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -92,6 +90,14 @@ describe('runDebateFull', () => {
       writeFile: vi.fn(async () => {}),
     };
     (globalThis as any).window.api.fs = fs;
+    // Mock git worktree creation so execution runs in an isolated worktree
+    // (mirrors the real runDebateFull flow) instead of the main workspace.
+    const worktreePath = '/wt_wt/debate-x';
+    const git = {
+      currentBranch: vi.fn(async () => 'main'),
+      worktreeAdd: vi.fn(async () => ({ success: true, message: 'ok', path: worktreePath })),
+    };
+    (globalThis as any).window.api.git = git;
 
     const result = await runDebateFull(
       FULL_CONFIG,
@@ -104,5 +110,20 @@ describe('runDebateFull', () => {
     expect(result.scratchpad.final_plan).not.toBeNull();
     expect(result.execution).toBeDefined();
     expect(result.execution?.content).toBe('执行完成');
+    // Execution must run inside a worktree, not the main workspace.
+    expect(git.worktreeAdd).toHaveBeenCalledTimes(1);
+    expect(git.worktreeAdd).toHaveBeenCalledWith(
+      '/wt',
+      expect.stringContaining('/wt_wt/debate-'),
+      expect.stringMatching(/^debate-\d+$/),
+      'main'
+    );
+    expect(result.worktreePath).toBe(worktreePath);
+    expect(result.worktreeBranch).toMatch(/^debate-\d+$/);
+    // The execution model call must have been given the worktree path, not '/wt'.
+    const execCall = chat.mock.calls[5] as unknown as [string, unknown, { workspaceRoot: string }];
+    expect(execCall[0]).toBe('p5');
+    expect(execCall[2].workspaceRoot).toBe(worktreePath);
+    expect(execCall[2].workspaceRoot).not.toBe('/wt');
   });
 });
