@@ -276,3 +276,41 @@ export interface OrchestrationSession {
   completedAt?: number;
   status: 'running' | 'completed' | 'failed';
 }
+
+// ============================================================
+// Debate System (单 Agent 多角色辩论)
+// ============================================================
+
+export interface DebateRoleConfig {
+  providerId: string;
+  model: string;
+  temperature?: number;
+}
+
+export interface DebateConfig {
+  analyst: DebateRoleConfig;
+  proposer: DebateRoleConfig;
+  critic: DebateRoleConfig;
+  synthesizer: DebateRoleConfig;
+  executor: DebateRoleConfig;
+}
+
+export type DebateStageName = 'analyst' | 'proposer' | 'critic' | 'synthesizer' | 'executor';
+
+export interface DebateStageState {
+  name: DebateStageName;
+  status: 'pending' | 'running' | 'done' | 'error';
+  output?: string;
+  startedAt?: number;
+  endedAt?: number;
+}
+
+export interface DebateRun {
+  id: string;
+  request: string;
+  stages: DebateStageState[];
+  startedAt: number;
+  /** Set when the full run completes (debate + execution). */
+  finishedAt?: number;
+  error?: string;
+}
