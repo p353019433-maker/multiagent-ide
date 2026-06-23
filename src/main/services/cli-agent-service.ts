@@ -31,7 +31,7 @@
 
 import { spawn, type ChildProcess } from 'child_process';
 
-export type CliAgentTool = 'claude-code' | 'codex' | 'antigravity';
+export type CliAgentTool = 'claude-code' | 'codex' | 'antigravity' | 'opencode';
 
 export interface RunCliAgentParams {
   tool: CliAgentTool;
@@ -78,6 +78,16 @@ function buildCommand(p: RunCliAgentParams): { file: string; args: string[]; env
         if (p.apiKey) env.OPENAI_API_KEY = p.apiKey;
       }
       return { file: 'codex', args, env };
+    }
+    case 'opencode': {
+      // opencode has its own provider/auth system (`opencode providers login`);
+      // we just hand it the prompt and let it pick the active provider/model.
+      // `--dangerously-skip-permissions` matches what we do for the others —
+      // round-table is non-interactive and approval prompts would hang stdin.
+      const args = ['run', '--dangerously-skip-permissions', '--format', 'default'];
+      if (p.model) args.push('-m', p.model);
+      args.push(p.prompt);
+      return { file: 'opencode', args, env };
     }
     default:
       throw new Error(`未知 CLI agent: ${(p as { tool?: string }).tool}`);
@@ -133,6 +143,7 @@ const TOOL_LABEL: Record<CliAgentTool, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   antigravity: 'Antigravity',
+  opencode: 'OpenCode',
 };
 
 export class CliAgentService {
@@ -195,7 +206,10 @@ export class CliAgentService {
           // Auth detection: only during the startup window.
           if (authWindowActive && AUTH_PATTERN.test(text)) {
             const msg = `${TOOL_LABEL[p.tool]} 未登录或 API key 无效。请先在终端运行相应命令登录：` +
-              (p.tool === 'claude-code' ? 'claude' : p.tool === 'codex' ? 'codex login' : 'agy');
+              (p.tool === 'claude-code' ? 'claude' :
+               p.tool === 'codex' ? 'codex login' :
+               p.tool === 'opencode' ? 'opencode providers login' :
+               'agy');
             cb.onError?.('unauth', msg);
             try { proc?.kill('SIGTERM'); } catch { /* */ }
           }
@@ -212,8 +226,8 @@ export class CliAgentService {
 
       try {
         // stdio: stdin MUST be 'ignore' (=> /dev/null). With the default 'pipe',
-        // claude/codex/agy all detect a piped stdin and block waiting for input —
-        // claude warns "no stdin data received in 3s", codex prints
+        // claude/codex/agy/opencode all detect a piped stdin and block waiting for
+        // input — claude warns "no stdin data received in 3s", codex prints
         // "Reading additional input from stdin..." and hangs. 'ignore' makes the
         // CLI see EOF immediately and proceed in headless mode.
         proc = spawn(cmd.file, cmd.args, {
@@ -237,6 +251,7 @@ export class CliAgentService {
           const msg = `未安装 ${cmd.file}（${TOOL_LABEL[p.tool]}）。请先安装：` +
             (p.tool === 'claude-code' ? 'npm i -g @anthropic-ai/claude-code' :
              p.tool === 'codex' ? 'npm i -g @openai/codex' :
+             p.tool === 'opencode' ? 'brew install opencode' :
              '参见 Antigravity 安装指引');
           cb.onError?.('missing', msg);
           finish({ ok: false, output: out, error: msg });

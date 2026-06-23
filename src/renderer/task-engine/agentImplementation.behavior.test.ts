@@ -56,10 +56,20 @@ function installApi(overrides: Partial<ApiMock> = {}): ApiMock {
     skillsList: vi.fn(async () => []),
     ...overrides,
   };
+  // Phase 3 now drives CLI agents through cliAgent.runStream; provide a thin
+  // adapter that drains the scripted cliRun result into stream events.
+  const cliRunStream = vi.fn(async (_cwd: string, _params: unknown, onEvent: (e: unknown) => void) => {
+    const res = await mock.cliRun();
+    onEvent?.({ type: 'start' });
+    if (res.output) onEvent?.({ type: 'stdout', chunk: res.output });
+    onEvent?.({ type: 'exit', code: res.ok ? 0 : 1, signal: null });
+    onEvent?.({ type: 'complete', result: res });
+    return res;
+  });
   (globalThis as any).window = {
     api: {
       ai: { chat: mock.chat },
-      cliAgent: { run: mock.cliRun },
+      cliAgent: { run: mock.cliRun, runStream: cliRunStream },
       git: {
         worktreeAdd: mock.worktreeAdd,
         worktreeRemove: mock.worktreeRemove,

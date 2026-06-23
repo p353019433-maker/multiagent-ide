@@ -47,7 +47,7 @@ export interface DiscussionCallEvent extends AgentLogEvent {
   kind: 'discussion-call';
   agentId: string;
   agentName: string;
-  agentKind: 'api' | 'claude-code' | 'codex' | 'antigravity';
+  agentKind: 'api' | 'claude-code' | 'codex' | 'antigravity' | 'opencode';
   round: number;
   ok: boolean;
   durationMs: number;

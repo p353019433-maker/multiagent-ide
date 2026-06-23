@@ -108,6 +108,7 @@ export const BUILTIN_CLI_AGENTS: Agent[] = [
   { id: 'cli-claude-code', name: 'Claude Code', enabled: false, kind: 'claude-code', model: '' },
   { id: 'cli-codex', name: 'Codex', enabled: false, kind: 'codex', model: '' },
   { id: 'cli-antigravity', name: 'Antigravity', enabled: false, kind: 'antigravity', model: '' },
+  { id: 'cli-opencode', name: 'OpenCode', enabled: false, kind: 'opencode', model: '' },
 ];
 
 /** Stored agents, or the built-in CLI agents on first run. */

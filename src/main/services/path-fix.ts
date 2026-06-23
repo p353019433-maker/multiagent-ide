@@ -6,7 +6,8 @@
  * `/usr/bin:/bin:/usr/sbin:/sbin` — which does NOT include Homebrew
  * (`/opt/homebrew/bin`), `~/.local/bin`, or anything the user adds in their
  * shell rc. As a result `spawn('claude', …)` / `spawn('codex', …)` /
- * `spawn('agy', …)` throw ENOENT even though the binaries are clearly on the
+ * `spawn('agy', …)` / `spawn('opencode', …)` throw ENOENT even though the
+ * binaries are clearly on the
  * user's interactive PATH.
  *
  * This runs once, as early as possible (before `app.whenReady`), and:

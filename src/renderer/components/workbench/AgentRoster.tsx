@@ -8,6 +8,7 @@ import type { Agent } from '@shared/types';
 /** Backend subline, e.g. "Claude Code · opus-4.6" / "Codex CLI · 外壳" / "Google 登录 · 单例". */
 function subline(a: Agent): string {
   if (a.kind === 'antigravity') return 'Google 登录 · 单例';
+  if (a.kind === 'opencode') return a.model ? `OpenCode · ${a.model}` : 'OpenCode · 自身登录';
   if (a.kind === 'api') return a.model || 'API 后端';
   const label = agentVisual(a.kind).label;
   return `${label} · ${a.model || '外壳'}`;

@@ -8,7 +8,7 @@
  *  - API agents (`kind === 'api'` with providerId+model) reach the model via
  *    `ai.chat` IPC, supporting reasoning models like DeepSeek (the <think>
  *    channel is stripped).
- *  - CLI shells (`claude-code` / `codex` / `antigravity`) are driven headlessly
+ *  - CLI shells (`claude-code` / `codex` / `antigravity` / `opencode`) are driven headlessly
  *    via `cliAgent.run`, each in the user's repo root. The CLI is told NOT to
  *    edit files in this phase — its stdout IS the agent's discussion turn.
  *
@@ -210,7 +210,7 @@ async function askCli(agent: DiscussionAgent, system: string, user: string, root
     window.api.cliAgent.runStream(
       rootPath,
       {
-        tool: agent.kind as 'claude-code' | 'codex' | 'antigravity',
+        tool: agent.kind as 'claude-code' | 'codex' | 'antigravity' | 'opencode',
         prompt,
         model: agent.model || undefined,
         baseURL: agent.baseURL,

@@ -67,7 +67,7 @@ export function useRoundTable() {
       agents.filter((a) => {
         if (!a.enabled) return false;
         if (a.kind === 'api') return !!a.providerId && !!a.model;
-        return true; // claude-code / codex / antigravity
+        return true; // claude-code / codex / antigravity / opencode
       }),
     [agents]
   );

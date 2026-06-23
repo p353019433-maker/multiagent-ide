@@ -19,9 +19,10 @@ export interface AgentReadinessInput {
   } | null;
   /**
    * The multi-agent roster. When at least one enabled CLI shell (claude-code /
-   * codex / antigravity) is present, the "model service" requirement is
-   * satisfied by that CLI — the round-table will run even with no API provider
-   * configured. API agents don't count here (they need their own providerId).
+   * codex / antigravity / opencode) is present, the "model service" requirement
+   * is satisfied by that CLI — the round-table will run even with no API
+   * provider configured. API agents don't count here (they need their own
+   * providerId).
    */
   agents?: Agent[];
 }

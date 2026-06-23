@@ -21,7 +21,7 @@ export type AIProvider = ModelProvider;
 // Multi-Agent System
 // ============================================================
 
-export type AgentKind = 'api' | 'claude-code' | 'codex' | 'antigravity';
+export type AgentKind = 'api' | 'claude-code' | 'codex' | 'antigravity' | 'opencode';
 
 /**
  * A participant in the multi-agent system:
@@ -29,6 +29,7 @@ export type AgentKind = 'api' | 'claude-code' | 'codex' | 'antigravity';
  *  - 'claude-code' — driven by `claude -p` (own login, or a custom API backend).
  *  - 'codex'       — driven by `codex exec` (own login, or a custom API backend).
  *  - 'antigravity' — driven by `agy -p` (Google login; Gemini backend).
+ *  - 'opencode'    — driven by `opencode run` (its own provider/auth system).
  *
  * `providerId` links a backing API connection when an API backend is configured;
  * it is absent for login-based shells (Claude Code / Codex own login, Antigravity).

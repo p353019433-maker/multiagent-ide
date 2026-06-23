@@ -19,8 +19,19 @@ function installApi(chatPerCall: ChatScript[] = [], cliPerCall: { ok: boolean; o
   let cliI = 0;
   const chat = vi.fn(async () => chatPerCall[Math.min(chatI++, chatPerCall.length - 1)] ?? { content: '' });
   const cliRun = vi.fn(async () => cliPerCall[Math.min(cliI++, cliPerCall.length - 1)] ?? { ok: true, output: '' });
+  // The engine drives CLI agents through the streaming API (cliAgent.runStream);
+  // adapt the scripted per-call responses into stream events so the old
+  // cliRun-based assertions still hold.
+  const cliRunStream = vi.fn(async (_cwd: string, _params: unknown, onEvent: (e: unknown) => void) => {
+    const res = await cliRun();
+    onEvent?.({ type: 'start' });
+    if (res.output) onEvent?.({ type: 'stdout', chunk: res.output });
+    onEvent?.({ type: 'exit', code: res.ok ? 0 : 1, signal: null });
+    onEvent?.({ type: 'complete', result: res });
+    return res;
+  });
   const skills = { list: vi.fn(async () => []) };
-  (globalThis as any).window = { api: { ai: { chat }, cliAgent: { run: cliRun }, skills }, dispatchEvent: vi.fn() };
+  (globalThis as any).window = { api: { ai: { chat }, cliAgent: { run: cliRun, runStream: cliRunStream }, skills }, dispatchEvent: vi.fn() };
   return { chat, cliRun };
 }
 

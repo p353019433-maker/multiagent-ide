@@ -602,7 +602,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       baseURL?: unknown;
       apiKey?: unknown;
     };
-    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity') {
+    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
       return { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
     }
     return cliAgentService.run({
@@ -637,7 +637,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       baseURL?: unknown;
       apiKey?: unknown;
     };
-    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity') {
+    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
       const err: CliAgentResult = { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
       safeSend(`cliagent:stream-${callId}`, { type: 'complete', result: err });
       return err;

@@ -12,6 +12,7 @@ const TYPE_LABEL: Record<AgentKind, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   antigravity: 'Antigravity',
+  opencode: 'OpenCode',
   api: '纯 API',
 };
 
@@ -21,11 +22,12 @@ const BACKEND_FORMAT: Partial<Record<AgentKind, ProviderType>> = {
   codex: 'openai',
 };
 
-const ADD_TYPES: AgentKind[] = ['claude-code', 'codex', 'antigravity', 'api'];
+const ADD_TYPES: AgentKind[] = ['claude-code', 'codex', 'antigravity', 'opencode', 'api'];
 
 /** One-line backend descriptor, matching the design wording. */
 function subline(a: Agent, providers: ModelProvider[]): string {
   if (a.kind === 'antigravity') return '用本机 Google 登录(agy)驱动，无需 API key。';
+  if (a.kind === 'opencode') return '用 opencode 自身 provider 登录，无需在此填 API key。';
   if (a.kind === 'api') {
     const p = a.providerId ? providers.find((x) => x.id === a.providerId) : undefined;
     if (a.providerId && !p) return '连接已删除';
@@ -94,7 +96,9 @@ export default function AgentsTab() {
       setErr('纯 API 需要填写接口地址和模型');
       return;
     }
-    const wantsBackend = kind === 'api' || (kind !== 'antigravity' && !!baseURL.trim());
+    // antigravity and opencode use their own login; we never store backend creds for them.
+    const ownLogin = kind === 'antigravity' || kind === 'opencode';
+    const wantsBackend = kind === 'api' || (!ownLogin && !!baseURL.trim());
     let providerId: string | undefined;
     if (wantsBackend) {
       providerId = uuid();
@@ -111,7 +115,10 @@ export default function AgentsTab() {
       await saveProvider(prov, apiKey);
     }
     const finalName =
-      name.trim() || (kind === 'antigravity' ? 'Antigravity' : `${TYPE_LABEL[kind]}${model.trim() ? ' · ' + model.trim() : ''}`);
+      name.trim() ||
+      (kind === 'antigravity' ? 'Antigravity' :
+       kind === 'opencode' ? (model.trim() ? `OpenCode · ${model.trim()}` : 'OpenCode') :
+       `${TYPE_LABEL[kind]}${model.trim() ? ' · ' + model.trim() : ''}`);
     saveAgent({ id: uuid(), name: finalName, enabled: true, kind, providerId, model: model.trim() });
     resetForm();
   };
@@ -223,6 +230,10 @@ export default function AgentsTab() {
               {addingType === 'antigravity' ? (
                 <p className="text-11 leading-relaxed text-foreground/50">
                   用本机 Google 登录(agy)驱动，无需 API key。共享同一登录，多开会互相影响，只允许添加一个。
+                </p>
+              ) : addingType === 'opencode' ? (
+                <p className="text-11 leading-relaxed text-foreground/50">
+                  用 opencode 自身的 provider 系统登录。先在终端跑一次 <code>opencode providers login</code>，再在下方可选填模型(格式 <code>provider/model</code>)。
                 </p>
               ) : (
                 <>

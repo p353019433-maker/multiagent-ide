@@ -21,7 +21,7 @@ export type CliStreamEvent =
   | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
 
 export interface CliAgentRunParams {
-  tool: 'claude-code' | 'codex' | 'antigravity';
+  tool: 'claude-code' | 'codex' | 'antigravity' | 'opencode';
   prompt: string;
   model?: string;
   baseURL?: string;
@@ -48,7 +48,7 @@ export type CliStreamEvent =
   | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
 
 export interface CliAgentRunParams {
-  tool: 'claude-code' | 'codex' | 'antigravity';
+  tool: 'claude-code' | 'codex' | 'antigravity' | 'opencode';
   prompt: string;
   model?: string;
   baseURL?: string;
