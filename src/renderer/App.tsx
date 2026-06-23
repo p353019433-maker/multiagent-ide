@@ -3,7 +3,7 @@ import { WorkspaceProvider } from './context/WorkspaceContext';
 import { TaskContextProvider } from './context/TaskContext';
 import { EditorProvider } from './context/EditorContext';
 import { ThemeProvider } from './context/ThemeContext';
-import MainLayout from './components/layout/MainLayout';
+import { DebateView } from './components/debate/DebateView';
 import SettingsWorkbench, { type SettingsTab } from './components/settings/SettingsWorkbench';
 import { trapFocus, type FocusTrap } from './utils/focusTrap';
 
@@ -43,11 +43,7 @@ export default function App() {
           <EditorProvider>
             <div className="flex flex-col h-screen w-screen overflow-hidden bg-editor-bg text-editor-text">
               <div className="contents" aria-hidden={showSettings || undefined}>
-                <MainLayout
-                  onOpenSettings={openSettings}
-                  settingsVersion={settingsVersion}
-                  shortcutsDisabled={showSettings}
-                />
+                <DebateView />
               </div>
               {showSettings && (
                 <div ref={settingsRef} role="dialog" aria-modal="true" aria-label="设置">
