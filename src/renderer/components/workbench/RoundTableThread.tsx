@@ -218,13 +218,13 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
               value={rt.question}
               onChange={(e) => rt.setQuestion(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   void rt.run();
                 }
               }}
               rows={1}
-              placeholder="给圆桌补充约束或追问…  ⌘⏎ 开始"
+              placeholder="给圆桌补充约束或追问…  回车直接发送"
               className="max-h-[120px] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[13.5px] leading-[1.55] text-foreground outline-none"
             />
             <div className="flex items-center gap-2 px-3 pb-2.5 pl-3 pr-2.5">
