@@ -41,13 +41,18 @@ describe('runDebate', () => {
       '{"final_plan":{"approach":"glob+缓存","steps":[{"action":"create","target":"search.ts","detail":"实现"}],"rollback":"删文件"}}',
     ]);
     const events: string[] = [];
+    const doneEvents: string[] = [];
     const result = await runDebate(
       CONFIG,
       createScratchpad('加文件搜索'),
-      { onStage: (e) => { if (e.start) events.push(e.stage); } }
+      { onStage: (e) => {
+        if (e.start) events.push(e.stage);
+        else doneEvents.push(e.stage);
+      } }
     );
     expect(chat).toHaveBeenCalledTimes(5);
     expect(events).toEqual(['analyst', 'proposer', 'critic', 'proposer', 'synthesizer']);
+    expect(doneEvents).toEqual(['analyst', 'proposer', 'critic', 'proposer', 'synthesizer']);
     expect(result.scratchpad.analysis?.requirements).toEqual(['搜索文件']);
     expect(result.scratchpad.critiques?.[0].severity).toBe('high');
     expect(result.scratchpad.final_plan?.steps[0].target).toBe('search.ts');
