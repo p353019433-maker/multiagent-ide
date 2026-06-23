@@ -43,7 +43,7 @@ export default function App() {
           <EditorProvider>
             <div className="flex flex-col h-screen w-screen overflow-hidden bg-editor-bg text-editor-text">
               <div className="contents" aria-hidden={showSettings || undefined}>
-                <DebateView />
+                <DebateView onOpenSettings={openSettings} />
               </div>
               {showSettings && (
                 <div ref={settingsRef} role="dialog" aria-modal="true" aria-label="设置">

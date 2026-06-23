@@ -4,7 +4,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { DebateStageCard } from './DebateStageCard';
 import { ResultPanel } from './ResultPanel';
 
-export function DebateView() {
+export function DebateView({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const ctx = useTaskWorkspace();
   const { rootPath } = useWorkspace();
   const [input, setInput] = useState('');
@@ -29,14 +29,21 @@ export function DebateView() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 顶部：任务输入 */}
       <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb' }}>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="描述你要完成的事…（Enter 发送，Shift+Enter 换行）"
-          disabled={!!isRunning}
-          style={{ width: '100%', minHeight: 60, padding: 8, border: '1px solid #d1d5db', borderRadius: 4, resize: 'vertical' }}
-        />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="描述你要完成的事…（Enter 发送，Shift+Enter 换行）"
+            disabled={!!isRunning}
+            style={{ flex: 1, minHeight: 60, padding: 8, border: '1px solid #d1d5db', borderRadius: 4, resize: 'vertical' }}
+          />
+          {onOpenSettings && (
+            <button onClick={onOpenSettings} title="设置" style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, background: '#fff' }}>
+              ⚙
+            </button>
+          )}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
           {isRunning && (
             <button onClick={ctx.stopDebate} style={{ padding: '6px 16px', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4 }}>
