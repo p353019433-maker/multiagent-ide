@@ -143,10 +143,10 @@ export default function RoundTableThread({ rt, onConfigure }: { rt: RoundTableSt
           )}
 
           {/* topic card */}
-          {(rt.cards.length > 0 || rt.plan) && rt.question && (
+          {(rt.cards.length > 0 || rt.plan) && rt.topic && (
             <div className="border-b border-border/60 px-0.5 pb-4 text-sm leading-relaxed text-foreground/90">
               <span className="mb-1.5 block font-mono text-10 text-foreground/40">圆桌议题</span>
-              {rt.question}
+              {rt.topic}
             </div>
           )}
 

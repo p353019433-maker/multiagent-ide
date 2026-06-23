@@ -50,6 +50,11 @@ export function useRoundTable() {
   const { rootPath } = useWorkspace();
 
   const [question, setQuestion] = useState('');
+  /** The committed topic for the current round. The input box drafts into
+   *  `question`; on send we snapshot it here and clear the draft, so the
+   *  topic card stays visible while the input is empty and ready for the
+   *  next round. */
+  const [topic, setTopic] = useState('');
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
   const [cards, setCards] = useState<ReviewCard[]>([]);
@@ -102,6 +107,7 @@ export function useRoundTable() {
 
   const run = async () => {
     if (running || !question.trim() || enabledAgents.length === 0) return;
+    const questionText = question.trim();
     setRunning(true);
     setCards([]);
     setPlan('');
@@ -111,9 +117,16 @@ export function useRoundTable() {
     setNotice(null);
     setPhase('开始…');
     signalRef.current = { aborted: false };
+    // Snapshot the draft as this round's topic, then clear the input so it's
+    // ready for the next question instead of keeping the sent text.
+    setTopic(questionText);
+    setQuestion('');
 
     const runStartedAt = Date.now();
-    const questionText = question.trim();
+    // Commit the draft to the topic card and clear the input box, so the
+    // sent text doesn't linger in the textarea while the round is running.
+    setTopic(questionText);
+    setQuestion('');
     const runId = uuid().slice(0, 8);
 
     logEvent(rootPath, {
@@ -202,6 +215,7 @@ export function useRoundTable() {
   const reset = () => {
     if (running || implementing) return;
     setQuestion('');
+    setTopic('');
     setCards([]);
     setPlan('');
     setWeights({});
@@ -326,6 +340,7 @@ export function useRoundTable() {
     rootPath,
     question,
     setQuestion,
+    topic,
     running,
     phase,
     cards,
