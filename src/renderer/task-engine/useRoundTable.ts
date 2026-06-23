@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useTaskWorkspace } from '../context/TaskContext';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { runDiscussion, type DiscussionAgent, type DiscussionMessage } from './agentDiscussion';
+import { runReview, type ReviewAgent, type ReviewCard, type WeightTable } from './agentReview';
 import {
   adoptImplementation,
   cleanupImplementations,
@@ -24,20 +24,22 @@ function logEvent(rootPath: string | null, event: Record<string, unknown>): void
 }
 
 /** Per-agent kind/model for the round transcript + the start event. */
-function roster(agents: DiscussionAgent[]): { id: string; name: string; kind: string }[] {
-  return agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind }));
+function roster(agents: ReviewAgent[]): { id: string; name: string; kind: string; role: string }[] {
+  return agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, role: a.role }));
 }
 
 /**
  * Round-table state machine, lifted out of the old narrow-sidebar RoundTablePanel
- * so the Codex workbench can render the roster (left), discussion + converged plan
+ * so the Codex workbench can render the roster (left), parallel review cards
  * (center) and parallel implementations (right) from one shared instance.
  *
- * Phase 1/2: enabled agents discuss → converge to a unified plan. API agents
- * talk via ai.chat; CLI shells (claude-code / codex / antigravity) talk via
- * the cliAgent IPC (their stdout IS their discussion turn).
+ * Phase 1: every enabled agent evaluates the question from its assigned ROLE
+ * in parallel (architect / security / testing / style / general). No rounds,
+ * no discussion — just independent cards.
+ * Phase 2: moderator synthesizes the cards into a unified plan + a weight table
+ * (agentId → role → 0-1) used for ranking Phase 3 implementations.
  * Phase 3: every enabled agent implements the plan in its own git worktree;
- * diffs are compared and one is adopted (others cleaned up).
+ * diffs are ranked by weighted score and one is adopted (others cleaned up).
  *
  * `enabled` vs `implementable` are intentionally the same set now — earlier the
  * roster silently dropped any agent without an API connection, which is why
@@ -50,8 +52,9 @@ export function useRoundTable() {
   const [question, setQuestion] = useState('');
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
-  const [messages, setMessages] = useState<DiscussionMessage[]>([]);
+  const [cards, setCards] = useState<ReviewCard[]>([]);
   const [plan, setPlan] = useState('');
+  const [weights, setWeights] = useState<WeightTable>({});
   const signalRef = useRef({ aborted: false });
 
   const [impls, setImpls] = useState<ImplementationResult[]>([]);
@@ -72,10 +75,10 @@ export function useRoundTable() {
     [agents]
   );
 
-  /** Build a DiscussionAgent for each enabled agent, decrypting any backing key. */
-  const buildDiscussionAgents = async (): Promise<DiscussionAgent[]> => {
+  /** Build a ReviewAgent for each enabled agent, decrypting any backing key. */
+  const buildReviewAgents = async (): Promise<ReviewAgent[]> => {
     return Promise.all(
-      enabledAgents.map(async (a): Promise<DiscussionAgent> => {
+      enabledAgents.map(async (a): Promise<ReviewAgent> => {
         let baseURL: string | undefined;
         let apiKey: string | undefined;
         if (a.providerId) {
@@ -87,6 +90,7 @@ export function useRoundTable() {
           id: a.id,
           name: a.name,
           kind: a.kind,
+          role: a.role,
           providerId: a.providerId,
           model: a.model,
           baseURL,
@@ -99,8 +103,9 @@ export function useRoundTable() {
   const run = async () => {
     if (running || !question.trim() || enabledAgents.length === 0) return;
     setRunning(true);
-    setMessages([]);
+    setCards([]);
     setPlan('');
+    setWeights({});
     setImpls([]);
     setAdoptedBranch(null);
     setNotice(null);
@@ -112,58 +117,61 @@ export function useRoundTable() {
     const runId = uuid().slice(0, 8);
 
     logEvent(rootPath, {
-      kind: 'discussion-start',
+      kind: 'review-start',
       runId,
       question: questionText,
-      agents: enabledAgents.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
+      agents: enabledAgents.map((a) => ({ id: a.id, name: a.name, kind: a.kind, role: a.role })),
       agentCount: enabledAgents.length,
       rootPath,
     });
 
     try {
-      const discussionAgents = await buildDiscussionAgents();
+      const reviewAgents = await buildReviewAgents();
       // Track per-agent call errors so we can build a precise diagnosis when
       // the whole run produces nothing — instead of the generic "no reply".
       const lastErrors = new Map<string, string>();
-      const res = await runDiscussion({
-        agents: discussionAgents,
+      const res = await runReview({
+        agents: reviewAgents,
         question: questionText,
         rootPath,
-        onMessage: (m) => setMessages((prev) => [...prev, m]),
+        onCard: (c) => setCards((prev) => [...prev, c]),
         onPhase: setPhase,
         onCall: (info) => {
-          logEvent(rootPath, { kind: 'discussion-call', runId, ...info });
+          logEvent(rootPath, { kind: 'review-call', runId, ...info });
           if (info.error) lastErrors.set(info.agentId, info.error);
           else if (info.ok) lastErrors.delete(info.agentId); // recovered
         },
         signal: signalRef.current,
       });
       setPlan(res.plan);
+      setWeights(res.weights);
 
       logEvent(rootPath, {
-        kind: 'discussion-end',
+        kind: 'review-end',
         runId,
-        transcriptLength: res.transcript.length,
+        cardCount: res.cards.length,
         planLength: res.plan.length,
+        weightCount: Object.keys(res.weights).length,
         durationMs: res.durationMs,
         aborted: res.aborted,
       });
 
-      // Only dump non-empty rounds to markdown — empty transcripts are noise.
-      if (rootPath && res.transcript.length > 0) {
+      // Only dump non-empty cards to markdown — empty cards are noise.
+      if (rootPath && res.cards.filter((c) => c.ok).length > 0) {
         void window.api.agentLog
           .writeRound(rootPath, {
             question: questionText,
-            agents: roster(discussionAgents),
-            messages: res.transcript,
+            agents: roster(reviewAgents),
+            cards: res.cards,
             plan: res.plan,
+            weights: res.weights,
             startedAt: runStartedAt,
             endedAt: Date.now(),
           })
           .catch(() => undefined);
       }
 
-      if (!res.plan && res.transcript.length === 0) {
+      if (!res.plan && res.cards.filter((c) => c.ok).length === 0) {
         // Build a precise message: every agent ran but every agent failed,
         // so the user sees what's actually broken (no API key / CLI not
         // installed / no workspace), not a generic English fallback.
@@ -176,7 +184,7 @@ export function useRoundTable() {
         setNotice({
           tone: 'err',
           text:
-            `所有启用的智能体都没产生回复。检查每一项,补好后再试一次:\n${summary}`,
+            `所有启用的智能体都没产生评审意见。检查每一项，补好后再试一次:\n${summary}`,
         });
       }
     } finally {
@@ -186,16 +194,17 @@ export function useRoundTable() {
 
   const stop = () => {
     signalRef.current.aborted = true;
-    logEvent(rootPath, { kind: 'notice', text: '用户取消了圆桌讨论' });
+    logEvent(rootPath, { kind: 'notice', text: '用户取消了评审' });
     setPhase('停止中…');
   };
 
-  /** Start a fresh round table — clear the discussion, plan and implementations. */
+  /** Start a fresh round table — clear the review cards, plan and implementations. */
   const reset = () => {
     if (running || implementing) return;
     setQuestion('');
-    setMessages([]);
+    setCards([]);
     setPlan('');
+    setWeights({});
     setImpls([]);
     setAdoptedBranch(null);
     setNotice(null);
@@ -319,8 +328,9 @@ export function useRoundTable() {
     setQuestion,
     running,
     phase,
-    messages,
+    cards,
     plan,
+    weights,
     impls,
     implementing,
     adoptedBranch,
@@ -339,3 +349,32 @@ export function useRoundTable() {
 }
 
 export type RoundTableState = ReturnType<typeof useRoundTable>;
+
+/**
+ * Score an implementation by the weighted opinion of the reviewers:
+ *   score(impl) = sum over reviewers r of (weights[r.id][r.role])
+ * The higher the implementing agent's reviewers trusted it on their own role,
+ * the higher the score. We use the role weight of THE reviewer evaluating
+ * (i.e. how trusted each reviewer's voice is overall), then sum to get a
+ * dimension-balanced ranking.
+ *
+ * Caveat: this is a heuristic — without per-implementation scoring it can't
+ * truly say "agent A's diff is more secure than agent B's". A proper ranker
+ * would re-call each role agent to grade each diff, which would multiply cost.
+ * The current implementation prefers the *role-rich* agent (one with high
+ * weight in multiple dimensions) which is a reasonable shortcut.
+ */
+export function scoreImplementations(
+  impls: ImplementationResult[],
+  weights: WeightTable
+): { branch: string; score: number }[] {
+  return impls
+    .filter((r) => r.status === 'ok')
+    .map((r) => {
+      const w = weights[r.agent.id];
+      if (!w) return { branch: r.branch, score: 0 };
+      const score = (w.architect || 0) + (w.security || 0) + (w.testing || 0) + (w.style || 0) + (w.general || 0);
+      return { branch: r.branch, score: Math.round(score * 100) / 100 };
+    })
+    .sort((a, b) => b.score - a.score);
+}

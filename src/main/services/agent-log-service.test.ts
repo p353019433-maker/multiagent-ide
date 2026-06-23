@@ -160,6 +160,33 @@ describe('AgentLogService.writeRound', () => {
     expect(content).toContain('append jsonl per call');
   });
 
+  it('renders negotiated-review cards and weights when provided', async () => {
+    const svc = new AgentLogService();
+    const t: RoundTranscript = {
+      question: 'refactor the router',
+      agents: [
+        { id: 'arch', name: '架构师', kind: 'api', role: 'architect' },
+        { id: 'sec', name: '安全官', kind: 'api', role: 'security' },
+      ],
+      cards: [
+        { agentId: 'arch', agentName: '架构师', role: 'architect', text: '拆成两层', ok: true, durationMs: 1200 },
+        { agentId: 'sec', agentName: '安全官', role: 'security', text: '注意越权', ok: true, durationMs: 900 },
+      ],
+      weights: { arch: { architect: 1, security: 0.2, testing: 0.3, style: 0.1, general: 0.5 } },
+      plan: '1) 拆分 2) 加权限校验',
+      startedAt: Date.UTC(2026, 5, 22, 0, 0, 0),
+      endedAt: Date.UTC(2026, 5, 22, 0, 0, 5),
+    };
+    const written = await svc.writeRound(tempRoot, t);
+    expect(written).toBeTruthy();
+    const content = await fs.readFile(written!, 'utf-8');
+    expect(content).toContain('# 圆桌评审：refactor the router');
+    expect(content).toContain('### 架构师（architect）');
+    expect(content).toContain('拆成两层');
+    expect(content).toContain('## 权重表');
+    expect(content).toContain('"architect": 1');
+  });
+
   it('returns null when the transcript has no content', async () => {
     const svc = new AgentLogService();
     const written = await svc.writeRound(tempRoot, {

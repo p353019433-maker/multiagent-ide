@@ -105,15 +105,26 @@ export function selectProviderAfterDelete(
 /** Built-in CLI agents (login-based by default); always present, toggled off
  *  until the user enables them. Users can add more agents of any type. */
 export const BUILTIN_CLI_AGENTS: Agent[] = [
-  { id: 'cli-claude-code', name: 'Claude Code', enabled: false, kind: 'claude-code', model: '' },
-  { id: 'cli-codex', name: 'Codex', enabled: false, kind: 'codex', model: '' },
-  { id: 'cli-antigravity', name: 'Antigravity', enabled: false, kind: 'antigravity', model: '' },
-  { id: 'cli-opencode', name: 'OpenCode', enabled: false, kind: 'opencode', model: '' },
+  { id: 'cli-claude-code', name: 'Claude Code', enabled: false, kind: 'claude-code', role: 'general', model: '' },
+  { id: 'cli-codex', name: 'Codex', enabled: false, kind: 'codex', role: 'general', model: '' },
+  { id: 'cli-antigravity', name: 'Antigravity', enabled: false, kind: 'antigravity', role: 'general', model: '' },
+  { id: 'cli-opencode', name: 'OpenCode', enabled: false, kind: 'opencode', role: 'general', model: '' },
 ];
 
-/** Stored agents, or the built-in CLI agents on first run. */
+/** Migrate old Agent (pre-role) to new shape by defaulting 'general'. */
+function migrateAgent(a: any): Agent {
+  if ('role' in a && a.role) return a;
+  return { ...a, role: 'general' };
+}
+
+/** Stored agents, or the built-in CLI agents on first run. Returns the same
+ *  array reference when every stored agent already has a role (no migration
+ *  needed), so callers that rely on reference equality still work. */
 export function seedAgents(stored: Agent[] | undefined): Agent[] {
-  if (stored && stored.length) return stored;
+  if (stored && stored.length) {
+    const needsMigration = stored.some((a: any) => !('role' in a) || !a.role);
+    return needsMigration ? stored.map(migrateAgent) : stored;
+  }
   return BUILTIN_CLI_AGENTS.map((a) => ({ ...a }));
 }
 

@@ -24,6 +24,25 @@ export type AIProvider = ModelProvider;
 export type AgentKind = 'api' | 'claude-code' | 'codex' | 'antigravity' | 'opencode';
 
 /**
+ * Negotiation-based review role:
+ *  - architect  — architecture design, patterns, maintainability
+ *  - security   — security vulnerabilities, dependencies, hardening
+ *  - testing    — test coverage, edge cases, reproducibility
+ *  - style      — code style, lint, naming, consistency
+ *  - general    — catch-all: no specific focus, free-form evaluation
+ */
+export type AgentRole = 'architect' | 'security' | 'testing' | 'style' | 'general';
+
+/** Human-readable labels for each review role. */
+export const ROLE_LABELS: Record<AgentRole, string> = {
+  architect: '架构',
+  security: '安全',
+  testing: '测试',
+  style: '风格',
+  general: '通用',
+};
+
+/**
  * A participant in the multi-agent system:
  *  - 'api'         — raw API model (no shell), reached via ai-service.
  *  - 'claude-code' — driven by `claude -p` (own login, or a custom API backend).
@@ -40,6 +59,8 @@ export interface Agent {
   /** Whether this agent joins the next discussion / run. */
   enabled: boolean;
   kind: AgentKind;
+  /** Negotiation-based review role. */
+  role: AgentRole;
   /** Backing API connection (provider id) when an API backend is configured. */
   providerId?: string;
   /** Model name (empty = the CLI/login default). */

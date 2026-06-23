@@ -117,6 +117,7 @@ const agent = (id: string, over: Partial<Agent> = {}): Agent => ({
   name: id,
   enabled: true,
   kind: 'api',
+  role: 'general',
   providerId: 'p1',
   model: 'm',
   ...over,

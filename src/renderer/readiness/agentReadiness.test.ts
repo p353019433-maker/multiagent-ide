@@ -17,6 +17,7 @@ const cliAgent = (enabled = true): Agent => ({
   name: 'Claude Code',
   enabled,
   kind: 'claude-code',
+  role: 'general',
   model: '',
 });
 

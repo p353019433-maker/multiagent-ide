@@ -236,8 +236,13 @@ declare global {
           root: string,
           transcript: {
             question: string;
-            agents: { id: string; name: string; kind: string }[];
-            messages: { agentId: string; agentName: string; round: number; text: string }[];
+            agents: { id: string; name: string; kind: string; role?: string }[];
+            /** Legacy debate-mode messages. */
+            messages?: { agentId: string; agentName: string; round: number; text: string }[];
+            /** Negotiated-review cards (one per role). */
+            cards?: { agentId: string; agentName: string; role: string; text: string; ok: boolean; durationMs: number; error?: string }[];
+            /** Moderator-produced agent-id → role → weight (0-1). */
+            weights?: Record<string, Record<string, number>>;
             plan: string;
             startedAt: number;
             endedAt: number;

@@ -82,8 +82,13 @@ export function sampleText(s: string, n = 200): { head: string; tail: string } {
 /** A round-table transcript ready to dump as markdown. */
 export interface RoundTranscript {
   question: string;
-  agents: { id: string; name: string; kind: string }[];
-  messages: { agentId: string; agentName: string; round: number; text: string }[];
+  agents: { id: string; name: string; kind: string; role?: string }[];
+  /** Either a per-round-discussion messages list (legacy) … */
+  messages?: { agentId: string; agentName: string; round: number; text: string }[];
+  /** … or a parallel-review card list (negotiated review mode). */
+  cards?: { agentId: string; agentName: string; role: string; text: string; ok: boolean; durationMs: number; error?: string }[];
+  /** Moderator-produced agent-id → role → weight (0-1) table. */
+  weights?: Record<string, Record<string, number>>;
   plan: string;
   startedAt: number;
   endedAt: number;
@@ -186,7 +191,9 @@ export class AgentLogService {
    * write empty transcripts (length 0); that's noise.
    */
   async writeRound(root: string, t: RoundTranscript): Promise<string | null> {
-    if (t.messages.length === 0 && !t.plan) return null;
+    const hasMessages = t.messages && t.messages.length > 0;
+    const hasCards = t.cards && t.cards.filter((c) => c.ok).length > 0;
+    if (!hasMessages && !hasCards && !t.plan) return null;
     try {
       await this.ensureDir(this.roundsDir(root));
       const ts = new Date(t.startedAt);
@@ -205,12 +212,13 @@ export class AgentLogService {
 /** Render a transcript as a human-friendly markdown document. Exported for tests. */
 export function renderRoundMarkdown(t: RoundTranscript): string {
   const lines: string[] = [];
-  lines.push(`# 圆桌讨论：${t.question.slice(0, 80)}`);
+  const title = t.cards ? '圆桌评审' : '圆桌讨论';
+  lines.push(`# ${title}：${t.question.slice(0, 80)}`);
   lines.push('');
   lines.push(`- 开始：${new Date(t.startedAt).toLocaleString()}`);
   lines.push(`- 结束：${new Date(t.endedAt).toLocaleString()}`);
   lines.push(`- 耗时：${Math.round((t.endedAt - t.startedAt) / 1000)}s`);
-  lines.push(`- 参与：${t.agents.map((a) => `${a.name} (${a.kind})`).join('、') || '（无）'}`);
+  lines.push(`- 参与：${t.agents.map((a) => `${a.name} (${a.kind}${a.role ? '/' + a.role : ''})`).join('、') || '（无）'}`);
   if (t.notice) lines.push(`- 提示：[${t.notice.tone}] ${t.notice.text}`);
   lines.push('');
   lines.push(`## 议题`);
@@ -218,22 +226,35 @@ export function renderRoundMarkdown(t: RoundTranscript): string {
   lines.push(t.question);
   lines.push('');
 
-  // Group messages by round so the transcript reads like a meeting.
-  const byRound = new Map<number, RoundTranscript['messages']>();
-  for (const m of t.messages) {
-    const arr = byRound.get(m.round) ?? [];
-    arr.push(m);
-    byRound.set(m.round, arr);
-  }
-  const rounds = Array.from(byRound.keys()).sort((a, b) => a - b);
-  for (const r of rounds) {
-    lines.push(`## 第 ${r} 轮`);
+  // Negotiated-review mode: one card per role.
+  if (t.cards && t.cards.length > 0) {
+    lines.push(`## 各角色评审`);
     lines.push('');
-    for (const m of byRound.get(r)!) {
-      lines.push(`### ${m.agentName}`);
+    for (const c of t.cards) {
+      const head = c.ok ? `${c.agentName}（${c.role}）` : `${c.agentName}（${c.role}）[失败]`;
+      lines.push(`### ${head}`);
       lines.push('');
-      lines.push(m.text);
+      lines.push(c.ok ? c.text : c.error || '（无内容）');
       lines.push('');
+    }
+  } else if (t.messages && t.messages.length > 0) {
+    // Legacy debate mode: group messages by round so the transcript reads like a meeting.
+    const byRound = new Map<number, NonNullable<RoundTranscript['messages']>>();
+    for (const m of t.messages) {
+      const arr = byRound.get(m.round) ?? [];
+      arr.push(m);
+      byRound.set(m.round, arr);
+    }
+    const rounds = Array.from(byRound.keys()).sort((a, b) => a - b);
+    for (const r of rounds) {
+      lines.push(`## 第 ${r} 轮`);
+      lines.push('');
+      for (const m of byRound.get(r)!) {
+        lines.push(`### ${m.agentName}`);
+        lines.push('');
+        lines.push(m.text);
+        lines.push('');
+      }
     }
   }
 
@@ -241,6 +262,15 @@ export function renderRoundMarkdown(t: RoundTranscript): string {
     lines.push(`## 统一方案`);
     lines.push('');
     lines.push(t.plan);
+    lines.push('');
+  }
+
+  if (t.weights && Object.keys(t.weights).length > 0) {
+    lines.push(`## 权重表`);
+    lines.push('');
+    lines.push('```json');
+    lines.push(JSON.stringify(t.weights, null, 2));
+    lines.push('```');
     lines.push('');
   }
 

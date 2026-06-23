@@ -3,7 +3,8 @@ import { v4 as uuid } from 'uuid';
 import { Plus, Trash2, X, Pencil } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { agentVisual } from '../workbench/agentTheme';
-import type { Agent, AgentKind, ModelProvider, ProviderType } from '@shared/types';
+import type { Agent, AgentKind, AgentRole, ModelProvider, ProviderType } from '@shared/types';
+import { ROLE_LABELS } from '@shared/types';
 
 const FIELD =
   'h-9 w-full rounded-lg border border-border-strong bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-foreground/30';
@@ -71,6 +72,7 @@ export default function AgentsTab() {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
   const [format, setFormat] = useState<ProviderType>('openai');
+  const [role, setRole] = useState<AgentRole>('general');
   const [err, setErr] = useState('');
 
   const enabledCount = agents.filter((a) => a.enabled).length;
@@ -84,6 +86,7 @@ export default function AgentsTab() {
     setApiKey('');
     setModel('');
     setFormat('openai');
+    setRole('general');
     setErr('');
   };
 
@@ -95,6 +98,7 @@ export default function AgentsTab() {
       setEditingId(existing.id);
       setName(existing.name);
       setModel(existing.model);
+      setRole(existing.role || 'general');
       // Prefill the backing provider's baseURL (apiKey stays blank — we can't
       // decrypt into the field; "留空=保持不变" tells the user that).
       if (existing.providerId) {
@@ -153,6 +157,7 @@ export default function AgentsTab() {
       name: finalName,
       enabled: editing?.enabled ?? true,
       kind,
+      role,
       providerId,
       model: model.trim(),
     });
@@ -200,6 +205,13 @@ export default function AgentsTab() {
                           style={{ color: v.badgeColor, background: v.badgeBg, padding: '1px 5px' }}
                         >
                           {v.badge}
+                        </span>
+                        <span
+                          className="flex-none rounded font-mono text-[9px] font-semibold"
+                          style={{ color: '#0d0d0d', background: '#eef0e6', padding: '1px 5px' }}
+                          title="圆桌评审角色"
+                        >
+                          {ROLE_LABELS[a.role || 'general']}
                         </span>
                       </div>
                       <div className="mt-0.5 truncate text-[12px] text-foreground/50">{subline(a, providers)}</div>
@@ -313,6 +325,20 @@ export default function AgentsTab() {
                 onChange={(e) => setModel(e.target.value)}
                 spellCheck={false}
               />
+              <label className="block">
+                <span className="mb-1 block font-mono text-[10px] text-foreground/50">圆桌评审角色</span>
+                <select
+                  className={FIELD}
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as AgentRole)}
+                >
+                  {(Object.keys(ROLE_LABELS) as AgentRole[]).map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {err && <p className="text-11 text-[#c1374a]">{err}</p>}
               <div className="flex justify-end gap-2 pt-1">
                 <button

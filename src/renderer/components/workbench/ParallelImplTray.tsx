@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Check, GitMerge, Trash2 } from 'lucide-react';
 import { agentVisual } from './agentTheme';
 import { diffStat } from './workbenchUtils';
 import { useTaskWorkspace } from '../../context/TaskContext';
-import type { RoundTableState } from '../../task-engine/useRoundTable';
+import { scoreImplementations, type RoundTableState } from '../../task-engine/useRoundTable';
 import type { ImplementationResult } from '../../task-engine/agentImplementation';
 import type { AgentKind } from '@shared/types';
 
-function ImplCard({ r, rt, kind }: { r: ImplementationResult; rt: RoundTableState; kind: AgentKind }) {
+function ImplCard({ r, rt, kind, rank }: { r: ImplementationResult; rt: RoundTableState; kind: AgentKind; rank?: { score: number; best: boolean } }) {
   const [showDiff, setShowDiff] = useState(false);
   const v = agentVisual(kind);
   const { add, del } = diffStat(r.diff);
@@ -28,6 +28,11 @@ function ImplCard({ r, rt, kind }: { r: ImplementationResult; rt: RoundTableStat
           <v.Icon size={11} strokeWidth={1.9} style={{ color: v.iconColor }} />
         </span>
         <span className="text-[12.5px] font-semibold text-foreground">{r.agent.name}</span>
+        {rank?.best && (
+          <span className="rounded font-mono text-[9px] font-semibold" style={{ color: '#5a3d00', background: '#f5e6b8', padding: '1px 5px' }}>
+            推荐
+          </span>
+        )}
         {r.status === 'running' ? (
           <span className="rounded font-mono text-[9px] font-semibold" style={{ color: '#c08a14', background: '#fdeecf', padding: '1px 6px' }}>
             running
@@ -43,6 +48,11 @@ function ImplCard({ r, rt, kind }: { r: ImplementationResult; rt: RoundTableStat
         )}
         {r.status === 'running' ? (
           <span className="ml-auto h-[7px] w-[7px] animate-pulse-dot rounded-full" style={{ background: '#c08a14' }} />
+        ) : rank ? (
+          <span className="ml-auto whitespace-nowrap font-mono text-10">
+            <span style={{ color: '#0d0d0d' }}>评分 {rank.score.toFixed(2)}</span>{' '}
+            <span style={{ color: '#2f8a4e' }}>+{add}</span> <span style={{ color: '#c1374a' }}>−{del}</span>
+          </span>
         ) : (
           <span className="ml-auto whitespace-nowrap font-mono text-10">
             <span style={{ color: '#2f8a4e' }}>+{add}</span> <span style={{ color: '#c1374a' }}>−{del}</span>
@@ -102,6 +112,16 @@ export default function ParallelImplTray({ rt }: { rt: RoundTableState }) {
   const { agents } = useTaskWorkspace();
   const kindById = (id: string): AgentKind => agents.find((a) => a.id === id)?.kind ?? 'api';
 
+  // Weighted ranking of successful implementations by the moderator's
+  // per-role weight table. Best (highest score) is flagged as "推荐".
+  const ranking = useMemo(() => {
+    const scored = scoreImplementations(rt.impls, rt.weights);
+    const best = scored[0]?.branch;
+    const byBranch = new Map<string, { score: number; best: boolean }>();
+    for (const s of scored) byBranch.set(s.branch, { score: s.score, best: s.branch === best && s.score > 0 });
+    return byBranch;
+  }, [rt.impls, rt.weights]);
+
   return (
     <div className="flex h-full flex-col" style={{ background: 'var(--app-bg)' }}>
       <div className="flex flex-none items-center justify-between border-b border-border/70 px-4 py-3">
@@ -126,7 +146,7 @@ export default function ParallelImplTray({ rt }: { rt: RoundTableState }) {
               </button>
             )}
             {rt.impls.map((r) => (
-              <ImplCard key={r.branch} r={r} rt={rt} kind={kindById(r.agent.id)} />
+              <ImplCard key={r.branch} r={r} rt={rt} kind={kindById(r.agent.id)} rank={ranking.get(r.branch)} />
             ))}
             <button
               onClick={rt.cleanup}
