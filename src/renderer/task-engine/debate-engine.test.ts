@@ -44,7 +44,7 @@ describe('runDebate', () => {
     const result = await runDebate(
       CONFIG,
       createScratchpad('加文件搜索'),
-      { onStage: (e) => events.push(e.stage) }
+      { onStage: (e) => { if (e.start) events.push(e.stage); } }
     );
     expect(chat).toHaveBeenCalledTimes(5);
     expect(events).toEqual(['analyst', 'proposer', 'critic', 'proposer', 'synthesizer']);

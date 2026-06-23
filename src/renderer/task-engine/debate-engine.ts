@@ -94,6 +94,7 @@ export async function runDebate(
     try {
       s = await callRole(role, cfg, s, isRevision, cbs);
       calls++;
+      cbs.onStage?.({ stage: role, start: false });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       cbs.onError?.(`阶段 ${role} 失败：${msg}`);
