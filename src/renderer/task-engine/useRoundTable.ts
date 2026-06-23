@@ -123,10 +123,6 @@ export function useRoundTable() {
     setQuestion('');
 
     const runStartedAt = Date.now();
-    // Commit the draft to the topic card and clear the input box, so the
-    // sent text doesn't linger in the textarea while the round is running.
-    setTopic(questionText);
-    setQuestion('');
     const runId = uuid().slice(0, 8);
 
     logEvent(rootPath, {
