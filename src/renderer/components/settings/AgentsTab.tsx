@@ -226,7 +226,7 @@ export default function AgentsTab() {
                     {!isBuiltin(a) && (
                       <button
                         onClick={() => remove(a)}
-                        className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.05] hover:text-[#c1374a]"
+                          className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.05] hover:text-destructive"
                         title="移除"
                         aria-label={`移除 ${a.name}`}
                       >
@@ -235,7 +235,7 @@ export default function AgentsTab() {
                     )}
                   </div>
                   {a.kind === 'antigravity' && (
-                    <div className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px]" style={{ color: '#9a4a00', background: '#fdeccd' }}>
+                    <div className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg bg-warn-surface px-3 py-1.5 text-[11px] text-warn">
                       ⚠ 共享同一登录，多开会互相影响，只允许一个。
                     </div>
                   )}
@@ -254,7 +254,7 @@ export default function AgentsTab() {
                 <button
                   key={k}
                   onClick={() => openForm(k)}
-                  className="flex items-center gap-2 rounded-lg border border-border-strong bg-background px-3 py-2 text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
+                  className="flex items-center gap-2 rounded-lg border border-border-strong bg-background px-3 py-2 text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-surface-1"
                 >
                   <span className="rounded font-mono text-[9px] font-semibold" style={{ color: v.badgeColor, background: v.badgeBg, padding: '1px 5px' }}>
                     {v.badge}
@@ -337,11 +337,11 @@ export default function AgentsTab() {
                   ))}
                 </select>
               </label>
-              {err && <p className="text-11 text-[#c1374a]">{err}</p>}
+              {err && <p className="text-11 text-destructive">{err}</p>}
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   onClick={resetForm}
-                  className="rounded-lg border border-border-strong bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-[#fcfcfc]"
+                  className="rounded-lg border border-border-strong bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-1"
                 >
                   取消
                 </button>

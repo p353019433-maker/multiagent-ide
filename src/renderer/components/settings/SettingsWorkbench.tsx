@@ -227,7 +227,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
         <button
           ref={closeButtonRef}
           onClick={onClose}
-          className="no-drag flex items-center gap-1.5 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-[#fcfcfc]"
+          className="no-drag flex items-center gap-1.5 rounded-lg border border-border-strong bg-background px-2.5 py-[5px] text-xs font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-colors hover:bg-surface-1"
           title="返回主界面 (Esc)"
           aria-label="返回主界面"
         >
@@ -262,7 +262,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
             })}
           </div>
           <div className="mt-auto flex items-center gap-2.5 border-t border-border px-3 py-3">
-            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{ background: '#0d0d0d' }}>
+            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background">
               AI
             </span>
             <div className="min-w-0">

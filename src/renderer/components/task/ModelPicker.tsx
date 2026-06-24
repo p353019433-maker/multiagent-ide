@@ -46,12 +46,12 @@ export default function ModelPicker({ providers, activeProviderId, activeModel, 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-8 max-w-[220px] items-center gap-2 rounded-lg border border-border-strong bg-background px-2.5 text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] outline-none transition-colors hover:bg-[#fcfcfc]"
+        className="flex h-8 max-w-[220px] items-center gap-2 rounded-lg border border-border-strong bg-background px-2.5 text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,.04)] outline-none transition-colors hover:bg-surface-1"
         title="选择模型"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-[5px]" style={{ background: '#0d0d0d' }}>
+        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-[5px] bg-foreground">
           <span className="h-1.5 w-1.5 rounded-[1.5px]" style={{ background: '#9fe870' }} />
         </span>
         <span className="min-w-0 truncate font-semibold">
