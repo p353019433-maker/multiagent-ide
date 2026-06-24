@@ -80,6 +80,19 @@ export default {
         11: '11px',
         13: '13px',
       },
+      // 过渡时长 / 缓动：以 CSS 变量为源（见 globals.css 的 :root），组件层
+      // 直接用 `duration-fast` `ease-out` 这类工具类，避免散落 inline ms。
+      transitionDuration: {
+        fastest: 'var(--duration-fastest)',
+        fast: 'var(--duration-fast)',
+        base: 'var(--duration-base)',
+        slow: 'var(--duration-slow)',
+      },
+      transitionTimingFunction: {
+        out: 'var(--ease-out)',
+        'in-out': 'var(--ease-in-out)',
+        spring: 'var(--ease-spring)',
+      },
     },
   },
   plugins: [],

@@ -57,10 +57,19 @@
     --link: #2563c9;                  /* 链接蓝 */
     --tool: #0a6e64;                  /* 工具名 蓝绿 */
 
-    /* motion */
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* motion
+       --duration-* 用于过渡时长；--ease-* 用于过渡缓动。
+       命名口径：fastest（即时反馈，<=80ms）、fast（hover/focus）、
+       base（状态切换）、slow（卡片展开 / 抽屉 / 模态进入）。
+       Tailwind 通过 theme.extend.transitionDuration / transitionTimingFunction
+       直接引用这些变量，避免组件层散落 inline 的过渡时长。 */
+    --duration-fastest: 80ms;
     --duration-fast: 120ms;
     --duration-base: 200ms;
+    --duration-slow: 320ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 }
 
@@ -156,6 +165,20 @@ input:focus-visible {
 }
 .animate-pulse-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* 用户在系统层声明"减少动效"时（macOS：辅助功能 → 显示 → 减弱动态效果；
+   Windows：设置 → 辅助功能 → 视觉效果 → 动画效果），把所有 transition /
+   animation 速降为接近 0，并停止无限循环动画。WCAG 2.3.3 要求。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer components {
