@@ -1,4 +1,5 @@
 import React from 'react';
+import { CircleCheck, RotateCcw } from 'lucide-react';
 
 interface ResultPanelProps {
   files: string[];
@@ -11,26 +12,28 @@ interface ResultPanelProps {
 export function ResultPanel({ files, diff, verified, onAdopt, onRollback }: ResultPanelProps) {
   if (!files.length) return null;
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', padding: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>执行结果</div>
-      <div style={{ fontSize: 13, marginBottom: 8 }}>
+    <div className="flex-shrink-0 border-t border-border px-4 py-3">
+      <div className="mb-2 text-xs font-semibold text-foreground">执行结果</div>
+      <div className="mb-2 text-11 text-muted-foreground">
         改动文件（{files.length}）：{files.join('、')}
       </div>
       {verified !== undefined && (
-        <div style={{ fontSize: 12, color: verified ? '#16a34a' : '#dc2626', marginBottom: 8 }}>
+        <div className={`mb-2 text-11 ${verified ? 'text-status-green' : 'text-red-400'}`}>
           验证：{verified ? '通过' : '未通过'}
         </div>
       )}
       {diff && (
-        <pre style={{ fontSize: 11, background: '#1e293b', color: '#e2e8f0', padding: 8, maxHeight: 200, overflow: 'auto' }}>
+        <pre className="mb-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#1e293b] px-3 py-2 font-mono text-11 leading-relaxed text-[#e2e8f0]">
           {diff}
         </pre>
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button onClick={onAdopt} style={{ padding: '6px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4 }}>
+      <div className="flex gap-2">
+        <button onClick={onAdopt} className="flex h-7 items-center gap-1.5 rounded-lg bg-status-green px-3 text-xs font-medium text-primary-foreground hover:opacity-90">
+          <CircleCheck size={13} strokeWidth={2} />
           采纳
         </button>
-        <button onClick={onRollback} style={{ padding: '6px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 4 }}>
+        <button onClick={onRollback} className="flex h-7 items-center gap-1.5 rounded-lg border border-red-400/50 px-3 text-xs text-red-400 hover:bg-red-400/10">
+          <RotateCcw size={13} strokeWidth={2} />
           回滚
         </button>
       </div>

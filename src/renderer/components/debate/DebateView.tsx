@@ -3,6 +3,7 @@ import { useTaskWorkspace } from '../../context/TaskContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { DebateStageCard } from './DebateStageCard';
 import { ResultPanel } from './ResultPanel';
+import { Settings } from 'lucide-react';
 
 export function DebateView({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const ctx = useTaskWorkspace();
@@ -26,44 +27,50 @@ export function DebateView({ onOpenSettings }: { onOpenSettings?: () => void }) 
   const isRunning = ctx.currentDebate && !ctx.currentDebate.finishedAt;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* 顶部：任务输入 */}
-      <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 border-b border-border px-4 py-3">
+        <div className="flex items-start gap-3">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="描述你要完成的事…（Enter 发送，Shift+Enter 换行）"
             disabled={!!isRunning}
-            style={{ flex: 1, minHeight: 60, padding: 8, border: '1px solid #d1d5db', borderRadius: 4, resize: 'vertical' }}
+            className="min-h-[60px] flex-1 resize-vertical rounded-lg border border-editor-border bg-editor-bg px-3 py-2 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-editor-accent"
           />
           {onOpenSettings && (
-            <button onClick={onOpenSettings} title="设置" style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, background: '#fff' }}>
-              ⚙
+            <button
+              onClick={onOpenSettings}
+              title="设置"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-editor-border text-muted-foreground hover:bg-editor-hover hover:text-foreground"
+            >
+              <Settings size={14} strokeWidth={1.7} />
             </button>
           )}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <div className="mt-2 flex justify-end gap-2">
           {isRunning && (
-            <button onClick={ctx.stopDebate} style={{ padding: '6px 16px', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4 }}>
+            <button
+              onClick={ctx.stopDebate}
+              className="h-7 px-3 text-xs border border-red-400/50 text-red-400 rounded-lg hover:bg-red-400/10"
+            >
               停止
             </button>
           )}
         </div>
       </div>
 
-      {/* 主体：讨论过程 */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-3">
         {ctx.currentDebate?.stages.map((stage, i) => (
           <DebateStageCard key={i} stage={stage} />
         ))}
         {ctx.currentDebate?.error && (
-          <div style={{ color: '#dc2626', padding: 8 }}>{ctx.currentDebate.error}</div>
+          <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-400">
+            {ctx.currentDebate.error}
+          </div>
         )}
       </div>
 
-      {/* 底部：结果验收 */}
       <ResultPanel
         files={[]}
         onAdopt={() => {}}

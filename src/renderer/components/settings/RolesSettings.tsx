@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import type { DebateStageName } from '@shared/types';
+import { Sparkles } from 'lucide-react';
 
 const ROLE_LABELS: Record<DebateStageName, string> = {
   analyst: '解析员',
@@ -18,51 +19,83 @@ const ROLE_HINTS: Record<DebateStageName, string> = {
   executor: '执行阶段用的模型',
 };
 
+const SETTING_ROW_CLASS =
+  'grid min-h-10 grid-cols-1 border-b border-editor-border lg:grid-cols-[180px_minmax(0,1fr)]';
+const SETTING_LABEL_CLASS =
+  'border-b border-editor-border px-3 py-2 text-xs text-muted-foreground lg:border-b-0 lg:border-r';
+const SETTING_VALUE_CLASS = 'min-w-0 px-3 py-1.5';
+const FIELD_CLASS =
+  'h-8 w-full border border-editor-border bg-editor-bg px-2 text-sm text-foreground outline-none focus:border-editor-accent';
+const SECTION_HEADER_CLASS =
+  'flex h-8 items-center border-b border-editor-border bg-editor-sidebar px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground';
+
 export function RolesSettings() {
   const ctx = useTaskWorkspace();
   const roles: DebateStageName[] = ['analyst', 'proposer', 'critic', 'synthesizer', 'executor'];
 
   return (
-    <div style={{ padding: 16 }}>
-      <h3 style={{ marginTop: 0 }}>辩论角色配置</h3>
-      <p style={{ color: '#6b7280', fontSize: 13 }}>给每个角色指定供应商和模型。不同角色用不同模型能减少盲区。</p>
+    <div>
+      <div className={SECTION_HEADER_CLASS}>
+        <Sparkles size={12} strokeWidth={1.7} className="mr-1.5" />
+        辩论角色
+      </div>
+      <div className="border-b border-editor-border px-3 py-2 text-11 text-muted-foreground">
+        给每个角色指定供应商和模型。不同角色用不同模型能减少同源 bias。
+      </div>
       {roles.map((role) => {
         const cfg = ctx.debateConfig[role];
+        const providerHasModel = (providerId: string) => {
+          if (!providerId) return [];
+          const p = ctx.providers.find((x) => x.id === providerId);
+          return p?.models ?? [];
+        };
+
         return (
-          <div key={role} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontWeight: 600 }}>{ROLE_LABELS[role]}</div>
-            <div style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8 }}>{ROLE_HINTS[role]}</div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <select
-                value={cfg.providerId}
-                onChange={(e) => ctx.setDebateRoleConfig(role, { providerId: e.target.value })}
-                style={{ padding: 4, border: '1px solid #d1d5db', borderRadius: 4 }}
-              >
-                {ctx.providers.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <select
-                value={cfg.model}
-                onChange={(e) => ctx.setDebateRoleConfig(role, { model: e.target.value })}
-                style={{ padding: 4, border: '1px solid #d1d5db', borderRadius: 4 }}
-              >
-                {ctx.providers.find((p) => p.id === cfg.providerId)?.models.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              <label style={{ fontSize: 12 }}>
-                温度
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="2"
-                  value={cfg.temperature ?? 0.3}
-                  onChange={(e) => ctx.setDebateRoleConfig(role, { temperature: parseFloat(e.target.value) })}
-                  style={{ width: 50, marginLeft: 4, padding: 4, border: '1px solid #d1d5db', borderRadius: 4 }}
-                />
-              </label>
+          <div key={role} className={SETTING_ROW_CLASS}>
+            <label className={SETTING_LABEL_CLASS}>
+              <div className="font-medium text-foreground">{ROLE_LABELS[role]}</div>
+              <div className="text-10 text-muted-foreground">{ROLE_HINTS[role]}</div>
+            </label>
+            <div className={SETTING_VALUE_CLASS}>
+              <div className="flex items-center gap-2">
+                <select
+                  value={cfg.providerId}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    const models = providerHasModel(pid);
+                    ctx.setDebateRoleConfig(role, {
+                      providerId: pid,
+                      model: models.includes(cfg.model) ? cfg.model : (models[0] ?? ''),
+                    });
+                  }}
+                  className={FIELD_CLASS}
+                >
+                  {ctx.providers.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={cfg.model}
+                  onChange={(e) => ctx.setDebateRoleConfig(role, { model: e.target.value })}
+                  className={FIELD_CLASS}
+                >
+                  {providerHasModel(cfg.providerId).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-10 text-muted-foreground">温度</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    value={cfg.temperature ?? 0.3}
+                    onChange={(e) => ctx.setDebateRoleConfig(role, { temperature: parseFloat(e.target.value) })}
+                    className="h-8 w-16 border border-editor-border bg-editor-bg px-2 text-xs text-foreground outline-none focus:border-editor-accent"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         );
