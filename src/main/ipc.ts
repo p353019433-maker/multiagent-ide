@@ -106,6 +106,8 @@ const ALLOWED_STORE_KEYS = new Set([
   'editorSettings',
   // conversationStore schema-version stamp for the per-conversation migration pipeline.
   'conversationSchemaVersion',
+  // debate-agent role configuration.
+  'debateConfig',
 ]);
 
 function assertAllowedStoreKey(key: string): string {
