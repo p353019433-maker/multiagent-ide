@@ -290,7 +290,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                 providers.map((p) => (
                   <div
                     key={p.id}
-                    className="grid min-h-10 grid-cols-1 items-center border-b border-editor-border sm:grid-cols-[160px_minmax(0,1fr)_96px] lg:grid-cols-[180px_minmax(0,1fr)_96px]"
+                    className="cv-row grid min-h-10 grid-cols-1 items-center border-b border-editor-border sm:grid-cols-[160px_minmax(0,1fr)_96px] lg:grid-cols-[180px_minmax(0,1fr)_96px]"
                   >
                     <div className="border-b border-editor-border px-3 py-2 text-sm text-foreground sm:border-b-0 sm:border-r">
                       {p.name}

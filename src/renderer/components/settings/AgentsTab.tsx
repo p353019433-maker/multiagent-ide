@@ -192,7 +192,7 @@ export default function AgentsTab() {
             {agents.map((a, i) => {
               const v = agentVisual(a.kind);
               return (
-                <div key={a.id} className={i < agents.length - 1 ? 'border-b border-border/60' : ''}>
+                <div key={a.id} className={`cv-row ${i < agents.length - 1 ? 'border-b border-border/60' : ''}`}>
                   <div className="flex items-center gap-3 px-4 py-3.5">
                     <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]" style={{ background: v.iconBg }}>
                       <v.Icon size={18} strokeWidth={1.7} style={{ color: v.iconColor }} />

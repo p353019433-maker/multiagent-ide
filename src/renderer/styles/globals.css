@@ -219,4 +219,12 @@ input:focus-visible {
   .shadow-float {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
+
+  /* 长列表行渲染提示：浏览器对离屏行跳过 layout/paint，相当于零侵入虚拟化。
+     给 user-extensible 的设置类列表（agents / providers）用，每行一个高度
+     占位即可，不要给 DebateView 的固定五阶段那种短列表用——开销 > 收益。 */
+  .cv-row {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 64px;
+  }
 }
