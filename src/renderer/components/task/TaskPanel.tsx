@@ -386,7 +386,7 @@ ${suffix.slice(0, 500)}${editsCtx}
       <div className="flex h-[54px] flex-shrink-0 items-center justify-between gap-2 border-b border-border px-6">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="min-w-0 truncate text-[14.5px] font-semibold text-foreground">
-            {activeConversation?.title || '新对话'}
+            {activeConversation?.title || '新任务'}
           </span>
           {activeWorktree && (
             <span className="flex-none font-mono text-10 text-warn" title={activeWorktree.path}>
@@ -409,8 +409,8 @@ ${suffix.slice(0, 500)}${editsCtx}
           <button
             onClick={() => newConversation()}
             className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-            title="新建任务"
-            aria-label="新建任务"
+            title="新建 Agent 任务"
+            aria-label="新建 Agent 任务"
           >
             <Plus size={15} strokeWidth={1.8} />
           </button>
@@ -450,8 +450,14 @@ ${suffix.slice(0, 500)}${editsCtx}
         <div className="mx-auto w-full max-w-[760px]">
         <AgentPlan steps={plan} />
         {!hasRuntimeRows && (
-          <div className="py-12 text-center text-[13px] text-foreground/40">
-            {readiness.canRunAgent ? '无活动任务 — 在下方发个任务开始' : '等待模型服务就绪'}
+          <div className="py-16 text-center">
+            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-2 text-lg">⌘</div>
+            <div className="text-[17px] font-semibold text-foreground">把任务交给 Agent</div>
+            <div className="mx-auto mt-2 max-w-[420px] text-[13px] leading-relaxed text-foreground/45">
+              {readiness.canRunAgent
+                ? '在下方描述你想完成的事。这里会保留你和 Agent 的完整对话、执行过程和结果。'
+                : '等待模型服务就绪后，就可以让 Agent 读写文件、运行命令并完成任务。'}
+            </div>
           </div>
         )}
         {messages.map((msg) => (
@@ -517,7 +523,7 @@ ${suffix.slice(0, 500)}${editsCtx}
             <>
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span className="font-mono text-[10.5px] text-foreground/40">
-                  {activeFilePath ? `@${activeFilePath.split('/').slice(-1)[0]}` : '询问、编辑或派发任务给 Agent'}
+                  {activeFilePath ? `@${activeFilePath.split('/').slice(-1)[0]}` : '描述任务，Agent 会自己查看代码并执行'}
                 </span>
               </div>
               <div className="rounded-[14px] border border-border-strong bg-background shadow-float focus-within:border-foreground/25">
@@ -544,7 +550,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
-                  placeholder="询问、编辑或派发任务给 Agent…  (Shift+Enter 换行)"
+                  placeholder="告诉 Agent 你想完成什么…  (Shift+Enter 换行)"
                   className="max-h-[160px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-sm leading-relaxed text-foreground outline-none"
                   style={{ minHeight: '52px' }}
                   disabled={isStreaming}
@@ -598,7 +604,7 @@ ${suffix.slice(0, 500)}${editsCtx}
       </div>
       </div>
 
-      <aside className="w-[340px] flex-none border-l border-border">
+      <aside className="w-[360px] flex-none border-l border-border">
         <DeliveryTray
           toolExecutions={toolExecutions}
           checkpoints={checkpoints}

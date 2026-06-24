@@ -77,7 +77,7 @@ export default function TaskMessage({ message }: Props) {
   if (message.role === 'tool') return null;
 
   const isUser = message.role === 'user';
-  const roleLabel = isUser ? 'TASK' : 'RESULT';
+  const roleLabel = isUser ? 'YOU' : 'AGENT';
   const timeLabel = new Date(message.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -86,7 +86,7 @@ export default function TaskMessage({ message }: Props) {
   return (
     <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-4 border-b border-border/50 py-4 text-sm">
       <div className="font-mono text-[9.5px] leading-[1.7]">
-        <div style={{ color: isUser ? '#3f8a2e' : 'rgba(13,13,13,.35)', fontWeight: isUser ? 600 : 400 }}>{roleLabel}</div>
+        <div style={{ color: isUser ? '#0d0d0d' : 'rgba(13,13,13,.45)', fontWeight: 600 }}>{roleLabel}</div>
         <div className="text-foreground/35">{timeLabel}</div>
       </div>
 

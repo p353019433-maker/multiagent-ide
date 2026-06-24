@@ -49,7 +49,7 @@ export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, on
               style={{ background: '#0d0d0d' }}
             >
               <Plus size={15} strokeWidth={2} />
-              新对话
+              新任务
             </button>
             <button
               onClick={onNewWorktree}
@@ -60,9 +60,9 @@ export default function WorkbenchLeft({ view, setView, rootPath, indexStatus, on
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3.5">
-            <div className="px-2 py-1.5 text-10 font-bold uppercase tracking-[0.06em] text-foreground/40">会话</div>
+            <div className="px-2 py-1.5 text-10 font-bold uppercase tracking-[0.06em] text-foreground/40">任务历史</div>
             {conversations.length === 0 && (
-              <p className="px-2 py-1 text-11 text-foreground/45">还没有会话，点「新对话」开始。</p>
+              <p className="px-2 py-1 text-11 text-foreground/45">还没有任务，点「新任务」开始。</p>
             )}
             {conversations.map((conv) => {
               const active = conv.id === activeConversationId;
