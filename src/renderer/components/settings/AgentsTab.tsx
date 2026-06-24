@@ -5,9 +5,7 @@ import { useTaskWorkspace } from '../../context/TaskContext';
 import { agentVisual } from '../workbench/agentTheme';
 import type { Agent, AgentKind, AgentRole, ModelProvider, ProviderType } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
-
-const FIELD =
-  'h-9 w-full rounded-lg border border-border-strong bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-foreground/30';
+import { FIELD } from '../../styles/recipes';
 
 const TYPE_LABEL: Record<AgentKind, string> = {
   'claude-code': 'Claude Code',

@@ -10,6 +10,7 @@ import type { ThemeName } from '../../theme';
 import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Sparkles, Users } from 'lucide-react';
 import AgentsTab from './AgentsTab';
 import { RolesSettings } from './RolesSettings';
+import { FIELD as FIELD_CLASS } from '../../styles/recipes';
 
 /** Common embedding model names by provider, shown as quick hints. */
 const EMBEDDING_MODEL_HINTS = [
@@ -66,8 +67,6 @@ const THEME_DISPLAY_NAME: Record<ThemeName, string> = {
   'high-contrast': '高对比度',
 };
 
-const FIELD_CLASS =
-  'h-8 w-full border border-editor-border bg-editor-bg px-2 text-sm text-foreground outline-none focus:border-editor-accent';
 const SECONDARY_BUTTON_CLASS =
   'h-7 px-3 text-xs border border-editor-border text-foreground hover:bg-editor-active disabled:opacity-40';
 const PRIMARY_BUTTON_CLASS =

@@ -2,6 +2,7 @@ import React from 'react';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import type { DebateStageName } from '@shared/types';
 import { Sparkles } from 'lucide-react';
+import { FIELD as FIELD_CLASS } from '../../styles/recipes';
 
 const ROLE_LABELS: Record<DebateStageName, string> = {
   analyst: '解析员',
@@ -24,8 +25,6 @@ const SETTING_ROW_CLASS =
 const SETTING_LABEL_CLASS =
   'border-b border-editor-border px-3 py-2 text-xs text-muted-foreground lg:border-b-0 lg:border-r';
 const SETTING_VALUE_CLASS = 'min-w-0 px-3 py-1.5';
-const FIELD_CLASS =
-  'h-8 w-full border border-editor-border bg-editor-bg px-2 text-sm text-foreground outline-none focus:border-editor-accent';
 const SECTION_HEADER_CLASS =
   'flex h-8 items-center border-b border-editor-border bg-editor-sidebar px-3 text-10 font-semibold uppercase tracking-wide text-muted-foreground';
 
