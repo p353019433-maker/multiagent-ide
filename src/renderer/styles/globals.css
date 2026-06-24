@@ -70,6 +70,24 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* surface 明度层级
+       "用明度差代替描边"是这套 UI 走向柔和的关键手段：相邻分组用 surface-1
+       / surface-2 的低对比明度切换分隔，而不是叠 1px 实线。surface-1 ≈
+       --background 上一档浅；surface-2 比 surface-1 再低一档（适合 hover /
+       active 的弱叠层）。 */
+    --surface-1: 0 0% 98%;        /* #fafafa */
+    --surface-2: 0 0% 96%;        /* #f5f5f5 */
+
+    /* 阴影体系（双层柔影 > 单层硬阴影）
+       现有 .shadow-card / .shadow-float（components 层）是旧的单层定义、
+       保留向后兼容；新视觉用下面三个语义级别：
+         ambient  — 卡片静态态、极轻
+         elevated — popover / dropdown / 浮起的工具条
+         overlay  — modal / dialog / 最高层 */
+    --shadow-ambient: 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 16px rgba(0, 0, 0, 0.06);
+    --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.06), 0 20px 40px rgba(0, 0, 0, 0.10);
   }
 }
 

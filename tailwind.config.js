@@ -61,12 +61,23 @@ export default {
           accent: 'hsl(var(--editor-accent-hsl) / <alpha-value>)', // 品牌"绿色"现在只是状态色（保留 /opacity）
           hover: 'hsl(var(--accent))',
         },
+        // surface 明度阶梯（用于"明度层级代替描边"的柔和分组）
+        'surface-1': 'hsl(var(--surface-1))',
+        'surface-2': 'hsl(var(--surface-2))',
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        xl: 'calc(var(--radius) + 4px)',  // 14px：常规卡片
+        '2xl': 'calc(var(--radius) + 8px)', // 18px：大卡片 / sheet / 重要 modal
         pill: '9999px', // Wise pill buttons
+      },
+      boxShadow: {
+        // 双层柔影体系，与单层 .shadow-card / .shadow-float 并存
+        ambient: 'var(--shadow-ambient)',
+        elevated: 'var(--shadow-elevated)',
+        overlay: 'var(--shadow-overlay)',
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
