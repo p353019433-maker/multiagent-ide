@@ -234,7 +234,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
           <ArrowLeft size={14} strokeWidth={1.8} />
           返回
         </button>
-        <div id="settings-title" className="text-[13px] font-semibold text-foreground">
+        <div id="settings-title" className="text-13 font-semibold text-foreground">
           设置
         </div>
       </div>
@@ -249,7 +249,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                 <button
                   key={item.id}
                   onClick={() => setTab(item.id)}
-                  className={`flex flex-shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors lg:w-full ${
+                  className={`flex flex-shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-13 transition-colors lg:w-full ${
                     active
                       ? 'bg-background font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.06)]'
                       : 'text-foreground/55 hover:bg-foreground/[0.04] hover:text-foreground'
@@ -262,7 +262,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
             })}
           </div>
           <div className="mt-auto flex items-center gap-2.5 border-t border-border px-3 py-3">
-            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background">
+            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-foreground text-11 font-semibold text-background">
               AI
             </span>
             <div className="min-w-0">
@@ -275,7 +275,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
         <main className="min-w-0 flex-1 overflow-y-auto">
           {tab !== 'agents' && (
             <div className="flex h-[46px] items-center justify-between border-b border-border px-6">
-              <span className="text-[15px] font-semibold text-foreground">{activeNavLabel}</span>
+              <span className="text-sm font-semibold text-foreground">{activeNavLabel}</span>
               {tab === 'providers' && (
                 <span className="font-mono text-10 text-muted-foreground">{providers.length} 个服务</span>
               )}

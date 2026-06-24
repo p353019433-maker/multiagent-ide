@@ -179,20 +179,20 @@ export default function AgentsTab() {
             {enabledCount}/{agents.length || 4} 启用
           </span>
         </div>
-        <p className="mt-1 text-[13px] leading-relaxed text-foreground/55">
+        <p className="mt-1 text-13 leading-relaxed text-foreground/55">
           每个 = 一个 CLI 外壳或纯 API。启用的参与下一次圆桌。
         </p>
       </div>
 
       <div className="px-6 py-5">
         {agents.length > 0 && (
-          <div className="overflow-hidden rounded-[14px] border border-border bg-background shadow-card">
+          <div className="overflow-hidden rounded-xl border border-border bg-background shadow-card">
             {agents.map((a, i) => {
               const v = agentVisual(a.kind);
               return (
                 <div key={a.id} className={`cv-row ${i < agents.length - 1 ? 'border-b border-border/60' : ''}`}>
                   <div className="flex items-center gap-3 px-4 py-3.5">
-                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]" style={{ background: v.iconBg }}>
+                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg" style={{ background: v.iconBg }}>
                       <v.Icon size={18} strokeWidth={1.7} style={{ color: v.iconColor }} />
                     </span>
                     <div className="min-w-0 flex-1">
@@ -212,7 +212,7 @@ export default function AgentsTab() {
                           {ROLE_LABELS[a.role || 'general']}
                         </span>
                       </div>
-                      <div className="mt-0.5 truncate text-[12px] text-foreground/50">{subline(a, providers)}</div>
+                      <div className="mt-0.5 truncate text-xs text-foreground/50">{subline(a, providers)}</div>
                     </div>
                     <Toggle on={a.enabled} onClick={() => toggleAgent(a.id, !a.enabled)} label={`切换 ${a.name}`} />
                     <button
@@ -235,7 +235,7 @@ export default function AgentsTab() {
                     )}
                   </div>
                   {a.kind === 'antigravity' && (
-                    <div className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg bg-warn-surface px-3 py-1.5 text-[11px] text-warn">
+                    <div className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg bg-warn-surface px-3 py-1.5 text-11 text-warn">
                       ⚠ 共享同一登录，多开会互相影响，只允许一个。
                     </div>
                   )}
@@ -268,7 +268,7 @@ export default function AgentsTab() {
 
         {/* add form */}
         {addingType && (
-          <div className="mt-3 rounded-[14px] border border-border bg-background p-4 shadow-card">
+          <div className="mt-3 rounded-xl border border-border bg-background p-4 shadow-card">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold text-foreground">{editing ? '编辑' : '新建'} {TYPE_LABEL[addingType]}</span>
               <button
@@ -324,7 +324,7 @@ export default function AgentsTab() {
                 spellCheck={false}
               />
               <label className="block">
-                <span className="mb-1 block font-mono text-[10px] text-foreground/50">圆桌评审角色</span>
+                <span className="mb-1 block font-mono text-10 text-foreground/50">圆桌评审角色</span>
                 <select
                   className={FIELD}
                   value={role}
