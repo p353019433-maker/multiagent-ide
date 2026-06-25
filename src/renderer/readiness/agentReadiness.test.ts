@@ -12,7 +12,7 @@ const provider = {
   defaultModel: 'gpt-4o-mini',
 };
 
-const cliAgent = (enabled = true): Agent => ({
+const cliKindAgent = (enabled = true): Agent => ({
   id: 'cli-claude-code',
   name: 'Claude Code',
   enabled,
@@ -21,7 +21,7 @@ const cliAgent = (enabled = true): Agent => ({
   model: '',
 });
 
-const disabledCliAgent = (): Agent => ({ ...cliAgent(false) });
+const disabledCliKindAgent = (): Agent => ({ ...cliKindAgent(false) });
 
 describe('getAgentReadiness', () => {
   it('blocks on workspace first when nothing is configured', () => {

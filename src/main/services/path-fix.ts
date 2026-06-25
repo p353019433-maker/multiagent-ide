@@ -14,7 +14,7 @@
  *   1. Merges a set of well-known macOS dev locations into `process.env.PATH`.
  *   2. Best-effort asks the user's *login* shell for its full PATH and merges
  *      that too. The login-shell probe is synchronous-ish via spawnSync so the
- *      fix is in place before any service (cliAgent in particular) runs.
+ *      fix is in place before any service that spawns child processes runs.
  *
  * It's idempotent and safe: it only ever *adds* entries, never removes or
  * reorders existing ones, and any failure (no login shell, spawn errors) is

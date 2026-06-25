@@ -207,18 +207,6 @@ describe('IPC dangerous action confirmations', () => {
     expect(terminalService.runCommand).not.toHaveBeenCalled();
   });
 
-  it('passes CLI dangerous bypass only when explicitly requested', async () => {
-    const cliAgentService = { run: vi.fn(async () => ({ ok: true, output: '' })) };
-    registerIpc(deps({ cliAgentService }));
-    await authorizeRoot(root);
-
-    await handlers.get('cliagent:run')!(appEvent, root, { tool: 'codex', prompt: 'review' });
-    expect(cliAgentService.run).toHaveBeenLastCalledWith(expect.objectContaining({ allowDangerousBypass: false }));
-
-    await handlers.get('cliagent:run')!(appEvent, root, { tool: 'codex', prompt: 'edit', allowDangerousBypass: true });
-    expect(cliAgentService.run).toHaveBeenLastCalledWith(expect.objectContaining({ allowDangerousBypass: true }));
-  });
-
   it('requires native confirmation and validates branch refs before removing worktrees', async () => {
     const wt = path.join(path.dirname(root), 'repo_wt', 'task-1');
     await fs.mkdir(wt, { recursive: true });

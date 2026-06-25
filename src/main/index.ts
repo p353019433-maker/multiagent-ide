@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session } from 'electron';
 import path from 'path';
 // PATH-repair must run BEFORE any service that spawns child processes
-// (CliAgentService, TerminalService, AnalysisService, GitService all do).
+// (TerminalService, AnalysisService, GitService all do).
 // macOS GUI launches inherit a minimal PATH that's missing /opt/homebrew/bin
 // and ~/.local/bin — without this fix, `claude` / `codex` / `agy` ENOENT
 // even though they're on the user's interactive PATH. See path-fix.ts.
@@ -20,7 +20,6 @@ import { AnalysisService } from './services/analysis-service';
 import { CodebaseSearchService } from './services/codebase-search-service';
 import { registerIpc } from './ipc';
 import { FileWatcherService } from './services/file-watcher-service';
-import { CliAgentService } from './services/cli-agent-service';
 import { SkillsService } from './services/skills-service';
 
 // Single-instance lock: this app persists all state through a single config
@@ -128,7 +127,6 @@ app.whenReady().then(() => {
   const analysisService = new AnalysisService(terminalService, fileService);
   const codebaseSearchService = new CodebaseSearchService(indexService, aiService, fileService, storeService);
   const fileWatcherService = new FileWatcherService();
-  const cliAgentService = new CliAgentService();
   const skillsService = new SkillsService();
 
   registerIpc({
@@ -143,7 +141,6 @@ app.whenReady().then(() => {
     analysisService,
     codebaseSearchService,
     fileWatcherService,
-    cliAgentService,
     skillsService,
   });
 

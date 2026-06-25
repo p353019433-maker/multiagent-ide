@@ -8,33 +8,6 @@ interface CodebaseSearchResult {
 
 type FileChangeEvent = { type: 'add' | 'change' | 'unlink'; path: string };
 
-/**
- * Streaming events from a CLI agent run (mirrors the main-process callback
- * shape, serialized over IPC onto per-call channels `cliagent:stream-<callId>`).
- */
-export type CliStreamEvent =
-  | { type: 'start' }
-  | { type: 'stdout'; chunk: string }
-  | { type: 'stderr'; chunk: string }
-  | { type: 'exit'; code: number | null; signal: NodeJS.Signals | null }
-  | { type: 'error'; kind: string; message: string }
-  | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
-
-export interface CliAgentRunParams {
-  tool: 'claude-code' | 'codex' | 'antigravity' | 'opencode';
-  prompt: string;
-  model?: string;
-  baseURL?: string;
-  apiKey?: string;
-}
-
-export interface CliAgentRunResult {
-  ok: boolean;
-  output: string;
-  error?: string;
-  errorKind?: string;
-}
-
 declare global {
   interface Window {
     api: {
@@ -180,23 +153,6 @@ declare global {
       codebase: {
         search: (root: string, query: string, limit?: number) => Promise<CodebaseSearchResult>;
         reindex: (root: string) => Promise<{ ok: boolean; error?: string; chunks?: boolean }>;
-      };
-      cliAgent: {
-        /** Synchronous fire-and-forget run — resolves with the full output. */
-        run: (cwd: string, params: CliAgentRunParams) => Promise<CliAgentRunResult>;
-        /** Cancel an in-flight streaming run by the callId returned from runStream. */
-        cancel: (callId: string) => Promise<void>;
-        /**
-         * Streaming run. Returns an object holding the `callId` (use it to
-         * call `cancel`) and a `result` promise that resolves with the final
-         * result. Events arrive via `onEvent` as the CLI runs. Multiple
-         * parallel runs are multiplexed by `callId` onto per-call IPC channels.
-         */
-        runStream: (
-          cwd: string,
-          params: CliAgentRunParams,
-          onEvent: (event: CliStreamEvent) => void
-        ) => { callId: string; result: Promise<CliAgentRunResult> };
       };
       skills: {
         list: (root: string) => Promise<{ name: string; description: string }[]>;

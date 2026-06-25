@@ -212,14 +212,6 @@ export function installBrowserPreviewApi() {
       search: async () => ({ hits: [], fellBack: false, mode: 'text' }),
       reindex: async () => ({ ok: false, error: 'Browser preview has no codebase index' }),
     },
-    cliAgent: {
-      run: async () => ({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
-      cancel: async () => undefined,
-      runStream: () => ({
-        callId: 'preview',
-        result: Promise.resolve({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
-      }),
-    },
     skills: {
       list: async () => [],
       read: async () => '',

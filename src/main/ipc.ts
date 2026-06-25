@@ -17,7 +17,6 @@ import type { GitHubService } from './services/github-service';
 import type { AnalysisService } from './services/analysis-service';
 import type { CodebaseSearchService } from './services/codebase-search-service';
 import type { FileWatcherService } from './services/file-watcher-service';
-import type { CliAgentService, CliAgentResult } from './services/cli-agent-service';
 import type { SkillsService } from './services/skills-service';
 import { classifyCommand } from '../shared/command-policy';
 
@@ -189,7 +188,6 @@ export interface IpcDeps {
   analysisService: AnalysisService;
   codebaseSearchService: CodebaseSearchService;
   fileWatcherService: FileWatcherService;
-  cliAgentService: CliAgentService;
   skillsService: SkillsService;
 }
 
@@ -206,7 +204,6 @@ export function registerIpc(deps: IpcDeps): void {
   registerContextIpc(deps);
   registerRulesIpc();
   registerCodebaseIpc(deps);
-  registerCliAgentIpc(deps);
   registerSkillsIpc(deps);
 }
 
@@ -712,126 +709,6 @@ function registerCodebaseIpc({ codebaseSearchService }: IpcDeps): void {
   });
 }
 
-function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
-  // Per-callId AbortControllers so a `cliagent:cancel` from the renderer can
-  // SIGTERM a specific in-flight CLI run. Without this, a cancelled agent run
-  // keeps its claude/codex subprocess alive until the 5-minute hard timeout.
-  const cliAbortControllers = new Map<string, AbortController>();
-
-  ipcMain.handle('cliagent:cancel', (event, callId: string) => {
-    assertAppOrigin(event);
-    const controller = cliAbortControllers.get(callId);
-    if (controller) {
-      try {
-        controller.abort();
-      } catch {
-        /* already aborted */
-      }
-      cliAbortControllers.delete(callId);
-    }
-  });
-
-  ipcMain.handle('cliagent:run', async (event, cwd: string, params: unknown) => {
-    assertAppOrigin(event);
-    const safeCwd = await assertAllowedRoot(cwd);
-    const p = (params || {}) as {
-      tool?: unknown;
-      prompt?: unknown;
-      model?: unknown;
-      baseURL?: unknown;
-      apiKey?: unknown;
-      allowDangerousBypass?: unknown;
-    };
-    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
-      return { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
-    }
-    await confirmDangerousAction(
-      event,
-      '确认启动外部 CLI Agent？',
-      p.allowDangerousBypass ? `${p.tool} 将使用权限绕过参数运行，可能读写工作区并执行命令。` : `${p.tool} 将不使用权限绕过参数运行；如 CLI 要求确认，可能会中止或等待。`,
-      String(p.prompt ?? '').slice(0, 1200)
-    );
-    return cliAgentService.run({
-      tool: p.tool,
-      cwd: safeCwd,
-      prompt: String(p.prompt ?? ''),
-      model: p.model ? String(p.model) : undefined,
-      baseURL: p.baseURL ? String(p.baseURL) : undefined,
-      apiKey: p.apiKey ? String(p.apiKey) : undefined,
-      allowDangerousBypass: p.allowDangerousBypass === true,
-    });
-  });
-
-  // Streaming variant. The caller passes a callId (renderer-side uuid). Events
-  // arrive on per-call channels `cliagent:stream-<callId>` so multiple parallel
-  // CLI runs don't interleave. Final {ok, output, error, errorKind} is sent on
-  // the 'complete' event AND returned from the invoke (for the caller's await).
-  ipcMain.handle('cliagent:runStream', async (event, callId: string, cwd: string, params: unknown) => {
-    assertAppOrigin(event);
-    const safeCwd = await assertAllowedRoot(cwd);
-    const sender = event.sender;
-    const safeSend = (channel: string, payload: unknown) => {
-      try {
-        if (!sender.isDestroyed()) sender.send(channel, payload);
-      } catch {
-        // window closed mid-stream
-      }
-    };
-    const p = (params || {}) as {
-      tool?: unknown;
-      prompt?: unknown;
-      model?: unknown;
-      baseURL?: unknown;
-      apiKey?: unknown;
-      allowDangerousBypass?: unknown;
-    };
-    const channel = `cliagent:stream-${callId}`;
-    if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
-      const err: CliAgentResult = { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
-      safeSend(channel, { type: 'complete', result: err });
-      return err;
-    }
-    await confirmDangerousAction(
-      event,
-      '确认启动外部 CLI Agent？',
-      p.allowDangerousBypass ? `${p.tool} 将使用权限绕过参数运行，可能读写工作区并执行命令。` : `${p.tool} 将不使用权限绕过参数运行；如 CLI 要求确认，可能会中止或等待。`,
-      String(p.prompt ?? '').slice(0, 1200)
-    );
-    const controller = new AbortController();
-    cliAbortControllers.set(callId, controller);
-    return cliAgentService
-      .runStream(
-        {
-          tool: p.tool,
-          cwd: safeCwd,
-          prompt: String(p.prompt ?? ''),
-          model: p.model ? String(p.model) : undefined,
-          baseURL: p.baseURL ? String(p.baseURL) : undefined,
-          apiKey: p.apiKey ? String(p.apiKey) : undefined,
-          allowDangerousBypass: p.allowDangerousBypass === true,
-        },
-        {
-          onStart: () => safeSend(channel, { type: 'start' }),
-          onStdout: (chunk: string) => safeSend(channel, { type: 'stdout', chunk }),
-          onStderr: (chunk: string) => safeSend(channel, { type: 'stderr', chunk }),
-          onExit: (code: number | null, signal: NodeJS.Signals | null) =>
-            safeSend(channel, { type: 'exit', code, signal }),
-          onError: (kind: unknown, message: string) =>
-            safeSend(channel, { type: 'error', kind, message }),
-        },
-        { signal: controller.signal }
-      )
-      .then((result: CliAgentResult) => {
-        cliAbortControllers.delete(callId);
-        safeSend(channel, { type: 'complete', result });
-        return result;
-      })
-      .catch((err) => {
-        cliAbortControllers.delete(callId);
-        throw err;
-      });
-  });
-}
 
 function registerSkillsIpc({ skillsService }: IpcDeps): void {
   ipcMain.handle('skills:list', async (event, root: string) => {
