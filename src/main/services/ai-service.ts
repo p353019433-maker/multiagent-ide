@@ -12,6 +12,22 @@ import type {
 } from '../../shared/types';
 import { getFimCapability, fimBaseURL } from '../../shared/fim';
 
+/** Gemini's OpenAI-compatible endpoint. */
+export const GEMINI_OPENAI_BASE = 'https://generativelanguage.googleapis.com/v1beta/openai';
+
+/**
+ * Resolve the baseURL for an OpenAI-compatible client. An explicit provider
+ * baseURL always wins; otherwise `google` providers default to Gemini's
+ * OpenAI-compatible endpoint so the `google` type is self-sufficient even
+ * without the preset (every other type falls back to the SDK default). Gemini is
+ * served through the OpenAI-compatible API rather than a separate native adapter.
+ */
+export function openAIBaseURL(provider: Pick<ModelProvider, 'type' | 'baseURL'>): string | undefined {
+  if (provider.baseURL) return provider.baseURL;
+  if (provider.type === 'google') return GEMINI_OPENAI_BASE;
+  return undefined;
+}
+
 export class AIService {
   private store: StoreService;
   // Per-request abort controllers, keyed by callId (string). Each streaming
@@ -109,7 +125,7 @@ export class AIService {
         });
       } else {
         // OpenAI-compatible
-        const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+        const client = new OpenAI({ apiKey, baseURL: openAIBaseURL(provider) });
         await client.chat.completions.create({
           model: provider.defaultModel || 'gpt-4o-mini',
           max_tokens: 10,
@@ -179,7 +195,7 @@ export class AIService {
       }
 
       // sentinel transport: wrap in FIM tokens, send as a plain completion.
-      const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+      const client = new OpenAI({ apiKey, baseURL: openAIBaseURL(provider) });
       const prompt = cap.format!(req.prefix, req.suffix);
       const resp = await client.completions.create({
         model: req.model,
@@ -213,7 +229,7 @@ export class AIService {
     if (texts.length === 0) return [];
 
     const apiKey = await this.getApiKey(provider);
-    const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+    const client = new OpenAI({ apiKey, baseURL: openAIBaseURL(provider) });
     const resp = await client.embeddings.create({ model, input: texts });
     // Preserve input order via the index field.
     const out: number[][] = new Array(texts.length);
@@ -358,7 +374,7 @@ export class AIService {
     messages: ChatMessage[],
     options: ChatOptions
   ): Promise<ChatResult> {
-    const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+    const client = new OpenAI({ apiKey, baseURL: openAIBaseURL(provider) });
     const oaiMessages = this.buildOpenAIMessages(messages, options.systemPrompt);
     const tools = this.buildOpenAITools(options);
 
@@ -404,7 +420,7 @@ export class AIService {
     callbacks: StreamCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
-    const client = new OpenAI({ apiKey, baseURL: provider.baseURL || undefined });
+    const client = new OpenAI({ apiKey, baseURL: openAIBaseURL(provider) });
     const oaiMessages = this.buildOpenAIMessages(messages, options.systemPrompt);
     const tools = this.buildOpenAITools(options);
 
