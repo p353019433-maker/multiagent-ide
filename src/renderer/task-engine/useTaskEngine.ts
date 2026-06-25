@@ -17,7 +17,7 @@ import type {
 } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { executeSingleTool, type ToolContext } from './toolExecutor';
-import { resolveWorkspacePath, classifyToolError, compactMessages } from './taskUtils';
+import { resolveWorkspacePath, classifyToolError, compactMessages, checkpointSnapshotPaths } from './taskUtils';
 import type { GateActionFn } from './useApproval';
 
 export interface TaskEngineDeps {
@@ -383,7 +383,15 @@ export function useTaskEngine(deps: TaskEngineDeps) {
           before: snap.isNew ? null : `__snap__:${snap.snapshotId}`,
         })),
       };
-      safeSetCheckpoints((prev) => [cp, ...prev].slice(0, 20));
+      safeSetCheckpoints((prev) => {
+        const combined = [cp, ...prev];
+        // GC the snapshots of any checkpoint pushed past the retained window:
+        // once it falls off the list it can never be reverted, so its
+        // .ide/.history/*.snap files would otherwise leak forever.
+        const evicted = combined.slice(20);
+        if (evicted.length > 0) void deleteCheckpointSnapshots(evicted);
+        return combined.slice(0, 20);
+      });
 
       // Produce a verifiable artifact: what changed + verification result.
       await generateArtifact(turnLabel || '未命名改动', Array.from(turnSnapshots.current.keys()));
@@ -457,6 +465,18 @@ export function useTaskEngine(deps: TaskEngineDeps) {
   const abort = () => {
     window.api.ai.abort();
     safeSetIsStreaming(false);
+  };
+
+  /**
+   * Delete the on-disk .snap files backing the given checkpoints. Called when a
+   * checkpoint is evicted past the retained window so .ide/.history never grows
+   * without bound. Idempotent — a missing snapshot is ignored.
+   */
+  const deleteCheckpointSnapshots = async (cps: Checkpoint[]) => {
+    const root = rootPathRef.current;
+    if (!root) return;
+    const paths = checkpointSnapshotPaths(cps, root);
+    await Promise.all(paths.map((p) => window.api.fs.delete(p).catch(() => {})));
   };
 
   /** Revert all file changes captured in a checkpoint. */

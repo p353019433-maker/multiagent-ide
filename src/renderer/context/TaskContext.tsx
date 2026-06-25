@@ -4,6 +4,7 @@ import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, O
 import { useWorkspace } from './WorkspaceContext';
 import { runHeadlessTask } from '../task-engine/headlessTaskRunner';
 import { runDebateFull } from '../task-engine/debate-engine';
+import { mainRepoFromWorktreePath } from '../task-engine/taskUtils';
 import {
   loadConversations,
   createConversationPersister,
@@ -552,6 +553,18 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const deleteConversation = useCallback((id: string) => {
+    // Reclaim the conversation's isolated worktree (debate/orchestrate) so its
+    // <mainRoot>_wt/<branch> directory + branch don't leak on disk after the
+    // conversation is removed. Fire-and-forget; worktreeRemove still prompts for
+    // confirmation (IPC-enforced), giving the user a chance to keep the work.
+    const conv = conversationsRef.current.find((c) => c.id === id);
+    const wt = conv?.worktree;
+    if (wt?.path) {
+      const mainRoot = mainRepoFromWorktreePath(wt.path);
+      if (mainRoot) {
+        void window.api.git.worktreeRemove(mainRoot, wt.path, wt.branch).catch(() => {});
+      }
+    }
     setConversations((prev) => prev.filter((c) => c.id !== id));
     setActiveConversationId((current) => {
       if (current !== id) return current;
