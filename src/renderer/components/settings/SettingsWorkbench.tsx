@@ -268,7 +268,8 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
   const navItems: { id: typeof tab; label: string; icon: typeof Users; description: string }[] = [
     { id: 'providers', label: '模型与 Provider', icon: Boxes, description: '配置模型服务、API Key、baseURL 和默认模型' },
-    { id: 'roles', label: 'Agent / 多角色', icon: Sparkles, description: '配置多角色阶段、角色职责和运行参数' },
+    { id: 'roles', label: '多角色阶段', icon: Sparkles, description: '配置多角色阶段、角色职责和运行参数' },
+    { id: 'agents', label: '智能体清单', icon: Users, description: '管理 CLI / API 智能体与其后端绑定' },
     { id: 'index', label: '索引与代码理解', icon: Search, description: '配置 embedding、语义索引和重建索引' },
     { id: 'github', label: 'GitHub / 外部服务', icon: Plug, description: '配置 GitHub token 与外部写操作说明' },
     { id: 'safety', label: '安全与审批', icon: ShieldCheck, description: '审批模式与外部不可逆操作确认' },

@@ -10,6 +10,7 @@ import { onOpenPalette, type PaletteMode } from '../palette/paletteEvents';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { useTheme } from '../../context/ThemeContext';
+import { worktreePathFor } from '../../task-engine/taskUtils';
 import { useEditorActions, useEditorState } from '../../context/EditorContext';
 import { THEMES } from '../../theme';
 import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
@@ -50,7 +51,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
       const baseBranch = await window.api.git.currentBranch(rootPath);
       const branch = `task-${Date.now().toString(36)}`;
       const parentDir = (window as Window & { __WORKTREE_PARENT__?: string }).__WORKTREE_PARENT__ || rootPath;
-      const wtPath = `${parentDir}_wt/${branch}`;
+      const wtPath = worktreePathFor(parentDir, branch);
       const res = await window.api.git.worktreeAdd(rootPath, wtPath, branch, baseBranch);
       if (!res.success) {
         setWorktreeNotice(`创建 worktree 失败：${res.message}`);

@@ -12,6 +12,7 @@ import {
   type DebateRoleName,
 } from '@shared/roles';
 import { runHeadlessTask, type HeadlessTaskResult } from './headlessTaskRunner';
+import { worktreePathFor } from './taskUtils';
 
 // Re-export the canonical 5-role config types (analyst/proposer/critic/
 // synthesizer/executor) so the engine module stays the one import site for
@@ -136,8 +137,7 @@ export async function runDebateFull(
   // user's main workspace. Mirrors the orchestrate path in TaskContext: the
   // worktree lives at <root>_wt/<branch>, branched off the current branch.
   const branch = `debate-${Date.now()}`;
-  const parentDir = workspaceRoot.endsWith('/') ? workspaceRoot.slice(0, -1) : workspaceRoot;
-  const wtPath = `${parentDir}_wt/${branch}`;
+  const wtPath = worktreePathFor(workspaceRoot, branch);
   let worktreePath: string;
   let baseBranch: string | undefined;
   try {

@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { resolveWorkspacePath, classifyToolError, compactMessages } from './taskUtils';
-import type { ChatMessage } from '@shared/types';
+import {
+  resolveWorkspacePath,
+  classifyToolError,
+  compactMessages,
+  checkpointSnapshotPaths,
+  mainRepoFromWorktreePath,
+  worktreePathFor,
+} from './taskUtils';
+import type { ChatMessage, Checkpoint } from '@shared/types';
 
 describe('resolveWorkspacePath', () => {
   it('resolves relative paths', () => {
@@ -90,5 +97,52 @@ describe('compactMessages', () => {
     const firstTail = out[1];
     expect(firstTail.role).toBe('assistant');
     expect(firstTail.toolCalls).toBeUndefined();
+  });
+});
+
+describe('checkpointSnapshotPaths', () => {
+  const cp = (id: string, files: Checkpoint['files']): Checkpoint => ({
+    id, label: id, createdAt: 0, files,
+  });
+  it('collects .snap paths for snapshot-backed files only', () => {
+    const cps = [
+      cp('a', [
+        { path: 'src/x.ts', before: '__snap__:111-aaa' },
+        { path: 'src/new.ts', before: null }, // newly-created file → no snapshot
+      ]),
+      cp('b', [{ path: 'src/y.ts', before: '__snap__:222-bbb' }]),
+    ];
+    expect(checkpointSnapshotPaths(cps, '/repo')).toEqual([
+      '/repo/.ide/.history/111-aaa.snap',
+      '/repo/.ide/.history/222-bbb.snap',
+    ]);
+  });
+  it('ignores legacy inline-content checkpoints and returns [] for none', () => {
+    const cps = [cp('c', [{ path: 'a.ts', before: 'inline old content' }])];
+    expect(checkpointSnapshotPaths(cps, '/repo')).toEqual([]);
+    expect(checkpointSnapshotPaths([], '/repo')).toEqual([]);
+  });
+});
+
+describe('mainRepoFromWorktreePath', () => {
+  it('derives the main repo from the <root>_wt/<branch> convention', () => {
+    expect(mainRepoFromWorktreePath('/Users/me/proj_wt/debate-123')).toBe('/Users/me/proj');
+    // branch may contain slashes; the last _wt/ segment is the boundary
+    expect(mainRepoFromWorktreePath('/a/x_wt/proj_wt/feat/y')).toBe('/a/x_wt/proj');
+  });
+  it('returns null for non-worktree paths', () => {
+    expect(mainRepoFromWorktreePath('/Users/me/proj/src/a.ts')).toBeNull();
+    expect(mainRepoFromWorktreePath('_wt/x')).toBeNull(); // nothing before the marker
+  });
+});
+
+describe('worktreePathFor', () => {
+  it('builds <mainRoot>_wt/<branch> and normalizes a trailing slash', () => {
+    expect(worktreePathFor('/Users/me/proj', 'debate-1')).toBe('/Users/me/proj_wt/debate-1');
+    expect(worktreePathFor('/Users/me/proj/', 'debate-1')).toBe('/Users/me/proj_wt/debate-1');
+  });
+  it('round-trips with mainRepoFromWorktreePath', () => {
+    const root = '/Users/me/proj';
+    expect(mainRepoFromWorktreePath(worktreePathFor(root, 'task-7-1'))).toBe(root);
   });
 });

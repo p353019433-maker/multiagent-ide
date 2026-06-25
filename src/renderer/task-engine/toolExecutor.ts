@@ -11,6 +11,7 @@ import type { ToolCall, PlanStep } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { applyEdit } from './applyEdit';
 import { validateToolArgs } from './validateToolArgs';
+import { worktreePathFor } from './taskUtils';
 
 // Build the schema lookup once so dispatch doesn't walk the array per call.
 const TOOL_SCHEMAS: Record<string, (typeof BUILTIN_TOOLS)[number]['parameters']> = {};
@@ -53,6 +54,21 @@ export interface ToolContext {
 export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise<string> {
   const args = tc.arguments as Record<string, unknown>;
   const { rootPath, resolvePath, gateAction, writeFileTracked, getGitHubContext } = ctx;
+
+  // Validate arguments against the tool's declared schema BEFORE dispatch.
+  // Without this, a model that omits `content` writes the literal string
+  // "undefined" to disk, and a non-string `command` reaches the danger
+  // classifier as `undefined` and slips past every regex. A failure here is
+  // deterministic (same args → same result), so classifyToolError treats it as
+  // non-retriable and the message is fed back so the model can fix the call.
+  // Unknown tools have no schema and fall through to the switch's default.
+  const schema = TOOL_SCHEMAS[tc.name];
+  if (schema) {
+    const validationError = validateToolArgs(args, schema);
+    if (validationError) {
+      throw new Error(`参数校验失败（${tc.name}）：${validationError}`);
+    }
+  }
 
   switch (tc.name) {
     // ── File Operations ──
@@ -202,8 +218,9 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'git_create_branch': {
       const cwd = rootPath || '/';
       const name = args.name as string;
+      // Local, reversible git op — auto-runs in auto mode per project charter
+      // (§3.4: background/auto agents may perform local git). Only readonly gates.
       const ok = await gateAction(tc.id, `创建并切换分支 ${name}`, 'command', '', `git checkout -b ${name}`, 'command', {
-        dangerous: true,
         dangerReason: '切换工作区分支',
       });
       if (!ok) return '操作被用户拒绝';
@@ -212,8 +229,8 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'git_switch_branch': {
       const cwd = rootPath || '/';
       const name = args.name as string;
+      // Local, reversible — auto-runs in auto mode (charter §3.4).
       const ok = await gateAction(tc.id, `切换分支 ${name}`, 'command', '', `git switch ${name}`, 'command', {
-        dangerous: true,
         dangerReason: '切换工作区分支',
       });
       if (!ok) return '操作被用户拒绝';
@@ -222,8 +239,10 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'git_commit': {
       const cwd = rootPath || '/';
       const message = args.message as string;
+      // Local, reversible (git reset) — auto-runs in auto mode (charter §3.4).
+      // Note: stageAll stages every change; the reason is kept so readonly mode
+      // surfaces it, but it is no longer forced-manual in auto mode.
       const ok = await gateAction(tc.id, '暂存全部并提交', 'command', '', `git add -A && git commit -m "${message}"`, 'command', {
-        dangerous: true,
         dangerReason: 'stageAll 会暂存全部改动（含用户未授权改动）并提交',
       });
       if (!ok) return '操作被用户拒绝';
@@ -233,10 +252,12 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
     case 'git_push': {
       const cwd = rootPath || '/';
       const remote = (args.remote as string) || 'origin';
-      // Pushing to a remote is irreversible-ish — always gated (dangerous).
-      const ok = await gateAction(tc.id, `推送到 ${remote}`, 'command', '', `git push ${remote}`, 'command', {
-        dangerous: true,
-        dangerReason: '推送到远端',
+      // Pushing to a remote is an external, irreversible op, so classify it as
+      // 'external' (NOT 'command'). With 'command', full mode would auto-allow
+      // and push silently; 'external' still requires confirmation unless the user
+      // opted in via allowExternalInFull, and is always manual in auto. (§3.2)
+      const ok = await gateAction(tc.id, `推送到 ${remote}`, 'external', '', `git push ${remote}`, 'command', {
+        dangerReason: '推送到远端（不可逆）',
       });
       if (!ok) return '操作被用户拒绝';
       return await window.api.git.push(cwd, remote);
@@ -251,10 +272,9 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const branch = args.branch as string;
       const base = args.base as string | undefined;
       const wtPath = args.path as string | undefined;
-      const parentDir = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
-      const path = wtPath || `${parentDir}_wt/${branch}`;
+      const path = wtPath || worktreePathFor(cwd, branch);
+      // Local, reversible (worktree can be removed) — auto-runs (charter §3.4).
       const ok = await gateAction(tc.id, `创建 worktree 分支 ${branch}`, 'command', '', `git worktree add -b ${branch} ${path}`, 'command', {
-        dangerous: true,
         dangerReason: '创建新分支和 worktree 目录',
       });
       if (!ok) return '操作被用户拒绝';
@@ -266,10 +286,11 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const cwd = rootPath || '/';
       const source = args.source as string;
       const method = (args.method as string) || 'merge';
-      // Merging rewrites branch history — always gated (dangerous).
-      const ok = await gateAction(tc.id, `合并分支 ${source}（${method}）`, 'command', '', `git merge ${source}`, 'command', {
-        dangerous: true,
-        dangerReason: '合并分支',
+      // Merging a branch into the current/base branch is external/irreversible
+      // (charter §3.2 lists "分支合并到基线" as needing confirmation). 'external'
+      // prevents a silent merge in full mode and is always manual in auto.
+      const ok = await gateAction(tc.id, `合并分支 ${source}（${method}）`, 'external', '', `git merge ${source}`, 'command', {
+        dangerReason: '合并分支（可能改写历史）',
       });
       if (!ok) return '操作被用户拒绝';
       const res = await window.api.git.worktreeMerge(cwd, source, method as any);

@@ -212,10 +212,12 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
             },
             required: ['content', 'status'],
           },
-          description: '完整的有序步骤列表（全量覆盖）。',
+          description: '完整的有序步骤列表（全量覆盖）。传入空列表或省略即清空当前计划。',
         },
       },
-      required: ['steps'],
+      // `steps` is intentionally NOT required: omitting it clears the plan
+      // ("0 步"), which the executor handles. Keeping it required would make the
+      // now-wired arg validator reject a legitimate clear-the-plan call.
     },
   },
   {
@@ -744,6 +746,8 @@ You have access to many tools that let you interact with the user's workspace:
 **Code Analysis:**
 - read_lints: Run ESLint/TypeScript diagnostics
 - extract_symbols: Extract functions, classes, exports, interfaces from TS/JS files
+- find_definition: Jump to where a symbol is defined
+- find_references: Find every reference to a symbol (use to assess a change's impact)
 - codebase_search: Semantic/concept search across the workspace — use this first when you don't know the exact keyword ("where is X handled?"). Falls back to full-text search.
 
 **Planning:**
@@ -754,6 +758,11 @@ You have access to many tools that let you interact with the user's workspace:
 - git_status: See what's changed, current branch
 - git_diff: View changes vs HEAD
 - git_log: Recent commit history
+- git_branch_list / git_create_branch / git_switch_branch: List or switch branches (local)
+- git_commit: Stage all and commit (local, reversible)
+- git_push: Push to a remote (external/irreversible — always requires confirmation)
+- git_worktree_list / git_worktree_add: Manage isolated worktrees for parallel work
+- git_merge / git_merge_diff: Merge a branch (to base — always confirmed) or preview the merge diff
 
 **Commands:**
 - run_command: Run a shell command (with timeout)

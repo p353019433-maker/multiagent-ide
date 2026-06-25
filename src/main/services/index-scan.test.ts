@@ -166,4 +166,19 @@ describe('scanChunks', () => {
     // overlapping windows: second chunk starts before the first ends
     expect(chunks[1].startLine).toBeLessThan(chunks[0].endLine);
   });
+
+  it('keys chunk hashes by content only, not line position (.py → line-window path)', async () => {
+    const body = Array.from({ length: 80 }, (_, i) => `x_${i} = ${i}`).join('\n');
+    await write('m.py', body);
+    const chunks = await scanChunks(dir);
+    expect(chunks.length).toBeGreaterThan(1);
+    // Each hash must equal the hash of its payload text — i.e. the absolute
+    // start line is no longer mixed in, so an unchanged block that merely
+    // shifts position reuses its cached embedding instead of re-embedding.
+    for (const c of chunks) {
+      expect(c.hash).toBe(hashString(c.text));
+    }
+    // Sanity: the 2nd window genuinely starts past line 1 yet is content-keyed.
+    expect(chunks[1].startLine).toBeGreaterThan(1);
+  });
 });

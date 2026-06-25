@@ -7,7 +7,7 @@ import TaskMessage from './TaskMessage';
 import type { ChatMessage as ChatMessageType } from '@shared/types';
 import { TASK_SYSTEM_PROMPT } from '@shared/tools';
 import { setInlineCompletionSource, updateInlineCompletionConfig } from '../editor/inlineCompletion';
-import { resolveWorkspacePath } from '../../task-engine/taskUtils';
+import { resolveWorkspacePath, worktreePathFor } from '../../task-engine/taskUtils';
 import { loadSkillsMenu } from '../../task-engine/skills';
 import { useApproval } from '../../task-engine/useApproval';
 import { useTaskEngine } from '../../task-engine/useTaskEngine';
@@ -402,7 +402,7 @@ ${suffix.slice(0, 500)}${editsCtx}
       const currentBranch = await window.api.git.currentBranch(rootPath);
       const branchName = `task-${Date.now().toString(36)}`;
       const parentDir = (window as Window & { __WORKTREE_PARENT__?: string }).__WORKTREE_PARENT__ || rootPath;
-      const wtPath = `${parentDir}_wt/${branchName}`;
+      const wtPath = worktreePathFor(parentDir, branchName);
 
       const result = await window.api.git.worktreeAdd(rootPath, wtPath, branchName, currentBranch);
       if (!result.success) {

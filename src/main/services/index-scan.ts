@@ -447,7 +447,12 @@ export async function scanChunks(root: string): Promise<RawChunk[]> {
           startLine: start + 1,
           endLine: Math.min(start + WINDOW, lines.length),
           text: payload,
-          hash: hashString(rel + ':' + start + ':' + payload),
+          // Content-addressed: payload already carries the `// <rel>` prefix, so
+          // hashing it alone keys the embedding cache by content. Mixing in the
+          // absolute start line meant an unchanged block that merely shifted
+          // position (e.g. lines inserted above) missed the cache and got
+          // re-embedded; keying on content lets it reuse the cached vector.
+          hash: hashString(payload),
         });
         if (start + WINDOW >= lines.length) break;
       }

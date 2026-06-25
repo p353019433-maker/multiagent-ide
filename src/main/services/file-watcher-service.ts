@@ -7,6 +7,13 @@ export class FileWatcherService {
   private ignoreList = new Set<string>();
   private debounceTimer: NodeJS.Timeout | null = null;
   private pendingEvents = new Map<string, 'add' | 'change' | 'unlink'>();
+
+  /**
+   * Optional main-process hook fired (debounced) whenever watched files change,
+   * alongside the renderer notification. Wired to IndexService.invalidate so the
+   * code index reflects on-disk edits instead of waiting out its 60s TTL.
+   */
+  onChange: ((events: { type: 'add' | 'change' | 'unlink'; path: string }[]) => void) | null = null;
   
   startWatching(rootPath: string, win: BrowserWindow): void {
     this.stopWatching();
@@ -46,7 +53,11 @@ export class FileWatcherService {
           path: p
         }));
         this.pendingEvents.clear();
-        
+
+        // Main-process consumers first (e.g. invalidate the code index), then
+        // notify the renderer to reload editors / refresh the tree.
+        this.onChange?.(events);
+
         if (!win.isDestroyed()) {
           win.webContents.send('fs:fileChanged', events);
         }

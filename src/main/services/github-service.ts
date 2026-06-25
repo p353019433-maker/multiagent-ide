@@ -9,11 +9,6 @@ import type { GitHubReviewComment } from '@shared/types';
 const enc = encodeURIComponent;
 
 export class GitHubService {
-  private getToken(startsWith: string = ''): string | null {
-    // Token is stored encrypted by the store service
-    return startsWith || null; // caller passes decrypted value
-  }
-
   private async fetch(token: string, path: string, options: RequestInit = {}): Promise<any> {
     const res = await fetch(`https://api.github.com${path}`, {
       ...options,

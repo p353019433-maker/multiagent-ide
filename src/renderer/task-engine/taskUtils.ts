@@ -4,7 +4,7 @@
  */
 
 import { v4 as uuid } from 'uuid';
-import type { ChatMessage as ChatMessageType } from '@shared/types';
+import type { ChatMessage as ChatMessageType, Checkpoint } from '@shared/types';
 
 /**
  * Resolve a tool-supplied path against the workspace root, rejecting any path
@@ -151,4 +151,46 @@ export function compactMessages(msgs: ChatMessageType[]): ChatMessageType[] {
   }
 
   return [summary, ...trimmedTail];
+}
+
+/**
+ * Map checkpoints to the on-disk `.snap` files backing them. Used to GC
+ * snapshots when a checkpoint is evicted from the retained list: once it can no
+ * longer be reverted, its snapshots are dead weight that otherwise leak under
+ * `.ide/.history/`. Pure — the caller performs the actual deletion. New-file
+ * checkpoints (`before === null`) have no snapshot and are skipped.
+ */
+export function checkpointSnapshotPaths(cps: Checkpoint[], root: string): string[] {
+  const paths: string[] = [];
+  for (const cp of cps) {
+    for (const f of cp.files) {
+      if (typeof f.before === 'string' && f.before.startsWith('__snap__:')) {
+        paths.push(`${root}/.ide/.history/${f.before.slice('__snap__:'.length)}.snap`);
+      }
+    }
+  }
+  return paths;
+}
+
+/**
+ * Derive the main repository root from an isolated worktree path. Worktrees are
+ * created at `<mainRoot>_wt/<branch>` (see debate-engine and orchestrate), so the
+ * main repo is everything before the last `_wt/` segment. Returns null when the
+ * path doesn't follow that convention, so callers can safely skip cleanup.
+ */
+export function mainRepoFromWorktreePath(worktreePath: string): string | null {
+  const idx = worktreePath.lastIndexOf('_wt/');
+  if (idx <= 0) return null;
+  return worktreePath.slice(0, idx);
+}
+
+/**
+ * Build the isolated-worktree path for a branch: `<mainRoot>_wt/<branch>` (a
+ * sibling of the repo). Single source of truth for the convention shared by the
+ * debate / orchestrate / worktree-add paths, and the inverse of
+ * mainRepoFromWorktreePath. A trailing slash on the root is normalized away.
+ */
+export function worktreePathFor(mainRoot: string, branch: string): string {
+  const parent = mainRoot.endsWith('/') ? mainRoot.slice(0, -1) : mainRoot;
+  return `${parent}_wt/${branch}`;
 }

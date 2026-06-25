@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AIService } from './ai-service';
+import { AIService, openAIBaseURL, GEMINI_OPENAI_BASE } from './ai-service';
 import type { ChatMessage, ChatOptions, ToolDefinition } from '../../shared/types';
 
 // Stub store — the builders don't touch it.
@@ -127,5 +127,19 @@ describe('tool argument parsing', () => {
 
   it('rejects non-object JSON values as tool argument objects', () => {
     expect(parseToolArguments('"not an object"')).toEqual({});
+  });
+});
+
+describe('openAIBaseURL', () => {
+  it('honors an explicit baseURL for any type', () => {
+    expect(openAIBaseURL({ type: 'google', baseURL: 'https://my.proxy/v1' })).toBe('https://my.proxy/v1');
+    expect(openAIBaseURL({ type: 'openai', baseURL: 'https://x/v1' })).toBe('https://x/v1');
+  });
+  it('defaults a google provider with no baseURL to the Gemini OpenAI endpoint', () => {
+    expect(openAIBaseURL({ type: 'google', baseURL: '' })).toBe(GEMINI_OPENAI_BASE);
+  });
+  it('leaves non-google types to the SDK default (undefined) when no baseURL', () => {
+    expect(openAIBaseURL({ type: 'openai', baseURL: '' })).toBeUndefined();
+    expect(openAIBaseURL({ type: 'custom', baseURL: '' })).toBeUndefined();
   });
 });
