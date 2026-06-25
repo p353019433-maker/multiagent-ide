@@ -13,7 +13,7 @@ import { useApproval } from '../../task-engine/useApproval';
 import { useTaskEngine } from '../../task-engine/useTaskEngine';
 import TaskSessionTabs from './TaskSessionTabs';
 import ModelPicker from './ModelPicker';
-import DeliveryTray from '../workbench/DeliveryTray';
+import RunInspector from '../workbench/RunInspector';
 import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
 import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Sparkles, Square } from 'lucide-react';
 import { AgentPlan, AgentRunBar, PendingApprovalView } from './TaskPanelSections';
@@ -736,7 +736,7 @@ ${suffix.slice(0, 500)}${editsCtx}
               关闭
             </button>
             <div className="min-h-0 flex-1">
-              <DeliveryTray
+              <RunInspector
                 toolExecutions={toolExecutions}
                 checkpoints={checkpoints}
                 artifacts={artifacts}

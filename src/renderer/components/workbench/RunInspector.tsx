@@ -34,10 +34,11 @@ const TOOL_TAG: Record<string, string> = {
 };
 
 /**
- * Chat-mode right tray (340): 本轮交付 / 验证记录 / 检查点. Reads the live task
- * engine state (changed files, verification artifacts, checkpoints).
+ * Right-side Run Inspector (340): live run evidence for the current task —
+ * 改动 / 工具 / 验证 / 回滚. Reads the live task engine state. Center stays the
+ * conversation; this panel is the operational evidence surface.
  */
-export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, multiRoleResult, onRevert, onOpen }: Props) {
+export default function RunInspector({ toolExecutions, checkpoints, artifacts, multiRoleResult, onRevert, onOpen }: Props) {
   const [tab, setTab] = useState<Tab>('delivery');
   const changed = changedFiles(toolExecutions);
   const deliveredFiles = changed.length > 0
