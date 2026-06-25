@@ -4,7 +4,6 @@ import { useTaskWorkspace, type RunDebateTaskResult } from '../../context/TaskCo
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
 import TaskMessage from './TaskMessage';
-import ToolExecutionRow from './ToolExecutionRow';
 import type { ChatMessage as ChatMessageType } from '@shared/types';
 import { TASK_SYSTEM_PROMPT } from '@shared/tools';
 import { setInlineCompletionSource, updateInlineCompletionConfig } from '../editor/inlineCompletion';
@@ -179,6 +178,22 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
     }
   };
   const hasRuntimeRows = messages.length > 0 || toolExecutions.length > 0 || isStreaming || multiRoleRunning;
+  const [inspectorDismissed, setInspectorDismissed] = useState(false);
+  const hasInspectorContent =
+    toolExecutions.length > 0 ||
+    checkpoints.length > 0 ||
+    artifacts.length > 0 ||
+    !!pendingApproval ||
+    multiRoleRunning ||
+    !!multiRoleResult ||
+    !!currentDebate;
+  const showInspector = hasInspectorContent && !inspectorDismissed;
+
+  useEffect(() => {
+    if (isStreaming || multiRoleRunning || pendingApproval || toolExecutions.some((e) => e.status === 'running')) {
+      setInspectorDismissed(false);
+    }
+  }, [isStreaming, multiRoleRunning, pendingApproval, toolExecutions]);
 
   const resolvePath = (p: string): string => resolveWorkspacePath(effectiveRootPath, p);
 
@@ -554,14 +569,6 @@ ${suffix.slice(0, 500)}${editsCtx}
           <TaskMessage key={msg.id} message={msg} />
         ))}
 
-        {toolExecutions.length > 0 && (
-          <div className="my-3 overflow-hidden rounded-[10px] border border-border shadow-card">
-            {toolExecutions.map((exec) => (
-              <ToolExecutionRow key={exec.id} execution={exec} />
-            ))}
-          </div>
-        )}
-
         {isStreaming && streamContent && (
           <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-4 py-4 text-sm">
             <div className="font-mono text-[9.5px] leading-[1.7] text-foreground/35">RUN</div>
@@ -706,16 +713,31 @@ ${suffix.slice(0, 500)}${editsCtx}
       </div>
       </div>
 
-      <aside className="w-[360px] flex-none border-l border-border">
-        <DeliveryTray
-          toolExecutions={toolExecutions}
-          checkpoints={checkpoints}
-          artifacts={artifacts}
-          multiRoleResult={multiRoleResult}
-          onRevert={revertCheckpoint}
-          onOpen={openFile}
-        />
-      </aside>
+      {showInspector && (
+        <aside className="w-[360px] flex-none border-l border-border">
+          <div className="flex h-full flex-col">
+            <button
+              type="button"
+              onClick={() => setInspectorDismissed(true)}
+              className="self-end px-3 py-2 text-11 text-foreground/45 hover:text-foreground"
+              aria-label="关闭运行详情"
+              title="关闭运行详情"
+            >
+              关闭
+            </button>
+            <div className="min-h-0 flex-1">
+              <DeliveryTray
+                toolExecutions={toolExecutions}
+                checkpoints={checkpoints}
+                artifacts={artifacts}
+                multiRoleResult={multiRoleResult}
+                onRevert={revertCheckpoint}
+                onOpen={openFile}
+              />
+            </div>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }
