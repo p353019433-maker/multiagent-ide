@@ -38,6 +38,47 @@ interface BackgroundSession {
   decoder: StringDecoder;
 }
 
+/**
+ * Kill a child process and its entire process tree.
+ *
+ * spawn() with a shell (`/bin/bash -c ...`) only gives us the PID of the
+ * shell wrapper. Killing just that PID leaves the shell's children
+ * (pipelines, `npm run dev`, dev servers) running as orphans. To reap the
+ * whole tree we spawn children in their own group (detached) and signal the
+ * negative group PID, then escalate SIGTERM → SIGKILL if it doesn't die.
+ */
+function killProcessTree(proc: ChildProcess | null, graceMs = 1500): void {
+  if (!proc || proc.exitCode !== null || proc.signalCode) return;
+  try {
+    // Signal the negative PID to hit the whole process group.
+    if (proc.pid) {
+      try {
+        process.kill(-proc.pid, 'SIGTERM');
+      } catch {
+        // ESRCH (group leader gone) or EPERM — fall back to direct kill.
+        proc.kill('SIGTERM');
+      }
+    } else {
+      proc.kill('SIGTERM');
+    }
+    // Escalate to SIGKILL after a grace window for processes that ignore SIGTERM.
+    const targetPid = proc.pid;
+    setTimeout(() => {
+      try {
+        if (targetPid) process.kill(-targetPid, 'SIGKILL');
+      } catch {
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          /* already dead */
+        }
+      }
+    }, graceMs).unref();
+  } catch {
+    /* already dead */
+  }
+}
+
 export class TerminalService {
   private sessions = new Map<string, PtySession>();
   private bgSessions = new Map<string, BackgroundSession>();
@@ -51,6 +92,8 @@ export class TerminalService {
   constructor() {
     // Periodically clean up stale background sessions (every 5 minutes).
     this.cleanupTimer = setInterval(() => this.pruneStaleBackgroundSessions(), 5 * 60_000);
+    // Don't keep the event loop alive solely for this timer.
+    this.cleanupTimer.unref();
   }
 
 
@@ -101,12 +144,40 @@ export class TerminalService {
   closeAll(): void {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     for (const session of this.sessions.values()) {
-      session.proc.kill();
+      try {
+        session.proc.kill();
+      } catch {
+        /* already dead */
+      }
     }
     this.sessions.clear();
-    // Also kill background sessions
+    // Also kill background sessions (full tree).
     for (const session of this.bgSessions.values()) {
-      session.proc.kill();
+      killProcessTree(session.proc);
+    }
+    this.bgSessions.clear();
+  }
+
+  /**
+   * Final teardown on app quit. Unlike closeAll() (which may run repeatedly
+   * on macOS where the app survives without windows), dispose() is one-shot
+   * and clears the cleanup timer so we don't leave a dangling interval.
+   */
+  dispose(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    for (const session of this.sessions.values()) {
+      try {
+        session.proc.kill();
+      } catch {
+        /* already dead */
+      }
+    }
+    this.sessions.clear();
+    for (const session of this.bgSessions.values()) {
+      killProcessTree(session.proc);
     }
     this.bgSessions.clear();
   }
@@ -117,15 +188,19 @@ export class TerminalService {
       const shell = os.platform() === 'win32' ? 'powershell.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['-Command', command] : ['-c', command];
 
-      const proc = spawn(shell, args, { cwd, env: safeEnv() });
+      const proc = spawn(shell, args, { cwd, env: safeEnv(), detached: true });
+      let settled = false;
       let stdout = '';
       let stderr = '';
 
       let timeout: NodeJS.Timeout | null = null;
       if (timeoutMs > 0) {
         timeout = setTimeout(() => {
-          proc.kill();
-          resolve({ stdout, stderr: stderr + '\n[命令超时]', exitCode: -1 });
+          killProcessTree(proc);
+          if (!settled) {
+            settled = true;
+            resolve({ stdout, stderr: stderr + '\n[命令超时]', exitCode: -1 });
+          }
         }, timeoutMs);
       }
 
@@ -134,12 +209,18 @@ export class TerminalService {
 
       proc.on('close', (code) => {
         if (timeout) clearTimeout(timeout);
-        resolve({ stdout, stderr, exitCode: code ?? 0 });
+        if (!settled) {
+          settled = true;
+          resolve({ stdout, stderr, exitCode: code ?? 0 });
+        }
       });
 
       proc.on('error', (err) => {
         if (timeout) clearTimeout(timeout);
-        resolve({ stdout, stderr: err.message, exitCode: -1 });
+        if (!settled) {
+          settled = true;
+          resolve({ stdout, stderr: err.message, exitCode: -1 });
+        }
       });
     });
   }
@@ -190,7 +271,7 @@ export class TerminalService {
     const args = os.platform() === 'win32' ? ['-Command', command] : ['-c', command];
 
     const id = uuid();
-    const proc = spawn(shell, args, { cwd, env: safeEnv() });
+    const proc = spawn(shell, args, { cwd, env: safeEnv(), detached: true });
     const session: BackgroundSession = { id, proc, output: '', running: true, exitCode: null, startedAt: Date.now(), decoder: new StringDecoder('utf8') };
 
     proc.stdout?.on('data', (data: Buffer) => {
@@ -233,7 +314,7 @@ export class TerminalService {
   killBackgroundCommand(id: string): boolean {
     const session = this.bgSessions.get(id);
     if (!session) return false;
-    session.proc.kill();
+    killProcessTree(session.proc);
     session.output += '\n[被用户终止]';
     session.running = false;
     this.bgSessions.delete(id);
@@ -246,7 +327,7 @@ export class TerminalService {
     const now = Date.now();
     for (const [id, session] of this.bgSessions) {
       if (session.running && now - session.startedAt > MAX_RUNNING_AGE_MS) {
-        session.proc.kill();
+        killProcessTree(session.proc);
         session.output += '\n[后台任务超时自动终止（30分钟）]';
         session.running = false;
         session.exitCode = -1;

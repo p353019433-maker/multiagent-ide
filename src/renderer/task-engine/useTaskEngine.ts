@@ -226,6 +226,9 @@ export function useTaskEngine(deps: TaskEngineDeps) {
           let unsubTool = () => {};
           let unsubComplete = () => {};
           let unsubError = () => {};
+          // Unique id for this streaming request so it can be aborted
+          // independently of any concurrent stream.
+          const callId = `turn_${uuid()}`;
           const cleanup = () => {
             unsubToken();
             unsubTool();
@@ -239,22 +242,26 @@ export function useTaskEngine(deps: TaskEngineDeps) {
             fn(value);
           };
 
-          unsubToken = window.api.ai.onStreamToken((token) => {
+          unsubToken = window.api.ai.onStreamToken((_id, token) => {
+            if (_id !== callId) return;
             content += token;
             safeSetStreamContent(content);
           });
-          unsubTool = window.api.ai.onStreamToolCall((tc) => {
+          unsubTool = window.api.ai.onStreamToolCall((_id, tc) => {
+            if (_id !== callId) return;
             toolCalls.push(tc);
           });
-          unsubComplete = window.api.ai.onStreamComplete((res) => {
+          unsubComplete = window.api.ai.onStreamComplete((_id, res) => {
+            if (_id !== callId) return;
             settle(resolve, { ...res, content, toolCalls: toolCalls.length ? toolCalls : res.toolCalls });
           });
-          unsubError = window.api.ai.onStreamError((err) => {
+          unsubError = window.api.ai.onStreamError((_id, err) => {
+            if (_id !== callId) return;
             settle(reject, new Error(err));
           });
 
           void window.api.ai
-            .chatStream(activeProviderIdRef.current!, loopMessages, {
+            .chatStream(callId, activeProviderIdRef.current!, loopMessages, {
               model: activeModelRef.current!,
               tools: BUILTIN_TOOLS,
               systemPrompt: buildSystemPrompt(),
@@ -482,8 +489,12 @@ export function useTaskEngine(deps: TaskEngineDeps) {
       }
     }
 
+    // Always reclaim on-disk snapshots for files we successfully reverted:
+    // those snapshots were only needed to perform the revert, and leaving
+    // them leaks .ide/.history/*.snap forever. (We keep the checkpoint record
+    // itself when some files failed so the checkpoint stays revertible.)
+    await Promise.all(snapshotPathsToDelete.map((p) => window.api.fs.delete(p).catch(() => {})));
     if (failed === 0) {
-      await Promise.all(snapshotPathsToDelete.map((path) => window.api.fs.delete(path).catch(() => {})));
       safeSetCheckpoints((prev) => prev.filter((c) => c.id !== cp.id));
     }
     if (reverted > 0) {

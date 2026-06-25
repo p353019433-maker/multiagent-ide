@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { statSync } from 'fs';
+import { statSync, constants as fsConstants } from 'fs';
 
 export interface FileNode {
   name: string;
@@ -79,12 +79,12 @@ export class FileService {
 
   async writeFile(filePath: string, content: string): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, content, 'utf-8');
+    await this.writeNoFollow(filePath, content);
   }
 
   async createFile(filePath: string): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, '', 'utf-8');
+    await this.writeNoFollow(filePath, '');
   }
 
   async createDirectory(dirPath: string): Promise<void> {
@@ -92,11 +92,51 @@ export class FileService {
   }
 
   async delete(targetPath: string): Promise<void> {
+    // The path was already canonicalized by assertAllowedPath, but refuse to
+    // delete if the leaf itself is a symlink pointing outside the workspace —
+    // `fs.rm` would follow it and remove the symlink's target tree.
+    try {
+      const st = await fs.lstat(targetPath);
+      if (st.isSymbolicLink()) {
+        const resolved = await fs.realpath(targetPath);
+        throw new Error(`拒绝删除符号链接目标：${targetPath} → ${resolved}`);
+      }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return; // nothing to delete
+      throw e;
+    }
     await fs.rm(targetPath, { recursive: true, force: true });
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
     await fs.rename(oldPath, newPath);
+  }
+
+  /**
+   * Write a file without following a symlink at the destination. The caller
+   * (via assertAllowedPath) hands us an already-canonicalized path; this closes
+   * the remaining TOCTOU window where a symlink is created at `filePath`
+   * between validation and write: O_NOFOLLOW makes the open fail (ELOOP) if the
+   * final component is a symlink, so we never write through it to an
+   * attacker-chosen target.
+   */
+  private async writeNoFollow(filePath: string, content: string): Promise<void> {
+    const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW;
+    let handle;
+    try {
+      handle = await fs.open(filePath, flags);
+    } catch (e) {
+      // Existing path that is a symlink (ELOOP) — refuse rather than follow.
+      if ((e as NodeJS.ErrnoException).code === 'ELOOP') {
+        throw new Error(`拒绝写入：目标 ${filePath} 是符号链接`);
+      }
+      throw e;
+    }
+    try {
+      await handle.writeFile(content, 'utf-8');
+    } finally {
+      await handle.close();
+    }
   }
 
   async searchFiles(rootPath: string, query: string): Promise<{ path: string; line: number; preview: string }[]> {

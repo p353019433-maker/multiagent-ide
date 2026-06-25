@@ -90,7 +90,12 @@ export function RolesSettings() {
                     min="0"
                     max="2"
                     value={cfg.temperature ?? 0.3}
-                    onChange={(e) => ctx.setDebateRoleConfig(role, { temperature: parseFloat(e.target.value) })}
+                    onChange={(e) => {
+                      const parsed = parseFloat(e.target.value);
+                      // parseFloat('') is NaN, which would poison the role
+                      // config; fall back to the default when the field is empty.
+                      ctx.setDebateRoleConfig(role, { temperature: Number.isFinite(parsed) ? parsed : undefined });
+                    }}
                     className="h-8 w-16 border border-editor-border bg-editor-bg px-2 text-xs text-foreground outline-none focus:border-editor-accent"
                   />
                 </div>

@@ -14,17 +14,35 @@ import { getFimCapability, fimBaseURL } from '../../shared/fim';
 
 export class AIService {
   private store: StoreService;
-  private abortControllers = new Map<number, AbortController>();
+  // Per-request abort controllers, keyed by callId (string). Each streaming
+  // request registers its own controller so concurrent streams on the same
+  // window (e.g. multi-agent orchestration) can be cancelled independently.
+  private abortControllers = new Map<string, { senderId: number; controller: AbortController }>();
 
   constructor(store: StoreService) {
     this.store = store;
   }
 
-  abort(senderId: number) {
-    const controller = this.abortControllers.get(senderId);
-    if (controller) {
-      controller.abort();
-      this.abortControllers.delete(senderId);
+  /** Abort a single in-flight stream by its callId. */
+  abort(callId: string) {
+    const entry = this.abortControllers.get(callId);
+    if (entry) {
+      entry.controller.abort();
+      this.abortControllers.delete(callId);
+    }
+  }
+
+  /** Abort every in-flight stream originating from a given sender. */
+  abortSender(senderId: number) {
+    for (const [callId, entry] of this.abortControllers) {
+      if (entry.senderId === senderId) {
+        try {
+          entry.controller.abort();
+        } catch {
+          /* already aborted */
+        }
+        this.abortControllers.delete(callId);
+      }
     }
   }
 
@@ -36,7 +54,19 @@ export class AIService {
    * webContents.
    */
   forgetSender(senderId: number): void {
-    this.abortControllers.delete(senderId);
+    this.abortSender(senderId);
+  }
+
+  /** Final teardown: abort every in-flight stream (app quit). */
+  dispose(): void {
+    for (const entry of this.abortControllers.values()) {
+      try {
+        entry.controller.abort();
+      } catch {
+        /* already aborted */
+      }
+    }
+    this.abortControllers.clear();
   }
 
   private getProviders(): ModelProvider[] {
@@ -211,6 +241,7 @@ export class AIService {
   }
 
   async chatStream(
+    callId: string,
     senderId: number,
     providerId: string,
     messages: ChatMessage[],
@@ -227,7 +258,7 @@ export class AIService {
     try {
       const apiKey = await this.getApiKey(provider);
       const controller = new AbortController();
-      this.abortControllers.set(senderId, controller);
+      this.abortControllers.set(callId, { senderId, controller });
       if (provider.type === 'anthropic') {
         await this.streamAnthropic(apiKey, provider, messages, options, callbacks, controller.signal);
       } else {
@@ -240,7 +271,7 @@ export class AIService {
         callbacks.onError(e?.message || String(e));
       }
     } finally {
-      this.abortControllers.delete(senderId);
+      this.abortControllers.delete(callId);
     }
   }
 

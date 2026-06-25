@@ -214,16 +214,15 @@ export function installBrowserPreviewApi() {
     },
     cliAgent: {
       run: async () => ({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
-      runStream: async () => ({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
+      cancel: async () => undefined,
+      runStream: () => ({
+        callId: 'preview',
+        result: Promise.resolve({ ok: false, output: '', error: 'CLI agents unavailable in browser preview' }),
+      }),
     },
     skills: {
       list: async () => [],
       read: async () => '',
-    },
-    agentLog: {
-      append: async () => undefined,
-      readTail: async () => [],
-      writeRound: async () => null,
     },
     github: {
       listIssues: async () => [],

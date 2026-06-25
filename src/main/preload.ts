@@ -85,31 +85,31 @@ const api = {
   ai: {
     chat: (providerId: string, messages: unknown[], options: unknown) =>
       ipcRenderer.invoke('ai:chat', providerId, messages, options),
-    chatStream: (providerId: string, messages: unknown[], options: unknown) =>
-      ipcRenderer.invoke('ai:chatStream', providerId, messages, options),
-    abort: () => ipcRenderer.invoke('ai:abort'),
+    chatStream: (callId: string, providerId: string, messages: unknown[], options: unknown) =>
+      ipcRenderer.invoke('ai:chatStream', callId, providerId, messages, options),
+    abort: (callId?: string) => ipcRenderer.invoke('ai:abort', callId),
     testConnection: (providerId: string) =>
       ipcRenderer.invoke('ai:testConnection', providerId),
     fimComplete: (req: unknown) => ipcRenderer.invoke('ai:fimComplete', req),
     supportsFim: (providerId: string, model: string) =>
       ipcRenderer.invoke('ai:supportsFim', providerId, model),
-    onStreamToken: (callback: (token: string) => void) => {
-      const handler = (_: unknown, token: string) => callback(token);
+    onStreamToken: (callback: (callId: string, token: string) => void) => {
+      const handler = (_: unknown, callId: string, token: string) => callback(callId, token);
       ipcRenderer.on('ai:stream-token', handler);
       return () => ipcRenderer.removeListener('ai:stream-token', handler);
     },
-    onStreamToolCall: (callback: (toolCall: unknown) => void) => {
-      const handler = (_: unknown, toolCall: unknown) => callback(toolCall);
+    onStreamToolCall: (callback: (callId: string, toolCall: unknown) => void) => {
+      const handler = (_: unknown, callId: string, toolCall: unknown) => callback(callId, toolCall);
       ipcRenderer.on('ai:stream-tool-call', handler);
       return () => ipcRenderer.removeListener('ai:stream-tool-call', handler);
     },
-    onStreamComplete: (callback: (result: unknown) => void) => {
-      const handler = (_: unknown, result: unknown) => callback(result);
+    onStreamComplete: (callback: (callId: string, result: unknown) => void) => {
+      const handler = (_: unknown, callId: string, result: unknown) => callback(callId, result);
       ipcRenderer.on('ai:stream-complete', handler);
       return () => ipcRenderer.removeListener('ai:stream-complete', handler);
     },
-    onStreamError: (callback: (error: string) => void) => {
-      const handler = (_: unknown, error: string) => callback(error);
+    onStreamError: (callback: (callId: string, error: string) => void) => {
+      const handler = (_: unknown, callId: string, error: string) => callback(callId, error);
       ipcRenderer.on('ai:stream-error', handler);
       return () => ipcRenderer.removeListener('ai:stream-error', handler);
     },
@@ -197,8 +197,15 @@ const api = {
     /** Synchronous (fire-and-forget) run — resolves with the full output. */
     run: (cwd: string, params: unknown) => ipcRenderer.invoke('cliagent:run', cwd, params),
     /**
-     * Streaming run. Returns a promise that resolves with the final result;
-     * events arrive via `onEvent` as the CLI runs (start / stdout / stderr /
+     * Cancel an in-flight streaming run by the callId returned from
+     * `runStream`. SIGTERMs the subprocess (no orphan process). No-op for an
+     * unknown or already-finished id.
+     */
+    cancel: (callId: string) => ipcRenderer.invoke('cliagent:cancel', callId),
+    /**
+     * Streaming run. Returns an object holding the `callId` (use it to call
+     * `cancel`) and a `result` promise that resolves with the final result.
+     * Events arrive via `onEvent` as the CLI runs (start / stdout / stderr /
      * exit / error / complete). Multiple parallel runs are multiplexed by
      * `callId` (renderer-side uuid) onto per-call channels.
      */
@@ -206,17 +213,18 @@ const api = {
       cwd: string,
       params: unknown,
       onEvent: (event: CliStreamEvent) => void
-    ): Promise<{ ok: boolean; output: string; error?: string; errorKind?: string }> => {
+    ): { callId: string; result: Promise<{ ok: boolean; output: string; error?: string; errorKind?: string }> } => {
       const callId = Math.random().toString(36).slice(2) + Date.now().toString(36);
       const channel = `cliagent:stream-${callId}`;
       const handler = (_: unknown, event: CliStreamEvent) => onEvent(event);
       ipcRenderer.on(channel, handler);
-      return (ipcRenderer.invoke('cliagent:runStream', callId, cwd, params) as Promise<{
+      const result = (ipcRenderer.invoke('cliagent:runStream', callId, cwd, params) as Promise<{
         ok: boolean;
         output: string;
         error?: string;
         errorKind?: string;
       }>).finally(() => ipcRenderer.removeListener(channel, handler));
+      return { callId, result };
     },
   },
 
@@ -224,14 +232,6 @@ const api = {
   skills: {
     list: (root: string) => ipcRenderer.invoke('skills:list', root),
     read: (root: string, name: string) => ipcRenderer.invoke('skills:read', root, name),
-  },
-
-  // Agent run logs — diagnostic JSONL + per-round markdown transcripts, both
-  // under <workspace>/.ide/. Best-effort; never blocks the agent run.
-  agentLog: {
-    append: (root: string, event: unknown) => ipcRenderer.invoke('agentLog:append', root, event),
-    readTail: (root: string, limit?: number) => ipcRenderer.invoke('agentLog:readTail', root, limit),
-    writeRound: (root: string, transcript: unknown) => ipcRenderer.invoke('agentLog:writeRound', root, transcript),
   },
 
   // GitHub — token stays in the main process; these never carry it.

@@ -169,6 +169,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
         onOpenSettings={() => onOpenSettings()}
         onOpenFolder={() => void openFolder()}
         branch={branch}
+        statusText={indexStatus}
         running={activeConversationId != null}
         editorOpen={showEditor}
         onToggleEditor={() => setShowEditor((p) => !p)}

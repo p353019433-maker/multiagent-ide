@@ -228,6 +228,8 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   const debateAbortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
+  const orchestrationSessionsRef = useRef<OrchestrationSession[]>([]);
+  orchestrationSessionsRef.current = orchestrationSessions;
 
   // Debounced, per-conversation persister (see conversationStore). Created once.
   const persisterRef = useRef<ReturnType<typeof createConversationPersister> | null>(null);
@@ -710,6 +712,19 @@ Response:`;
 
     setOrchestrationSessions((prev) => [session, ...prev]);
 
+    // Update one task immutably and re-publish the session so React reliably
+    // re-renders per-task state. Mutating the task objects in place and then
+    // shallow-copying the array left nested changes invisible to reconciliation.
+    const patchTask = (taskId: string, patch: Partial<OrchestrationTask>) => {
+      setOrchestrationSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? { ...s, tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)) }
+            : s
+        )
+      );
+    };
+
     // Step 3: Start all tasks in parallel
     const promises = tasks
       .filter((t) => t.status !== 'failed')
@@ -721,12 +736,11 @@ Response:`;
             : runConfigs.get(task.conversationId);
           if (!runConfig) throw new Error('子任务缺少运行配置');
 
-          task.status = 'running';
-          // Refresh session to show running state
-          setOrchestrationSessions((prev) =>
-            prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
-          );
+          patchTask(task.id, { status: 'running' });
 
+          // Track edited files locally for this run, then push once on completion
+          // (avoid a state update per file write).
+          const edited: string[] = [];
           // Drive the sub-task with the task engine (tools enabled) inside its
           // isolated worktree, instead of a single tool-less model completion.
           const result = await runHeadlessTask({
@@ -735,25 +749,23 @@ Response:`;
             workspaceRoot: runConfig.workspaceRoot,
             task: task.description,
             onFileWritten: (filePath) => {
-              task.editedFiles = task.editedFiles || [];
-              if (!task.editedFiles.includes(filePath)) {
-                task.editedFiles.push(filePath);
-                setOrchestrationSessions((prev) =>
-                  prev.map((s) => (s.id === sessionId ? { ...s, tasks: [...tasks] } : s))
-                );
-              }
+              if (!edited.includes(filePath)) edited.push(filePath);
             }
           });
-          task.result = result.note ? `${result.content}\n\n[warning] ${result.note}` : result.content;
-          task.status = 'completed';
+          patchTask(task.id, {
+            status: 'completed',
+            result: result.note ? `${result.content}\n\n[warning] ${result.note}` : result.content,
+            editedFiles: edited.length ? [...(task.editedFiles || []), ...edited] : task.editedFiles,
+          });
         } catch (err: any) {
-          task.status = 'failed';
-          task.error = err.message;
+          patchTask(task.id, { status: 'failed', error: err.message });
         }
       });
 
     await Promise.allSettled(promises);
 
+    // Read the final task statuses from state (immutable updates kept them
+    // correct) rather than from the mutated-by-reference `tasks` array.
     // Garbage-collect worktrees for tasks that failed before doing any work
     // (worktree creation failed, so no conversation/changes exist) and prune
     // stale metadata. Worktrees that actually ran — even if the task later
@@ -764,13 +776,18 @@ Response:`;
       await window.api.git.worktreePrune(rootPath).catch(() => undefined);
     }
 
-    // Check if all tasks failed
-    const allFailed = tasks.every((t) => t.status === 'failed');
-    session.status = allFailed ? 'failed' : 'completed';
-    session.completedAt = Date.now();
-    setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? session : s)));
+    // Check if all tasks failed — recompute from the updated session state.
+    const finalSession = orchestrationSessionsRef.current.find((s) => s.id === sessionId);
+    const allFailed = (finalSession?.tasks || tasks).every((t) => t.status === 'failed');
+    const finished: OrchestrationSession = {
+      ...session,
+      ...(finalSession ? { tasks: finalSession.tasks } : {}),
+      status: allFailed ? 'failed' : 'completed',
+      completedAt: Date.now(),
+    };
+    setOrchestrationSessions((prev) => prev.map((s) => (s.id === sessionId ? finished : s)));
 
-    return session;
+    return finished;
   }, [activeProviderId, activeModel, newWorktreeConversation, rootPath]);
 
   return (

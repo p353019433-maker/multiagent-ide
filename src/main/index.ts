@@ -22,7 +22,26 @@ import { registerIpc } from './ipc';
 import { FileWatcherService } from './services/file-watcher-service';
 import { CliAgentService } from './services/cli-agent-service';
 import { SkillsService } from './services/skills-service';
-import { AgentLogService } from './services/agent-log-service';
+
+// Single-instance lock: this app persists all state through a single config
+// file (electron-store) and per-workspace JSONL logs. Running two instances
+// against the same files causes last-writer-wins data loss (electron-store
+// does not re-read on disk change). Refuse the second launch and focus the
+// existing window instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Another launch was attempted: focus (or recreate) our window.
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
+  });
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -71,6 +90,33 @@ let aiService: AIService | undefined;
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+
+  // Content-Security-Policy for the packaged app. The renderer shows
+  // model/AI output and fetched web content, so lock down script/style/font
+  // sources as defense-in-depth. Dev (vite HMR) is exempt — it needs eval and
+  // websocket/inline scripts, and only runs locally.
+  if (app.isPackaged) {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self'",
+      // Tailwind injects styles at runtime; allow inline styles + style attrs.
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join('; ');
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [csp],
+        },
+      });
+    });
+  }
+
   const fileService = new FileService();
   terminalService = new TerminalService();
   const storeService = new StoreService();
@@ -84,7 +130,6 @@ app.whenReady().then(() => {
   const fileWatcherService = new FileWatcherService();
   const cliAgentService = new CliAgentService();
   const skillsService = new SkillsService();
-  const agentLogService = new AgentLogService();
 
   registerIpc({
     getMainWindow: () => mainWindow,
@@ -100,7 +145,6 @@ app.whenReady().then(() => {
     fileWatcherService,
     cliAgentService,
     skillsService,
-    agentLogService,
   });
 
   createWindow();
@@ -122,8 +166,25 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.on('window-all-closed', () => {
-  terminalService?.closeAll();
+  // On macOS the app stays alive with no window; don't tear down services here
+  // (the cleanup timer and background sessions keep running for reuse). Real
+  // teardown happens on before-quit.
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+// Final teardown on real quit: kill any lingering terminal/pty/cli subprocess
+// trees and release the AI stream map. Without this, background shells and
+// orphaned CLI agent runs rely on the OS to reap them.
+let isQuitting = false;
+app.on('before-quit', () => {
+  if (isQuitting) return;
+  isQuitting = true;
+  try {
+    terminalService?.dispose();
+    aiService?.dispose();
+  } catch {
+    // Best-effort cleanup during quit; never block exit.
   }
 });

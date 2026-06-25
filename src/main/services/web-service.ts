@@ -3,6 +3,8 @@
  * Uses the built-in Node.js fetch (Node 18+).
  */
 
+import { promises as dns } from 'dns';
+
 export interface WebSearchResult {
   title: string;
   url: string;
@@ -119,6 +121,51 @@ function isPublicIp(host: string): boolean {
   return true;
 }
 
+/**
+ * Resolve a hostname and verify EVERY resolved address is public, then return
+ * the first public IP. This closes the DNS-rebinding gap: a domain that
+ * resolves to a public IP at validation time but a private IP (or
+ * 169.254.169.254) at fetch time is rejected because we resolve here and pin
+ * the fetch to the resolved IP (see fetchUrl). Literal-IP hosts are validated
+ * directly without a lookup.
+ *
+ * Returns { ip, port } where `ip` is a public, routable address we have
+ * verified. Throws if any resolution is private/loopback/link-local.
+ */
+async function resolvePublicHost(hostname: string): Promise<string> {
+  // Literal IP: validate directly, no lookup.
+  if (isLiteralIp(hostname)) {
+    if (!isPublicIp(hostname)) {
+      throw new Error(`拒绝抓取：目标 IP ${hostname} 属于私网/保留段`);
+    }
+    return hostname;
+  }
+  // Hostname: resolve and require ALL A/AAAA records to be public. If any
+  // record points at a private range, reject (an attacker commonly mixes a
+  // public and a private record to slip past single-record checks).
+  let addrs: string[];
+  try {
+    const [a, aaaa] = await Promise.all([
+      dns.resolve4(hostname).catch(() => [] as string[]),
+      dns.resolve6(hostname).catch(() => [] as string[]),
+    ]);
+    addrs = [...a, ...aaaa];
+  } catch {
+    throw new Error(`拒绝抓取：无法解析主机名 ${hostname}`);
+  }
+  if (addrs.length === 0) {
+    throw new Error(`拒绝抓取：主机名 ${hostname} 无 DNS 记录`);
+  }
+  for (const ip of addrs) {
+    if (!isPublicIp(ip)) {
+      throw new Error(`拒绝抓取：主机名 ${hostname} 解析到私网/保留地址 ${ip}`);
+    }
+  }
+  // Pin to the first verified public IP. Caller rewrites the URL to this IP
+  // and sets the original Host header so virtual-hosted servers route correctly.
+  return addrs[0];
+}
+
 export class WebService {
   /**
    * Web search. Currently uses DuckDuckGo's HTML endpoint (no API key needed).
@@ -168,27 +215,68 @@ export class WebService {
     }
   }
 
-  /** Fetch a URL and extract readable text. Throws on SSRF or network failure. */
+  /**
+   * Fetch a URL and extract readable text. Defends against SSRF by:
+   *   - validating scheme/host on every hop (including redirects),
+   *   - resolving the hostname ourselves and requiring ALL resolved IPs to be
+   *     public (DNS-rebinding defense), pinning plain-HTTP requests to the
+   *     resolved IP,
+   *   - following redirects manually with a small hop cap so a public URL that
+   *     302s to an internal address is still validated.
+   *
+   * Note: for HTTPS we resolve+validate pre-flight but cannot rewrite the host
+   * (TLS/SNI + cert validation require the original hostname), so a narrow
+   * DNS-rebinding TOCTOU remains for HTTPS targets. The pre-flight check still
+   * defeats the common case (static private DNS records, IP-encoded domains).
+   */
   async fetchUrl(url: string, extractMode: 'markdown' | 'text' = 'markdown'): Promise<string> {
+    const MAX_REDIRECTS = 5;
+    let currentUrl = url;
     try {
-      const safe = assertSafeFetchUrl(url);
-      const res = await fetch(safe, {
-        headers: {
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        // Validate scheme + hostname format (rejects file:/data:/localhost).
+        const parsed = assertSafeFetchUrl(currentUrl);
+        // Resolve and verify the host is public. For plain HTTP we additionally
+        // pin the request to the resolved IP + send the original Host header.
+        const pinnedIp = await resolvePublicHost(parsed.hostname);
+        const usePin = parsed.protocol === 'http:';
+        const fetchUrlStr = usePin ? (() => {
+          const u = new URL(currentUrl);
+          u.hostname = pinnedIp.includes(':') ? `[${pinnedIp}]` : pinnedIp;
+          return u.toString();
+        })() : currentUrl;
+
+        const headers: Record<string, string> = {
           'User-Agent': 'Mozilla/5.0 (compatible; Code-IDE/1.0)',
           Accept: 'text/html,application/xhtml+xml',
-        },
-        signal: AbortSignal.timeout(15_000),
-        redirect: 'follow',
-      });
+        };
+        if (usePin) headers['Host'] = parsed.host; // keep original host/port for vhost routing
 
-      const contentType = res.headers.get('content-type') || '';
-      const body = await res.text();
+        const res = await fetch(fetchUrlStr, {
+          headers,
+          signal: AbortSignal.timeout(15_000),
+          redirect: 'manual',
+        });
 
-      if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
-        return this.extractText(body, extractMode);
+        // Manual redirect handling: re-validate every Location target.
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers.get('location');
+          if (!location) {
+            throw new Error('重定向缺少 Location 头');
+          }
+          currentUrl = new URL(location, currentUrl).toString(); // support relative redirects
+          continue;
+        }
+
+        const contentType = res.headers.get('content-type') || '';
+        const body = await res.text();
+        if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
+          return this.extractText(body, extractMode);
+        }
+        // Plain text or other — return as-is, truncated
+        return body.slice(0, 10_000);
       }
-      // Plain text or other — return as-is, truncated
-      return body.slice(0, 10_000);
+      throw new Error('重定向次数超过上限');
     } catch (e: any) {
       return `抓取失败：${e.message}`;
     }

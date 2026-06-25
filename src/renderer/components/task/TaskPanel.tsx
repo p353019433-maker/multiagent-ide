@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { useTaskWorkspace } from '../../context/TaskContext';
+import { useTaskWorkspace, type RunDebateTaskResult } from '../../context/TaskContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useEditor } from '../../context/EditorContext';
 import TaskMessage from './TaskMessage';
@@ -349,7 +349,7 @@ ${suffix.slice(0, 500)}${editsCtx}
       }
       setMultiRoleRunning(true);
       setMultiRoleResult(null);
-      const result = await runDebateTask(convId, requestText, effectiveRootPath).catch((error) => ({
+      const result: RunDebateTaskResult = await runDebateTask(convId, requestText, effectiveRootPath).catch((error) => ({
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       }));

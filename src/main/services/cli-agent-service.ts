@@ -165,7 +165,7 @@ export class CliAgentService {
   runStream = (
     p: RunCliAgentParams,
     cb: CliAgentStreamCallbacks = {},
-    opts: { timeoutMs?: number; signal?: AbortSignal } = {}
+    opts: { timeoutMs?: number; signal?: AbortSignal; callId?: string } = {}
   ): Promise<CliAgentResult> => {
     return new Promise((resolve) => {
       let cmd: ReturnType<typeof buildCommand>;

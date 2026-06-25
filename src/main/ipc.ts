@@ -19,7 +19,6 @@ import type { CodebaseSearchService } from './services/codebase-search-service';
 import type { FileWatcherService } from './services/file-watcher-service';
 import type { CliAgentService, CliAgentResult } from './services/cli-agent-service';
 import type { SkillsService } from './services/skills-service';
-import type { AgentLogService, AgentLogEvent, RoundTranscript } from './services/agent-log-service';
 import { classifyCommand } from '../shared/command-policy';
 
 const allowedRoots = new Set<string>();
@@ -157,7 +156,17 @@ function assertAllowedSecretReadKey(key: string): string {
 }
 
 function assertSafeGitRef(ref: string, label: string): string {
-  if (!ref || ref.length > 200 || /[\0\n\r~^:?*[\\]/.test(ref) || ref.includes('..') || ref.endsWith('.lock')) {
+  // Reject values that git would interpret as options (argument injection):
+  // a ref/branch/remote must never start with '-'. Also block NUL/newlines,
+  // revision-range metacharacters, '..', and '.lock' suffixes.
+  if (
+    !ref ||
+    ref.length > 200 ||
+    ref.startsWith('-') ||
+    /[\0\n\r~^:?*[\\]/.test(ref) ||
+    ref.includes('..') ||
+    ref.endsWith('.lock')
+  ) {
     throw new Error(`非法 ${label}: ${ref}`);
   }
   return ref;
@@ -182,7 +191,6 @@ export interface IpcDeps {
   fileWatcherService: FileWatcherService;
   cliAgentService: CliAgentService;
   skillsService: SkillsService;
-  agentLogService: AgentLogService;
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -200,7 +208,6 @@ export function registerIpc(deps: IpcDeps): void {
   registerCodebaseIpc(deps);
   registerCliAgentIpc(deps);
   registerSkillsIpc(deps);
-  registerAgentLogIpc(deps);
 }
 
 function registerDialogIpc(): void {
@@ -376,10 +383,14 @@ function registerAIIpc({ aiService }: IpcDeps): void {
     assertAppOrigin(event);
     return aiService.chat(providerId, messages as any, options as any);
   });
-  ipcMain.handle('ai:chatStream', async (event, providerId: string, messages: unknown[], options: unknown) => {
+  ipcMain.handle('ai:chatStream', async (event, callId: string | undefined, providerId: string, messages: unknown[], options: unknown) => {
     assertAppOrigin(event);
     const sender = event.sender;
     const senderId = sender.id;
+    // Each stream is keyed by a caller-provided callId so concurrent streams on
+    // the same window can be aborted independently. Fall back to a generated id
+    // for callers that don't supply one (then abort must use the sender-level path).
+    const reqId = callId || `gen_${senderId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const safeSend = (channel: string, ...args: unknown[]) => {
       try {
         if (!sender.isDestroyed()) sender.send(channel, ...args);
@@ -387,16 +398,22 @@ function registerAIIpc({ aiService }: IpcDeps): void {
         // Window was closed during streaming, ignore
       }
     };
-    await aiService.chatStream(senderId, providerId, messages as any, options as any, {
-      onToken: (token: string) => safeSend('ai:stream-token', token),
-      onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', toolCall),
-      onComplete: (result: unknown) => safeSend('ai:stream-complete', result),
-      onError: (error: string) => safeSend('ai:stream-error', error),
+    await aiService.chatStream(reqId, senderId, providerId, messages as any, options as any, {
+      onToken: (token: string) => safeSend('ai:stream-token', reqId, token),
+      onToolCall: (toolCall: unknown) => safeSend('ai:stream-tool-call', reqId, toolCall),
+      onComplete: (result: unknown) => safeSend('ai:stream-complete', reqId, result),
+      onError: (error: string) => safeSend('ai:stream-error', reqId, error),
     });
   });
-  ipcMain.handle('ai:abort', (event) => {
+  ipcMain.handle('ai:abort', (event, callId?: string) => {
     assertAppOrigin(event);
-    aiService.abort(event.sender.id);
+    if (callId) {
+      // Abort a single request.
+      aiService.abort(callId);
+    } else {
+      // No id given: abort every in-flight stream from this sender (legacy stop-all).
+      aiService.abortSender(event.sender.id);
+    }
   });
   ipcMain.handle('ai:testConnection', (event, providerId: string) => {
     assertAppOrigin(event);
@@ -424,18 +441,31 @@ function registerGitIpc({ gitService }: IpcDeps): void {
   ipcMain.handle('git:stage', async (event, cwd: string, files: string[]) => { assertAppOrigin(event); return gitService.stage(await assertAllowedRoot(cwd), files); });
   ipcMain.handle('git:unstage', async (event, cwd: string, files: string[]) => { assertAppOrigin(event); return gitService.unstage(await assertAllowedRoot(cwd), files); });
   ipcMain.handle('git:stageAll', async (event, cwd: string) => { assertAppOrigin(event); return gitService.stageAll(await assertAllowedRoot(cwd)); });
-  ipcMain.handle('git:commit', async (event, cwd: string, message: string) => { assertAppOrigin(event); return gitService.commit(await assertAllowedRoot(cwd), message); });
+  ipcMain.handle('git:commit', async (event, cwd: string, message: string) => {
+    assertAppOrigin(event);
+    return gitService.commit(await assertAllowedRoot(cwd), message);
+  });
   ipcMain.handle('git:push', async (event, cwd: string, remote?: string, branch?: string) => {
     assertAppOrigin(event);
-    return gitService.push(await assertAllowedRoot(cwd), remote, branch);
+    const safeRemote = remote ? assertSafeGitRef(remote, 'remote') : undefined;
+    const safeBranch = branch ? assertSafeGitRef(branch, 'branch') : undefined;
+    return gitService.push(await assertAllowedRoot(cwd), safeRemote, safeBranch);
   });
   ipcMain.handle('git:pull', async (event, cwd: string, remote?: string, branch?: string) => {
     assertAppOrigin(event);
-    return gitService.pull(await assertAllowedRoot(cwd), remote, branch);
+    const safeRemote = remote ? assertSafeGitRef(remote, 'remote') : undefined;
+    const safeBranch = branch ? assertSafeGitRef(branch, 'branch') : undefined;
+    return gitService.pull(await assertAllowedRoot(cwd), safeRemote, safeBranch);
   });
   ipcMain.handle('git:branchList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.branchList(await assertAllowedRoot(cwd)); });
-  ipcMain.handle('git:branchSwitch', async (event, cwd: string, name: string) => { assertAppOrigin(event); return gitService.branchSwitch(await assertAllowedRoot(cwd), name); });
-  ipcMain.handle('git:branchCreate', async (event, cwd: string, name: string) => { assertAppOrigin(event); return gitService.branchCreate(await assertAllowedRoot(cwd), name); });
+  ipcMain.handle('git:branchSwitch', async (event, cwd: string, name: string) => {
+    assertAppOrigin(event);
+    return gitService.branchSwitch(await assertAllowedRoot(cwd), assertSafeGitRef(name, 'branch'));
+  });
+  ipcMain.handle('git:branchCreate', async (event, cwd: string, name: string) => {
+    assertAppOrigin(event);
+    return gitService.branchCreate(await assertAllowedRoot(cwd), assertSafeGitRef(name, 'branch'));
+  });
   ipcMain.handle('git:currentBranch', async (event, cwd: string) => { assertAppOrigin(event); return gitService.currentBranch(await assertAllowedRoot(cwd)); });
   ipcMain.handle('git:worktreeAdd', async (event, cwd: string, p: string, name: string, base?: string) => {
     assertAppOrigin(event);
@@ -617,15 +647,19 @@ function registerContextIpc({ storeService }: IpcDeps): void {
   const readContextStore = (): Record<string, string> =>
     (storeService.get(CONTEXT_KEY) as Record<string, string>) || {};
 
-  ipcMain.handle('context:save', (event, key: string, content: string, merge?: boolean) => {
+  ipcMain.handle('context:save', async (event, key: string, content: string, merge?: boolean) => {
     assertAppOrigin(event);
-    const store = readContextStore();
-    if (merge && store[key]) {
-      store[key] = store[key] + '\n\n' + content;
-    } else {
-      store[key] = content;
-    }
-    storeService.set(CONTEXT_KEY, store);
+    // Atomic read-modify-write: concurrent saves (e.g. parallel agents) must
+    // not lose updates. storeService.transaction serializes the RMW.
+    await storeService.transaction(CONTEXT_KEY, (current) => {
+      const store = (current as Record<string, string>) || {};
+      if (merge && store[key]) {
+        store[key] = store[key] + '\n\n' + content;
+      } else {
+        store[key] = content;
+      }
+      return store;
+    });
   });
   ipcMain.handle('context:load', (event, key: string) => {
     assertAppOrigin(event);
@@ -679,6 +713,24 @@ function registerCodebaseIpc({ codebaseSearchService }: IpcDeps): void {
 }
 
 function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
+  // Per-callId AbortControllers so a `cliagent:cancel` from the renderer can
+  // SIGTERM a specific in-flight CLI run. Without this, a cancelled agent run
+  // keeps its claude/codex subprocess alive until the 5-minute hard timeout.
+  const cliAbortControllers = new Map<string, AbortController>();
+
+  ipcMain.handle('cliagent:cancel', (event, callId: string) => {
+    assertAppOrigin(event);
+    const controller = cliAbortControllers.get(callId);
+    if (controller) {
+      try {
+        controller.abort();
+      } catch {
+        /* already aborted */
+      }
+      cliAbortControllers.delete(callId);
+    }
+  });
+
   ipcMain.handle('cliagent:run', async (event, cwd: string, params: unknown) => {
     assertAppOrigin(event);
     const safeCwd = await assertAllowedRoot(cwd);
@@ -745,6 +797,8 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       p.allowDangerousBypass ? `${p.tool} 将使用权限绕过参数运行，可能读写工作区并执行命令。` : `${p.tool} 将不使用权限绕过参数运行；如 CLI 要求确认，可能会中止或等待。`,
       String(p.prompt ?? '').slice(0, 1200)
     );
+    const controller = new AbortController();
+    cliAbortControllers.set(callId, controller);
     return cliAgentService
       .runStream(
         {
@@ -764,11 +818,17 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
             safeSend(channel, { type: 'exit', code, signal }),
           onError: (kind: unknown, message: string) =>
             safeSend(channel, { type: 'error', kind, message }),
-        }
+        },
+        { signal: controller.signal }
       )
       .then((result: CliAgentResult) => {
+        cliAbortControllers.delete(callId);
         safeSend(channel, { type: 'complete', result });
         return result;
+      })
+      .catch((err) => {
+        cliAbortControllers.delete(callId);
+        throw err;
       });
   });
 }
@@ -781,35 +841,5 @@ function registerSkillsIpc({ skillsService }: IpcDeps): void {
   ipcMain.handle('skills:read', async (event, root: string, name: string) => {
     assertAppOrigin(event);
     return skillsService.read(await assertAllowedRoot(root), String(name));
-  });
-}
-
-function registerAgentLogIpc({ agentLogService }: IpcDeps): void {
-  // The log lives inside the workspace under .ide/, so we keep it in the same
-  // trust domain as the artifacts/checkpoints code — assertAllowedRoot is the
-  // only guard. The IDE itself is the sole writer.
-  ipcMain.handle('agentLog:append', async (event, root: string, evt: unknown) => {
-    assertAppOrigin(event);
-    const safeRoot = await assertAllowedRoot(root);
-    if (!evt || typeof evt !== 'object') return;
-    // The event is opaque — we trust the renderer to pass valid JSON. We do
-    // pin `kind` to a string so corrupt entries can't poison the readTail
-    // schema check.
-    const e = evt as Partial<AgentLogEvent>;
-    if (typeof e.kind !== 'string') return;
-    const stamped: AgentLogEvent = { ...(e as AgentLogEvent), ts: new Date().toISOString() };
-    await agentLogService.append(safeRoot, stamped);
-  });
-  ipcMain.handle('agentLog:readTail', async (event, root: string, limit?: number) => {
-    assertAppOrigin(event);
-    const safeRoot = await assertAllowedRoot(root);
-    const n = typeof limit === 'number' && limit > 0 && limit <= 5000 ? Math.floor(limit) : 200;
-    return agentLogService.readTail(safeRoot, n);
-  });
-  ipcMain.handle('agentLog:writeRound', async (event, root: string, transcript: unknown) => {
-    assertAppOrigin(event);
-    const safeRoot = await assertAllowedRoot(root);
-    if (!transcript || typeof transcript !== 'object') return null;
-    return agentLogService.writeRound(safeRoot, transcript as RoundTranscript);
   });
 }

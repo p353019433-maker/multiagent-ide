@@ -35,33 +35,6 @@ export interface CliAgentRunResult {
   errorKind?: string;
 }
 
-/**
- * Streaming events from a CLI agent run (mirrors the main-process callback
- * shape, serialized over IPC onto per-call channels `cliagent:stream-<callId>`).
- */
-export type CliStreamEvent =
-  | { type: 'start' }
-  | { type: 'stdout'; chunk: string }
-  | { type: 'stderr'; chunk: string }
-  | { type: 'exit'; code: number | null; signal: NodeJS.Signals | null }
-  | { type: 'error'; kind: string; message: string }
-  | { type: 'complete'; result: { ok: boolean; output: string; error?: string; errorKind?: string } };
-
-export interface CliAgentRunParams {
-  tool: 'claude-code' | 'codex' | 'antigravity' | 'opencode';
-  prompt: string;
-  model?: string;
-  baseURL?: string;
-  apiKey?: string;
-}
-
-export interface CliAgentRunResult {
-  ok: boolean;
-  output: string;
-  error?: string;
-  errorKind?: string;
-}
-
 declare global {
   interface Window {
     api: {
@@ -115,11 +88,12 @@ declare global {
       ai: {
         chat: (providerId: string, messages: unknown[], options: unknown) => Promise<any>;
         chatStream: (
+          callId: string,
           providerId: string,
           messages: unknown[],
           options: unknown
         ) => Promise<void>;
-        abort: () => Promise<void>;
+        abort: (callId?: string) => Promise<void>;
         testConnection: (
           providerId: string
         ) => Promise<{ ok: boolean; error?: string }>;
@@ -131,10 +105,10 @@ declare global {
           maxTokens?: number;
         }) => Promise<string | null>;
         supportsFim: (providerId: string, model: string) => Promise<boolean>;
-        onStreamToken: (callback: (token: string) => void) => () => void;
-        onStreamToolCall: (callback: (toolCall: any) => void) => () => void;
-        onStreamComplete: (callback: (result: any) => void) => () => void;
-        onStreamError: (callback: (error: string) => void) => () => void;
+        onStreamToken: (callback: (callId: string, token: string) => void) => () => void;
+        onStreamToolCall: (callback: (callId: string, toolCall: any) => void) => () => void;
+        onStreamComplete: (callback: (callId: string, result: any) => void) => () => void;
+        onStreamError: (callback: (callId: string, error: string) => void) => () => void;
       };
       git: {
         status: (cwd: string) => Promise<string>;
@@ -210,45 +184,23 @@ declare global {
       cliAgent: {
         /** Synchronous fire-and-forget run — resolves with the full output. */
         run: (cwd: string, params: CliAgentRunParams) => Promise<CliAgentRunResult>;
+        /** Cancel an in-flight streaming run by the callId returned from runStream. */
+        cancel: (callId: string) => Promise<void>;
         /**
-         * Streaming run. Resolves with the final result; events arrive via
-         * `onEvent` as the CLI runs (start / stdout / stderr / exit / error /
-         * complete). Multiple parallel runs are multiplexed by an internal
-         * callId onto per-call IPC channels.
+         * Streaming run. Returns an object holding the `callId` (use it to
+         * call `cancel`) and a `result` promise that resolves with the final
+         * result. Events arrive via `onEvent` as the CLI runs. Multiple
+         * parallel runs are multiplexed by `callId` onto per-call IPC channels.
          */
         runStream: (
           cwd: string,
           params: CliAgentRunParams,
           onEvent: (event: CliStreamEvent) => void
-        ) => Promise<CliAgentRunResult>;
+        ) => { callId: string; result: Promise<CliAgentRunResult> };
       };
       skills: {
         list: (root: string) => Promise<{ name: string; description: string }[]>;
         read: (root: string, name: string) => Promise<string>;
-      };
-      agentLog: {
-        append: (root: string, event: Record<string, unknown>) => Promise<void>;
-        readTail: (
-          root: string,
-          limit?: number
-        ) => Promise<{ ts: string; kind: string; [key: string]: unknown }[]>;
-        writeRound: (
-          root: string,
-          transcript: {
-            question: string;
-            agents: { id: string; name: string; kind: string; role?: string }[];
-            /** Legacy debate-mode messages. */
-            messages?: { agentId: string; agentName: string; round: number; text: string }[];
-            /** Negotiated-review cards (one per role). */
-            cards?: { agentId: string; agentName: string; role: string; text: string; ok: boolean; durationMs: number; error?: string }[];
-            /** Moderator-produced agent-id → role → weight (0-1). */
-            weights?: Record<string, Record<string, number>>;
-            plan: string;
-            startedAt: number;
-            endedAt: number;
-            notice?: { tone: 'ok' | 'err'; text: string };
-          }
-        ) => Promise<string | null>;
       };
       github: {
         listIssues: (owner: string, repo: string, state?: string) => Promise<any>;
