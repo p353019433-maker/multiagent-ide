@@ -65,7 +65,7 @@
 
 - 拿不准时，**选"能自动跑通"的那条**；只把**不可逆 / 对外**的留给人确认。
 - 新功能**默认开自动化**，而不是默认保守。
-- 后台/无人值守的 Agent：允许读、写工作区、跑安全命令、做本地 git；只挡对外写、分支合并、高危命令（见 `src/renderer/agent/headlessAgent.ts` 的策略）。
+- 后台/无人值守的 Agent：允许读、写工作区、跑安全命令、做本地 git；只挡对外写、分支合并、高危命令（见 `src/renderer/task-engine/headlessTaskRunner.ts` 的策略）。
 
 ## 4. Agent 自治与自动化期望
 
@@ -98,4 +98,4 @@
 
 ---
 
-_附：当前能力快照见 `README.md`；安全策略实现见 `src/shared/command-policy.ts`、`src/main/ipc.ts`、`src/renderer/agent/headlessAgent.ts`。_
+_附：当前能力快照见 `README.md`；安全策略实现见 `src/shared/command-policy.ts`、`src/main/ipc.ts`、`src/renderer/task-engine/headlessTaskRunner.ts`、`src/renderer/task-engine/toolExecutor.ts`（审批门）。_

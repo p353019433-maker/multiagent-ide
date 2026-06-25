@@ -5,6 +5,7 @@ import {
   compactMessages,
   checkpointSnapshotPaths,
   mainRepoFromWorktreePath,
+  worktreePathFor,
 } from './taskUtils';
 import type { ChatMessage, Checkpoint } from '@shared/types';
 
@@ -132,5 +133,16 @@ describe('mainRepoFromWorktreePath', () => {
   it('returns null for non-worktree paths', () => {
     expect(mainRepoFromWorktreePath('/Users/me/proj/src/a.ts')).toBeNull();
     expect(mainRepoFromWorktreePath('_wt/x')).toBeNull(); // nothing before the marker
+  });
+});
+
+describe('worktreePathFor', () => {
+  it('builds <mainRoot>_wt/<branch> and normalizes a trailing slash', () => {
+    expect(worktreePathFor('/Users/me/proj', 'debate-1')).toBe('/Users/me/proj_wt/debate-1');
+    expect(worktreePathFor('/Users/me/proj/', 'debate-1')).toBe('/Users/me/proj_wt/debate-1');
+  });
+  it('round-trips with mainRepoFromWorktreePath', () => {
+    const root = '/Users/me/proj';
+    expect(mainRepoFromWorktreePath(worktreePathFor(root, 'task-7-1'))).toBe(root);
   });
 });

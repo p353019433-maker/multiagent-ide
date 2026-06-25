@@ -11,6 +11,7 @@ import type { ToolCall, PlanStep } from '@shared/types';
 import { BUILTIN_TOOLS } from '@shared/tools';
 import { applyEdit } from './applyEdit';
 import { validateToolArgs } from './validateToolArgs';
+import { worktreePathFor } from './taskUtils';
 
 // Build the schema lookup once so dispatch doesn't walk the array per call.
 const TOOL_SCHEMAS: Record<string, (typeof BUILTIN_TOOLS)[number]['parameters']> = {};
@@ -271,8 +272,7 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
       const branch = args.branch as string;
       const base = args.base as string | undefined;
       const wtPath = args.path as string | undefined;
-      const parentDir = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
-      const path = wtPath || `${parentDir}_wt/${branch}`;
+      const path = wtPath || worktreePathFor(cwd, branch);
       // Local, reversible (worktree can be removed) — auto-runs (charter §3.4).
       const ok = await gateAction(tc.id, `创建 worktree 分支 ${branch}`, 'command', '', `git worktree add -b ${branch} ${path}`, 'command', {
         dangerReason: '创建新分支和 worktree 目录',

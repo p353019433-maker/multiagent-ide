@@ -74,32 +74,39 @@ npm run build
 
 ```
 src/
-├── main/                  # Electron 主进程
-│   ├── index.ts           # 入口，窗口创建，IPC 注册
-│   ├── preload.ts         # 安全桥接 API
+├── main/                          # Electron 主进程
+│   ├── index.ts                   # 入口、窗口创建、服务装配、IPC 注册
+│   ├── preload.ts                 # contextBridge 安全桥接（白名单）
+│   ├── ipc.ts                     # IPC 总线（来源/路径围栏、危险操作确认）
 │   └── services/
-│       ├── ai-service.ts      # 多供应商 AI 适配层
-│       ├── file-service.ts    # 文件系统操作
-│       ├── store-service.ts   # 持久化存储
-│       └── terminal-service.ts # 终端 + 命令执行
-├── renderer/              # React 前端
-│   ├── App.tsx
-│   ├── main.tsx
-│   ├── context/           # 全局状态管理
-│   │   ├── AIContext.tsx
-│   │   ├── EditorContext.tsx
-│   │   └── WorkspaceContext.tsx
-│   ├── components/
-│   │   ├── layout/        # 布局组件
-│   │   ├── sidebar/       # 文件树
-│   │   ├── editor/        # Monaco 编辑器
-│   │   ├── chat/          # AI 聊天面板
-│   │   └── settings/      # 设置界面
-│   ├── styles/
-│   └── types/
-└── shared/                # 主进程/渲染进程共享
-    ├── types.ts           # 类型定义
-    └── tools.ts           # Agent 工具定义
+│       ├── ai-service.ts          # 多供应商 AI 适配（OpenAI 兼容 / Anthropic）
+│       ├── file-service.ts        # 文件系统操作
+│       ├── git-service.ts         # git + worktree
+│       ├── github-service.ts      # GitHub REST
+│       ├── web-service.ts         # web_search / web_fetch（含 SSRF 防护）
+│       ├── terminal-service.ts    # node-pty 终端 + 命令执行
+│       ├── store-service.ts       # 持久化 + safeStorage 加密
+│       ├── file-watcher-service.ts# 文件监听（增量触发索引失效）
+│       ├── index-service.ts / index-scan.ts / index-worker.ts  # 符号/向量索引（worker 线程）
+│       ├── bm25.ts / hybrid.ts    # BM25 + RRF 混合检索
+│       └── codebase-search-service.ts  # codebase_search 编排（hybrid→符号→全文）
+├── renderer/                      # React 前端
+│   ├── task-engine/               # Agent 引擎
+│   │   ├── useTaskEngine.ts       # 多轮循环、重试、lint 自愈、检查点
+│   │   ├── toolExecutor.ts        # 40+ 工具分发 + 参数校验 + 审批门
+│   │   ├── headlessTaskRunner.ts  # 无人值守执行（策略更严）
+│   │   ├── debate-engine.ts       # 多角色辩论 → 隔离 worktree 执行
+│   │   ├── applyEdit.ts           # 容差编辑（精确→忽略空白→首尾锚点）
+│   │   └── useApproval.ts / taskUtils.ts / validateToolArgs.ts
+│   ├── context/                   # 全局状态（Workspace / Editor / Task / Theme）
+│   ├── components/                # layout / workbench / task / settings / editor / terminal / palette
+│   └── utils/
+└── shared/                        # 主进程/渲染进程共享
+    ├── types.ts                   # 类型定义
+    ├── tools.ts                   # Agent 工具定义 + 系统提示
+    ├── command-policy.ts          # 危险命令拦截 + 三档审批矩阵
+    ├── fim.ts                     # FIM 能力探测
+    └── roles.ts / scratchpad.ts   # 多角色辩论协议
 ```
 
 ## AI Agent 工具
@@ -123,8 +130,15 @@ Agent 模式下 AI 可以调用以下工具：
 在「设置 → 代码索引」配置 embedding 模型后，`codebase_search` 工具使用**真正的向量语义检索**——理解概念而非仅匹配关键词（例如问"哪里处理了超时重试"，即使代码里没有这些字眼也能命中）。
 
 - **OpenAI 兼容**：支持 DeepSeek (`deepseek-embedding-v2`)、OpenAI (`text-embedding-3-small`)、本地 Ollama (`nomic-embed-text` / `bge-m3`) 等任意兼容端点
-- **增量缓存**：代码切块后按内容 hash 缓存向量到本地，仅在文件变化时重算，重启不丢
+- **混合检索（hybrid）**：向量 + BM25 + 符号 经 RRF（Reciprocal Rank Fusion）融合，可选 LLM 重排（失败自动熔断），比单一模态更稳
+- **增量缓存**：代码切块后按内容 hash 缓存向量到本地；文件变化时索引自动失效、仅重算改动的切块，重启不丢
 - **优雅降级**：未配置 embedding 时自动回退到符号索引 + 全文检索，零影响
+
+## 多角色辩论（Multi-Role Debate）
+
+把一个任务交给多个角色串行打磨，再在隔离 worktree 中执行终版方案：
+
+**解析员 → 方案者 → 批评者 → 方案者（修订）→ 综合者**，最后由**执行者**在 `<root>_wt/<branch>` worktree 里跑通。各角色通过共享的 scratchpad 单向传递结构化中间产物（需求 / 方案 / 批评 / 终版计划 + 回滚方案）。执行结果可一键采纳为新会话或丢弃，删除会话时其 worktree 也会一并回收。
 
 ## 上下文与性能
 

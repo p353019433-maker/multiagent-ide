@@ -4,7 +4,7 @@ import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, O
 import { useWorkspace } from './WorkspaceContext';
 import { runHeadlessTask } from '../task-engine/headlessTaskRunner';
 import { runDebateFull } from '../task-engine/debate-engine';
-import { mainRepoFromWorktreePath } from '../task-engine/taskUtils';
+import { mainRepoFromWorktreePath, worktreePathFor } from '../task-engine/taskUtils';
 import {
   loadConversations,
   createConversationPersister,
@@ -687,7 +687,7 @@ Response:`;
     // Step 2: Create worktree for each subtask
     for (let i = 0; i < subTasks.length; i++) {
       const branch = `task-${sessionId.slice(0, 6)}-${i + 1}`;
-      const wtPath = `${parentDir}_wt/${branch}`;
+      const wtPath = worktreePathFor(parentDir, branch);
       try {
         const res = await window.api.git.worktreeAdd(rootPath, wtPath, branch, baseBranch);
         if (!res.success) throw new Error(res.message);

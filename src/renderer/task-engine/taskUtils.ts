@@ -183,3 +183,14 @@ export function mainRepoFromWorktreePath(worktreePath: string): string | null {
   if (idx <= 0) return null;
   return worktreePath.slice(0, idx);
 }
+
+/**
+ * Build the isolated-worktree path for a branch: `<mainRoot>_wt/<branch>` (a
+ * sibling of the repo). Single source of truth for the convention shared by the
+ * debate / orchestrate / worktree-add paths, and the inverse of
+ * mainRepoFromWorktreePath. A trailing slash on the root is normalized away.
+ */
+export function worktreePathFor(mainRoot: string, branch: string): string {
+  const parent = mainRoot.endsWith('/') ? mainRoot.slice(0, -1) : mainRoot;
+  return `${parent}_wt/${branch}`;
+}

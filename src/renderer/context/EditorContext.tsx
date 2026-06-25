@@ -1,20 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import type { OpenFile } from '@shared/types';
-
-function getLanguageFromPath(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript',
-    js: 'javascript', jsx: 'javascript',
-    py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
-    java: 'java', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
-    cs: 'csharp', php: 'php', swift: 'swift', kt: 'kotlin',
-    json: 'json', yaml: 'yaml', yml: 'yaml',
-    md: 'markdown', html: 'html', css: 'css', scss: 'scss',
-    sh: 'shell', sql: 'sql', xml: 'xml', toml: 'toml',
-  };
-  return map[ext] || 'plaintext';
-}
+import { languageFromPath } from '../utils/language';
 
 export interface EditorSettings {
   fontSize: number;
@@ -95,7 +81,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       path: filePath,
       content,
       originalContent: content,
-      language: getLanguageFromPath(filePath),
+      language: languageFromPath(filePath),
       isDirty: false,
     };
     setOpenFiles((prev) => [...prev, newFile]);

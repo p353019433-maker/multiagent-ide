@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { applyMonacoTheme, defineMonacoThemes, monacoThemeName } from '../../monacoTheme';
+import { languageFromPath } from '../../utils/language';
 
 type MonacoModule = typeof import('monaco-editor');
 
@@ -77,7 +78,7 @@ export default function DiffPreview({
     void import('monaco-editor').then((monaco: MonacoModule) => {
       if (disposed || !containerRef.current) return;
 
-      const lang = language || guessLanguage(filePath);
+      const lang = language || languageFromPath(filePath);
       originalModel = monaco.editor.createModel(originalRef.current, lang);
       modifiedModel = monaco.editor.createModel(modifiedRef.current, lang);
       originalModelRef.current = originalModel;
@@ -181,17 +182,3 @@ export default function DiffPreview({
   );
 }
 
-function guessLanguage(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript',
-    js: 'javascript', jsx: 'javascript',
-    py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
-    java: 'java', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
-    cs: 'csharp', php: 'php', swift: 'swift', kt: 'kotlin',
-    json: 'json', yaml: 'yaml', yml: 'yaml',
-    md: 'markdown', html: 'html', css: 'css', scss: 'scss',
-    sh: 'shell', sql: 'sql', xml: 'xml', toml: 'toml',
-  };
-  return map[ext] || 'plaintext';
-}
