@@ -4,16 +4,13 @@ import TitleBar from './TitleBar';
 import TaskPanel from '../task/TaskPanel';
 import EditorArea from '../editor/EditorArea';
 import TerminalPanel from '../terminal/TerminalPanel';
-import WorkbenchLeft, { type WorkbenchView } from '../workbench/WorkbenchLeft';
-import RoundTableThread from '../workbench/RoundTableThread';
-import ParallelImplTray from '../workbench/ParallelImplTray';
+import WorkbenchLeft from '../workbench/WorkbenchLeft';
 import CommandPalette, { type PaletteCommand } from '../palette/CommandPalette';
 import { onOpenPalette, type PaletteMode } from '../palette/paletteEvents';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useTaskWorkspace } from '../../context/TaskContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useEditorActions, useEditorState } from '../../context/EditorContext';
-import { useRoundTable } from '../../task-engine/useRoundTable';
 import { THEMES } from '../../theme';
 import { getAgentReadiness, type ReadinessActionId } from '../../readiness/agentReadiness';
 import type { SettingsTab } from '../settings/SettingsWorkbench';
@@ -26,12 +23,10 @@ interface Props {
 
 /**
  * Codex-style agent workbench: 46px title bar over a three-column body —
- * left 300 (sessions / agent roster + skills), center (agent thread or
- * round-table discussion, bounded to ~760), right 340 (round parallel impls).
- * Top-level `view` ('chat' | 'round') swaps every column.
+ * left 300 (workspace + task history), center (agent conversation/run),
+ * right 360 (delivery / commands / verify / checkpoints inspector).
  */
 export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsDisabled }: Props) {
-  const [view, setView] = useState<WorkbenchView>('chat');
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [branch, setBranch] = useState<string | null>(null);
   const { rootPath, openFolder } = useWorkspace();
@@ -40,7 +35,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   const { openFiles } = useEditorState();
   const [showEditor, setShowEditor] = useState(false);
   const prevOpenCount = useRef(0);
-  const { providers, activeProviderId, activeModel, agents, activeConversationId, newConversation, newWorktreeConversation } = useTaskWorkspace();
+  const { providers, activeProviderId, activeModel, activeConversationId, newConversation, newWorktreeConversation } = useTaskWorkspace();
   const [showTerminal, setShowTerminal] = useState(false);
   const [worktreeNotice, setWorktreeNotice] = useState<string | null>(null);
 
@@ -76,9 +71,6 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   }, [openFiles.length]);
   const [embeddingConfig, setEmbeddingConfig] = useState<{ providerId?: string | null; model?: string | null } | null>(null);
 
-  // Shared round-table instance so center (discussion) + right (impls) stay in sync.
-  const rt = useRoundTable();
-
   useEffect(() => {
     let cancelled = false;
     window.api.store
@@ -108,30 +100,12 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
         setBranch(name || null);
       })
       .catch(() => {
-        if (!cancelled) setBranch(null);
+        if (cancelled) setBranch(null);
       });
     return () => {
       cancelled = true;
     };
   }, [rootPath, settingsVersion]);
-
-  // Restore / persist the active view.
-  useEffect(() => {
-    let cancelled = false;
-    window.api.store
-      .get('workbenchView')
-      .then((v) => {
-        if (!cancelled && (v === 'chat' || v === 'round')) setView(v);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const changeView = useCallback((v: WorkbenchView) => {
-    setView(v);
-    void window.api.store.set('workbenchView', v);
-  }, []);
 
   const readiness = getAgentReadiness({ rootPath, providers, activeProviderId, activeModel, embeddingConfig });
 
@@ -152,14 +126,12 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
 
   const paletteCommands: PaletteCommand[] = [
     { id: 'settings', label: '打开设置', hint: '⌘,', run: () => onOpenSettings() },
-    { id: 'newConv', label: '新对话', hint: '⌘N', run: () => newConversation() },
+    { id: 'newConv', label: '新任务', hint: '⌘N', run: () => newConversation() },
     { id: 'newWorktree', label: '新建隔离会话 (worktree)', keywords: 'worktree git branch isolate', run: () => void handleNewWorktree() },
     { id: 'openFolder', label: '打开文件夹…', keywords: 'open folder workspace project', run: () => void openFolder() },
     { id: 'toggleEditor', label: '切换代码编辑器', hint: '⌘E', keywords: 'editor monaco', run: () => setShowEditor((p) => !p) },
     { id: 'toggleTerminal', label: '切换终端', keywords: 'terminal pty shell', run: () => setShowTerminal((p) => !p) },
     { id: 'saveFile', label: '保存当前文件', hint: '⌘S', keywords: 'save file', run: () => void saveActiveFile() },
-    { id: 'chatView', label: '切换到 对话', run: () => changeView('chat') },
-    { id: 'roundView', label: '切换到 圆桌', run: () => changeView('round') },
     { id: 'agents', label: '管理智能体…', keywords: 'agent claude codex antigravity api', run: () => onOpenSettings('agents') },
     { id: 'editorSettings', label: '编辑器 / 外观设置…', keywords: 'theme font tab wrap', run: () => onOpenSettings('editor') },
     { id: 'indexSettings', label: '代码索引设置…', keywords: 'embedding index search semantic', run: () => onOpenSettings('index') },
@@ -191,7 +163,6 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
   }, [shortcutsDisabled, onOpenSettings, saveActiveFile, newConversation]);
 
   const indexStatus = embeddingConfig?.model ? `${embeddingConfig.model} 索引` : rootPath ? '本地索引' : '未打开项目';
-  const statusText = rt.running ? '圆桌进行中' : rt.implementing ? '并行实现中' : null;
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden text-foreground" style={{ background: 'var(--app-bg)' }}>
@@ -199,8 +170,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
         onOpenSettings={() => onOpenSettings()}
         onOpenFolder={() => void openFolder()}
         branch={branch}
-        statusText={statusText}
-        running={rt.running || rt.implementing}
+        running={activeConversationId != null}
         editorOpen={showEditor}
         onToggleEditor={() => setShowEditor((p) => !p)}
       />
@@ -209,28 +179,15 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
         {/* LEFT 300 */}
         <aside className="flex w-[300px] flex-none flex-col border-r border-border" style={{ background: '#ececea' }}>
           <WorkbenchLeft
-            view={view}
-            setView={changeView}
             rootPath={rootPath}
             indexStatus={indexStatus}
-            onAddAgent={() => onOpenSettings('agents')}
             onNewWorktree={handleNewWorktree}
-            onNewRound={rt.reset}
             onOpenTerminal={() => setShowTerminal(true)}
           />
         </aside>
 
         {/* CENTER (+ its own right tray) */}
-        {view === 'chat' ? (
-          <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
-        ) : (
-          <>
-            <RoundTableThread rt={rt} onConfigure={() => onOpenSettings('agents')} />
-            <aside className="w-[340px] flex-none border-l border-border">
-              <ParallelImplTray rt={rt} />
-            </aside>
-          </>
-        )}
+        <TaskPanel readiness={readiness} onReadinessAction={runReadinessAction} />
       </div>
 
       {showEditor && (

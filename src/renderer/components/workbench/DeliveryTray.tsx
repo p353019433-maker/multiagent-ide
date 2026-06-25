@@ -45,6 +45,10 @@ export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, o
 
   return (
     <div className="flex h-full flex-col" style={{ background: 'var(--app-bg)' }}>
+      <div className="border-b border-border px-4 py-3">
+        <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Inspector</div>
+        <div className="mt-0.5 text-[13px] font-semibold text-foreground">任务详情</div>
+      </div>
       <div className="flex flex-none items-center gap-4 border-b border-border px-4 pt-3">
         <TabBtn id="delivery" label="改动" />
         <TabBtn id="commands" label="命令" n={toolExecutions.length} />

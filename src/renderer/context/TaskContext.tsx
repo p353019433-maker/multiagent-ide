@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
-import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask, Agent, DebateConfig, DebateRun, DebateStageName, DebateStageState } from '@shared/types';
+import type { ModelProvider as ModelProviderConfig, Conversation, ChatMessage, OrchestrationSession, OrchestrationTask, Agent } from '@shared/types';
 import { useWorkspace } from './WorkspaceContext';
 import { runHeadlessTask } from '../task-engine/headlessTaskRunner';
-import { runDebateFull } from '../task-engine/debate-engine';
 import {
   loadConversations,
   createConversationPersister,
@@ -42,13 +41,6 @@ interface TaskContextValue {
   /** Run multiple isolated tasks in parallel, with optional model-based decomposition. */
   orchestrate: (goal: string, subTasks?: string[]) => Promise<OrchestrationSession>;
   updateOrchestrationSession: (id: string, patch: Partial<OrchestrationSession>) => void;
-
-  // ── Debate system (单 Agent 多角色辩论) ──
-  debateConfig: DebateConfig;
-  setDebateRoleConfig: (role: DebateStageName, cfg: Partial<DebateConfig[DebateStageName]>) => void;
-  currentDebate: DebateRun | null;
-  runDebateTask: (request: string, workspaceRoot: string) => Promise<void>;
-  stopDebate: () => void;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -157,19 +149,6 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [orchestrationSessions, setOrchestrationSessions] = useState<OrchestrationSession[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
-
-  // ── Debate system state ──
-  // Seeded with empty-provider defaults here; the saved config and the
-  // first-provider fallback are loaded asynchronously in the init effect,
-  // because window.api.store.get returns a Promise (not a sync value).
-  const [debateConfig, setDebateConfig] = useState<DebateConfig>(() => ({
-    analyst: { providerId: '', model: '', temperature: 0.3 },
-    proposer: { providerId: '', model: '', temperature: 0.2 },
-    critic: { providerId: '', model: '', temperature: 0.7 },
-    synthesizer: { providerId: '', model: '', temperature: 0.2 },
-    executor: { providerId: '', model: '', temperature: 0.2 },
-  }));
-  const [currentDebate, setCurrentDebate] = useState<DebateRun | null>(null);
   const { rootPath } = useWorkspace();
 
   const providersRef = useRef<ModelProviderConfig[]>([]);
@@ -227,21 +206,6 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
       setAgents(seededAgents);
       if (!storedAgents || !storedAgents.length) {
         window.api.store.set('agents', seededAgents);
-      }
-
-      // Load the debate role config; seed defaults pointing at the first provider.
-      const savedDebateConfig = (await window.api.store.get('debateConfig')) as DebateConfig | undefined;
-      if (savedDebateConfig) {
-        setDebateConfig(savedDebateConfig);
-      } else {
-        const firstProviderId = storedProviders?.[0]?.id ?? '';
-        setDebateConfig({
-          analyst: { providerId: firstProviderId, model: '', temperature: 0.3 },
-          proposer: { providerId: firstProviderId, model: '', temperature: 0.2 },
-          critic: { providerId: firstProviderId, model: '', temperature: 0.7 },
-          synthesizer: { providerId: firstProviderId, model: '', temperature: 0.2 },
-          executor: { providerId: firstProviderId, model: '', temperature: 0.2 },
-        });
       }
     })();
 
@@ -351,52 +315,6 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
       void window.api.store.set('agents', next);
       return next;
     });
-  }, []);
-
-  const setDebateRoleConfig = useCallback(
-    (role: DebateStageName, cfg: Partial<DebateConfig[DebateStageName]>) => {
-      setDebateConfig((prev) => {
-        const next = { ...prev, [role]: { ...prev[role], ...cfg } };
-        void window.api.store.set('debateConfig', next);
-        return next;
-      });
-    },
-    []
-  );
-
-  const runDebateTask = useCallback(
-    async (request: string, workspaceRoot: string) => {
-      const run: DebateRun = { id: uuid(), request, stages: [], startedAt: Date.now() };
-      setCurrentDebate(run);
-      await runDebateFull(debateConfig, request, workspaceRoot, {
-        onStage: (e) => {
-          setCurrentDebate((prev) => {
-            if (!prev) return prev;
-            const stages = [...prev.stages];
-            const idx = stages.findIndex((st) => st.name === e.stage);
-            const stageState: DebateStageState = {
-              name: e.stage,
-              status: e.start ? 'running' : 'done',
-              startedAt: e.start ? Date.now() : stages[idx]?.startedAt,
-              endedAt: e.start ? undefined : Date.now(),
-            };
-            if (idx >= 0) stages[idx] = stageState;
-            else stages.push(stageState);
-            return { ...prev, stages };
-          });
-        },
-        onError: (msg) => {
-          setCurrentDebate((prev) => (prev ? { ...prev, error: msg, finishedAt: Date.now() } : prev));
-        },
-      });
-      setCurrentDebate((prev) => (prev ? { ...prev, finishedAt: Date.now() } : prev));
-    },
-    [debateConfig]
-  );
-
-  const stopDebate = useCallback(() => {
-    void window.api.ai.abort();
-    setCurrentDebate((prev) => (prev ? { ...prev, finishedAt: Date.now() } : prev));
   }, []);
 
   const newConversation = useCallback(
@@ -706,11 +624,6 @@ Response:`;
         renameConversation,
         orchestrate,
         updateOrchestrationSession,
-        debateConfig,
-        setDebateRoleConfig,
-        currentDebate,
-        runDebateTask,
-        stopDebate,
       }}
     >
       {children}

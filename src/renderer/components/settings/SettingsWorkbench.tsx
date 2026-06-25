@@ -7,9 +7,8 @@ import { useEditorState, useEditorActions } from '../../context/EditorContext';
 import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
-import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Sparkles, Users } from 'lucide-react';
+import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Users } from 'lucide-react';
 import AgentsTab from './AgentsTab';
-import { RolesSettings } from './RolesSettings';
 import { FIELD as FIELD_CLASS } from '../../styles/recipes';
 
 /** Common embedding model names by provider, shown as quick hints. */
@@ -21,7 +20,7 @@ const EMBEDDING_MODEL_HINTS = [
   'bge-m3',
 ];
 
-export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index' | 'roles';
+export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index';
 
 interface Props {
   onClose: () => void;
@@ -209,7 +208,6 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
     { id: 'agents', label: '智能体', icon: Users },
     { id: 'editor', label: '编辑器 / 外观', icon: SettingsIcon },
     { id: 'index', label: '代码索引', icon: Search },
-    { id: 'roles', label: '辩论角色', icon: Sparkles },
   ];
   const activeNavLabel = navItems.find((item) => item.id === tab)?.label || '设置';
 
@@ -638,7 +636,6 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
             </div>
           )}
 
-          {tab === 'roles' && <RolesSettings />}
           </div>
         </main>
       </div>

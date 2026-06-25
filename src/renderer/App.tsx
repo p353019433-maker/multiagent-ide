@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { WorkspaceProvider } from './context/WorkspaceContext';
 import { TaskContextProvider } from './context/TaskContext';
 import { EditorProvider } from './context/EditorContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { DebateView } from './components/debate/DebateView';
 import SettingsWorkbench, { type SettingsTab } from './components/settings/SettingsWorkbench';
 import { trapFocus, type FocusTrap } from './utils/focusTrap';
+
+const MainLayout = React.lazy(() => import('./components/layout/MainLayout'));
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
@@ -43,7 +44,9 @@ export default function App() {
           <EditorProvider>
             <div className="flex flex-col h-screen w-screen overflow-hidden bg-editor-bg text-editor-text">
               <div className="contents" aria-hidden={showSettings || undefined}>
-                <DebateView onOpenSettings={openSettings} />
+                <Suspense fallback={null}>
+                  <MainLayout onOpenSettings={openSettings} settingsVersion={settingsVersion} />
+                </Suspense>
               </div>
               {showSettings && (
                 <div ref={settingsRef} role="dialog" aria-modal="true" aria-label="设置">

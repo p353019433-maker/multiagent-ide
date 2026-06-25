@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { Plus, Trash2, X, Pencil } from 'lucide-react';
 import { useTaskWorkspace } from '../../context/TaskContext';
-import { agentVisual } from '../workbench/agentTheme';
 import type { Agent, AgentKind, AgentRole, ModelProvider, ProviderType } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
 import { FIELD } from '../../styles/recipes';
@@ -14,6 +13,40 @@ const TYPE_LABEL: Record<AgentKind, string> = {
   opencode: 'OpenCode',
   api: '纯 API',
 };
+
+interface AgentVisual {
+  label: string;
+  badge: string;
+  badgeColor: string;
+  badgeBg: string;
+  iconBg: string;
+  iconColor: string;
+  Icon: typeof Plus;
+}
+
+const AGENT_ICONS: Record<AgentKind, AgentVisual['Icon']> = {
+  'claude-code': Plus,
+  codex: Plus,
+  antigravity: Plus,
+  opencode: Plus,
+  api: Plus,
+};
+
+function agentVisual(kind: AgentKind): AgentVisual {
+  const Icon = AGENT_ICONS[kind];
+  switch (kind) {
+    case 'claude-code':
+      return { label: 'Claude Code', badge: 'CC', badgeColor: '#d4a27f', badgeBg: '#f7ebe0', iconBg: '#f7ebe0', iconColor: '#9c6b43', Icon };
+    case 'codex':
+      return { label: 'Codex CLI', badge: 'CX', badgeColor: '#10a37f', badgeBg: '#e6f5f0', iconBg: '#e6f5f0', iconColor: '#0b7a5f', Icon };
+    case 'antigravity':
+      return { label: 'Antigravity', badge: 'AG', badgeColor: '#7b7b7b', badgeBg: '#f0f0f0', iconBg: '#f0f0f0', iconColor: '#555', Icon };
+    case 'opencode':
+      return { label: 'OpenCode', badge: 'OC', badgeColor: '#5b8def', badgeBg: '#eaf1fd', iconBg: '#eaf1fd', iconColor: '#3b6fd0', Icon };
+    default:
+      return { label: 'API', badge: 'API', badgeColor: '#8e44ad', badgeBg: '#f3e8f8', iconBg: '#f3e8f8', iconColor: '#6c3483', Icon };
+  }
+}
 
 /** Provider "format" used for a configured backend of each shell kind. */
 const BACKEND_FORMAT: Partial<Record<AgentKind, ProviderType>> = {

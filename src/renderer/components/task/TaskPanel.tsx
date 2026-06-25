@@ -383,13 +383,17 @@ ${suffix.slice(0, 500)}${editsCtx}
   return (
     <div className="flex h-full min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <div className="flex h-[54px] flex-shrink-0 items-center justify-between gap-2 border-b border-border px-6">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="min-w-0 truncate text-[14.5px] font-semibold text-foreground">
-            {activeConversation?.title || '新任务'}
-          </span>
+      <div className="flex h-[68px] flex-shrink-0 items-center justify-between gap-2 border-b border-border bg-surface-1 px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 flex-none items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-primary-foreground shadow-ambient">AI</div>
+          <div className="min-w-0">
+            <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Agent Run</div>
+            <div className="min-w-0 truncate text-[15px] font-semibold text-foreground">
+              {activeConversation?.title || '新任务'}
+            </div>
+          </div>
           {activeWorktree && (
-            <span className="flex-none font-mono text-10 text-warn" title={activeWorktree.path}>
+            <span className="flex-none rounded-md bg-warn-surface px-1.5 py-0.5 font-mono text-10 text-warn" title={activeWorktree.path}>
               WT {activeWorktree.branch}
             </span>
           )}
