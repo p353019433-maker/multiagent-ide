@@ -59,6 +59,20 @@ export class IndexService {
     return promise;
   }
 
+  /**
+   * Mark both the lexical and embedding indexes stale so the next
+   * ensureIndex / ensureEmbeddingIndex rebuilds. Called when files change on
+   * disk (wired from the file watcher). The content-hash vector cache means a
+   * rebuild only re-embeds the chunks that actually changed, so this is cheap
+   * and stops codebase_search from returning stale symbols/vectors right after
+   * an edit instead of waiting out the 60s freshness TTL. No-op if nothing is
+   * indexed yet.
+   */
+  invalidate(): void {
+    this.indexedAt = 0;
+    this.embeddedAt = 0;
+  }
+
   private async build(root: string): Promise<void> {
     // Run the heavy walk + regex off the main thread; fall back to inline if the
     // worker can't be spawned (e.g. unit tests, or a packaging mishap).

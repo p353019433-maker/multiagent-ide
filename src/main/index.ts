@@ -129,6 +129,11 @@ app.whenReady().then(() => {
   const fileWatcherService = new FileWatcherService();
   const skillsService = new SkillsService();
 
+  // Invalidate the code index whenever watched files change so codebase_search
+  // reflects edits immediately instead of waiting out the 60s freshness TTL.
+  // The content-hash vector cache keeps the resulting rebuild incremental.
+  fileWatcherService.onChange = () => indexService.invalidate();
+
   registerIpc({
     getMainWindow: () => mainWindow,
     fileService,
