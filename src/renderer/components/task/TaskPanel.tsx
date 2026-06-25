@@ -32,6 +32,21 @@ const STATUS_LABEL: Record<ReadinessStatus, string> = {
   optional: '可选',
 };
 
+const DEBATE_STAGE_LABEL: Record<string, string> = {
+  analyst: '解析',
+  proposer: '方案',
+  critic: '异议',
+  synthesizer: '综合',
+  executor: '执行',
+};
+
+const DEBATE_STATUS_LABEL: Record<string, string> = {
+  pending: '等待',
+  running: '运行中',
+  done: '完成',
+  error: '失败',
+};
+
 function ReadinessIcon({ status }: { status: ReadinessStatus }) {
   if (status === 'done' || status === 'ready') {
     return <CheckCircle2 size={13} strokeWidth={1.8} className="text-emerald-400" />;
@@ -307,12 +322,29 @@ ${suffix.slice(0, 500)}${editsCtx}
     setPendingImages([]);
 
     if (multiRoleMode) {
-      if (!effectiveRootPath) return;
-      await runDebateTask(requestText, effectiveRootPath);
+      if (!effectiveRootPath) {
+        addMessage(convId, {
+          id: uuid(),
+          role: 'assistant',
+          content: '多角色流程需要先打开一个项目工作区。请先打开文件夹后再运行。',
+          timestamp: Date.now(),
+        });
+        return;
+      }
+      const result = await runDebateTask(requestText, effectiveRootPath);
+      const details = result.ok
+        ? [
+            result.editedFiles?.length ? `改动文件：${result.editedFiles.length} 个` : null,
+            result.worktreeBranch ? `隔离分支：${result.worktreeBranch}` : null,
+            result.note ? `提示：${result.note}` : null,
+          ].filter(Boolean).join('\n')
+        : `失败原因：${result.error || '未知错误'}`;
       const assistantMsg: ChatMessageType = {
         id: uuid(),
         role: 'assistant',
-        content: '多角色流程已完成：解析、方案、异议、综合和执行阶段已运行。请在右侧查看命令、验证和改动详情。',
+        content: result.ok
+          ? `多角色流程已完成：解析、方案、异议、综合和执行阶段已运行。\n${details}`.trim()
+          : `多角色流程未完成。\n${details}`,
         timestamp: Date.now(),
       };
       addMessage(convId, assistantMsg);
@@ -472,8 +504,8 @@ ${suffix.slice(0, 500)}${editsCtx}
           <div className="mx-auto flex max-w-[760px] flex-wrap items-center gap-2 text-[11px] text-foreground/55">
             <span className="font-semibold text-foreground">多角色流程</span>
             {currentDebate.stages.map((stage) => (
-              <span key={stage.name} className="rounded-md bg-background px-2 py-1 font-mono text-10 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
-                {stage.name} · {stage.status}
+              <span key={stage.name} className="rounded-md bg-background px-2 py-1 text-10 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
+                {DEBATE_STAGE_LABEL[stage.name] || stage.name} · {DEBATE_STATUS_LABEL[stage.status] || stage.status}
               </span>
             ))}
             {currentDebate.error && <span className="text-diffdel">{currentDebate.error}</span>}
@@ -572,6 +604,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                           className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-10 leading-none text-white opacity-0 transition-opacity group-hover:opacity-100"
                           style={{ background: '#c1374a' }}
                           title="移除附件"
+                          aria-label="移除附件"
                         >
                           ✕
                         </button>
@@ -586,6 +619,7 @@ ${suffix.slice(0, 500)}${editsCtx}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
                   placeholder="告诉 Agent 你想完成什么…  (Shift+Enter 换行)"
+                  aria-label="告诉 Agent 你想完成什么"
                   className="max-h-[160px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-sm leading-relaxed text-foreground outline-none"
                   style={{ minHeight: '52px' }}
                   disabled={isStreaming}

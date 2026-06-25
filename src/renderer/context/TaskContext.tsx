@@ -10,6 +10,15 @@ import {
   type StoreBackend,
 } from './conversationStore';
 
+export interface RunDebateTaskResult {
+  ok: boolean;
+  error?: string;
+  editedFiles?: string[];
+  note?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+}
+
 interface TaskContextValue {
   providers: ModelProviderConfig[];
   activeProviderId: string | null;
@@ -47,7 +56,7 @@ interface TaskContextValue {
   debateConfig: DebateConfig;
   setDebateRoleConfig: (role: DebateStageName, cfg: Partial<DebateConfig[DebateStageName]>) => void;
   currentDebate: DebateRun | null;
-  runDebateTask: (request: string, workspaceRoot: string) => Promise<void>;
+  runDebateTask: (request: string, workspaceRoot: string) => Promise<RunDebateTaskResult>;
   stopDebate: () => void;
 }
 
@@ -149,6 +158,58 @@ export function setAgentEnabled(agents: Agent[], id: string, enabled: boolean): 
   return agents.map((a) => (a.id === id ? { ...a, enabled } : a));
 }
 
+const DEBATE_ROLE_DEFAULTS: DebateConfig = {
+  analyst: { providerId: '', model: '', temperature: 0.3 },
+  proposer: { providerId: '', model: '', temperature: 0.2 },
+  critic: { providerId: '', model: '', temperature: 0.7 },
+  synthesizer: { providerId: '', model: '', temperature: 0.2 },
+  executor: { providerId: '', model: '', temperature: 0.2 },
+};
+
+const DEBATE_ROLES: DebateStageName[] = ['analyst', 'proposer', 'critic', 'synthesizer', 'executor'];
+
+function defaultModelForProvider(provider: ModelProviderConfig | undefined): string {
+  if (!provider) return '';
+  return selectModelForProvider(provider, provider.defaultModel);
+}
+
+export function normalizeDebateConfig(
+  config: Partial<DebateConfig> | undefined,
+  providers: ModelProviderConfig[]
+): DebateConfig {
+  const firstProvider = providers[0];
+  const firstProviderId = firstProvider?.id ?? '';
+  const next = {} as DebateConfig;
+
+  for (const role of DEBATE_ROLES) {
+    const raw = config?.[role] ?? DEBATE_ROLE_DEFAULTS[role];
+    const provider = providers.find((item) => item.id === raw.providerId) ?? firstProvider;
+    const providerId = provider?.id ?? raw.providerId ?? firstProviderId;
+    const model = raw.model && provider?.models.includes(raw.model)
+      ? raw.model
+      : defaultModelForProvider(provider);
+    next[role] = {
+      providerId,
+      model,
+      temperature: raw.temperature ?? DEBATE_ROLE_DEFAULTS[role].temperature,
+    };
+  }
+
+  return next;
+}
+
+function validateDebateConfig(config: DebateConfig, providers: ModelProviderConfig[]): string | null {
+  for (const role of DEBATE_ROLES) {
+    const cfg = config[role];
+    if (!cfg.providerId) return `多角色流程缺少 ${role} 的模型供应商`;
+    const provider = providers.find((item) => item.id === cfg.providerId);
+    if (!provider) return `多角色流程的 ${role} 供应商不存在`;
+    if (!cfg.model) return `多角色流程缺少 ${role} 的模型`;
+    if (provider.models.length > 0 && !provider.models.includes(cfg.model)) return `多角色流程的 ${role} 模型不可用`;
+  }
+  return null;
+}
+
 export function TaskContextProvider({ children }: { children: React.ReactNode }) {
   const [providers, setProviders] = useState<ModelProviderConfig[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
@@ -157,13 +218,7 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [orchestrationSessions, setOrchestrationSessions] = useState<OrchestrationSession[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [debateConfig, setDebateConfig] = useState<DebateConfig>(() => ({
-    analyst: { providerId: '', model: '', temperature: 0.3 },
-    proposer: { providerId: '', model: '', temperature: 0.2 },
-    critic: { providerId: '', model: '', temperature: 0.7 },
-    synthesizer: { providerId: '', model: '', temperature: 0.2 },
-    executor: { providerId: '', model: '', temperature: 0.2 },
-  }));
+  const [debateConfig, setDebateConfig] = useState<DebateConfig>(() => DEBATE_ROLE_DEFAULTS);
   const [currentDebate, setCurrentDebate] = useState<DebateRun | null>(null);
   const { rootPath } = useWorkspace();
 
@@ -189,9 +244,9 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
       const storedProviders = (await window.api.store.get('providers')) as ModelProviderConfig[] | undefined;
       const storedActiveId = (await window.api.store.get('activeProviderId')) as string | undefined;
       const storedActiveModel = (await window.api.store.get('activeModel')) as string | undefined;
+      const normalizedProviders = storedProviders?.map(normalizeProviderForSave) ?? [];
 
-      if (storedProviders?.length) {
-        const normalizedProviders = storedProviders.map(normalizeProviderForSave);
+      if (normalizedProviders.length) {
         setProviders(normalizedProviders);
         if (JSON.stringify(normalizedProviders) !== JSON.stringify(storedProviders)) {
           window.api.store.set('providers', normalizedProviders);
@@ -224,19 +279,12 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
         window.api.store.set('agents', seededAgents);
       }
 
-      // Load the single-agent multi-role config; seed defaults pointing at the first provider.
-      const savedDebateConfig = (await window.api.store.get('debateConfig')) as DebateConfig | undefined;
-      if (savedDebateConfig) {
-        setDebateConfig(savedDebateConfig);
-      } else {
-        const firstProviderId = storedProviders?.[0]?.id ?? '';
-        setDebateConfig({
-          analyst: { providerId: firstProviderId, model: '', temperature: 0.3 },
-          proposer: { providerId: firstProviderId, model: '', temperature: 0.2 },
-          critic: { providerId: firstProviderId, model: '', temperature: 0.7 },
-          synthesizer: { providerId: firstProviderId, model: '', temperature: 0.2 },
-          executor: { providerId: firstProviderId, model: '', temperature: 0.2 },
-        });
+      // Load the single-agent multi-role config; normalize old/missing roles and default models.
+      const savedDebateConfig = (await window.api.store.get('debateConfig')) as Partial<DebateConfig> | undefined;
+      const normalizedDebateConfig = normalizeDebateConfig(savedDebateConfig, normalizedProviders ?? []);
+      setDebateConfig(normalizedDebateConfig);
+      if (JSON.stringify(savedDebateConfig) !== JSON.stringify(normalizedDebateConfig)) {
+        window.api.store.set('debateConfig', normalizedDebateConfig);
       }
     })();
 
@@ -360,10 +408,15 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   );
 
   const runDebateTask = useCallback(
-    async (request: string, workspaceRoot: string) => {
+    async (request: string, workspaceRoot: string): Promise<RunDebateTaskResult> => {
+      const normalizedConfig = normalizeDebateConfig(debateConfig, providersRef.current);
+      const configError = validateDebateConfig(normalizedConfig, providersRef.current);
+      if (configError) return { ok: false, error: configError };
+
       const run: DebateRun = { id: uuid(), request, stages: [], startedAt: Date.now() };
       setCurrentDebate(run);
-      await runDebateFull(debateConfig, request, workspaceRoot, {
+      let runError: string | undefined;
+      const result = await runDebateFull(normalizedConfig, request, workspaceRoot, {
         onStage: (e) => {
           setCurrentDebate((prev) => {
             if (!prev) return prev;
@@ -381,10 +434,20 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
           });
         },
         onError: (msg) => {
+          runError = msg;
           setCurrentDebate((prev) => (prev ? { ...prev, error: msg, finishedAt: Date.now() } : prev));
         },
       });
-      setCurrentDebate((prev) => (prev ? { ...prev, finishedAt: Date.now() } : prev));
+      const finalError = runError || (!result.execution ? '多角色流程未产生可执行结果' : undefined);
+      setCurrentDebate((prev) => (prev ? { ...prev, error: finalError ?? prev.error, finishedAt: Date.now() } : prev));
+      if (finalError) return { ok: false, error: finalError, worktreePath: result.worktreePath, worktreeBranch: result.worktreeBranch };
+      return {
+        ok: true,
+        editedFiles: result.execution?.editedFiles,
+        note: result.execution?.note,
+        worktreePath: result.worktreePath,
+        worktreeBranch: result.worktreeBranch,
+      };
     },
     [debateConfig]
   );

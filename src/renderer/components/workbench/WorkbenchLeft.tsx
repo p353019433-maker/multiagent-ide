@@ -51,17 +51,18 @@ export default function WorkbenchLeft({ rootPath, indexStatus, onNewWorktree, on
         {conversations.map((conv) => {
           const active = conv.id === activeConversationId;
           return (
-            <div
+            <button
               key={conv.id}
+              type="button"
               onClick={() => setActiveConversation(conv.id)}
-              className={`my-0.5 cursor-pointer rounded-[9px] px-[11px] py-[9px] ${
+              className={`my-0.5 block w-full cursor-pointer rounded-[9px] px-[11px] py-[9px] text-left ${
                 active
                   ? 'border border-border-strong bg-background shadow-[0_1px_3px_rgba(0,0,0,.07)]'
                   : 'border border-transparent hover:bg-foreground/[0.05]'
               }`}
             >
-              <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{conv.title}</span>
-            </div>
+              <span className="block min-w-0 truncate text-[13px] font-medium text-foreground">{conv.title}</span>
+            </button>
           );
         })}
       </div>

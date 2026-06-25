@@ -100,7 +100,7 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
         setBranch(name || null);
       })
       .catch(() => {
-        if (cancelled) setBranch(null);
+        if (!cancelled) setBranch(null);
       });
     return () => {
       cancelled = true;
