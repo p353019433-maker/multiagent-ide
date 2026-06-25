@@ -11,6 +11,97 @@ export interface WebSearchResult {
   snippet: string;
 }
 
+function stripTags(s: string): string {
+  return s.replace(/<[^>]*>/g, '');
+}
+
+function safeFromCodePoint(cp: number): string {
+  try {
+    return Number.isFinite(cp) ? String.fromCodePoint(cp) : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Decode the common named + numeric HTML entities found in scraped markup. */
+export function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&(?:apos|#0*39);/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => safeFromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => safeFromCodePoint(parseInt(d, 10)))
+    // &amp; last so a literal "&amp;lt;" doesn't double-decode into "<".
+    .replace(/&amp;/g, '&');
+}
+
+/** Strip HTML to plain text: drop scripts/styles/tags, decode entities, collapse. */
+export function htmlToPlainText(html: string): string {
+  let s = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  s = s.replace(/<[^>]*>/g, ' ');
+  s = decodeHtmlEntities(s);
+  return s.replace(/\s+/g, ' ').trim().slice(0, 10_000);
+}
+
+/** Convert HTML to lightweight Markdown, preserving headings, links, emphasis,
+ *  and list/paragraph structure (unlike the plain-text path which flattens it). */
+export function htmlToMarkdown(html: string): string {
+  let s = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  s = s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, lvl: string, inner: string) =>
+    `\n\n${'#'.repeat(Number(lvl))} ${stripTags(inner).trim()}\n\n`);
+  s = s.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, inner: string) => {
+    const text = stripTags(inner).trim();
+    return text ? `[${text}](${href})` : '';
+  });
+  s = s.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/\1>/gi, (_, __: string, inner: string) => `**${stripTags(inner).trim()}**`);
+  s = s.replace(/<(em|i)[^>]*>([\s\S]*?)<\/\1>/gi, (_, __: string, inner: string) => `*${stripTags(inner).trim()}*`);
+  s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_, inner: string) => `\n- ${stripTags(inner).trim()}`);
+  s = s.replace(/<\/(p|div|section|article|header|footer|ul|ol|tr|h[1-6])>/gi, '\n\n');
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = stripTags(s);
+  s = decodeHtmlEntities(s);
+  return s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 10_000);
+}
+
+/**
+ * Parse DuckDuckGo HTML results, keeping each title aligned with ITS OWN
+ * snippet. The previous implementation collected links and snippets into two
+ * separate lists and zipped them by index, so a single result missing a snippet
+ * shifted every later snippet onto the wrong title. Here each result's snippet
+ * is the first result__snippet that falls between this link and the next, or ''
+ * when absent. Pure + exported for testing.
+ */
+export function parseDuckDuckGoResults(html: string, count: number): WebSearchResult[] {
+  const linkRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const snippetRegex = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+  const links = [...html.matchAll(linkRegex)];
+  const snippets = [...html.matchAll(snippetRegex)];
+  const results: WebSearchResult[] = [];
+  for (let i = 0; i < links.length && results.length < count; i++) {
+    const m = links[i];
+    const start = m.index ?? 0;
+    const end = i + 1 < links.length ? (links[i + 1].index ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+    const snip = snippets.find((s) => {
+      const idx = s.index ?? -1;
+      return idx > start && idx < end;
+    });
+    const rawUrl = m[1];
+    const uddg = rawUrl.match(/uddg=([^&]+)/);
+    results.push({
+      title: decodeHtmlEntities(stripTags(m[2]).trim()),
+      url: uddg ? decodeURIComponent(uddg[1]) : rawUrl,
+      snippet: snip ? decodeHtmlEntities(stripTags(snip[1]).trim()) : '',
+    });
+  }
+  return results;
+}
+
 /**
  * SSRF guard: only allow http(s) URLs whose hostname is a public, routable
  * address. Reject loopback, private, link-local, multicast, and reserved IPs
@@ -181,35 +272,7 @@ export class WebService {
         signal: AbortSignal.timeout(10_000),
       });
       const html = await res.text();
-
-      // Basic extraction of result links and snippets from DDG HTML
-      const results: WebSearchResult[] = [];
-      const linkRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi;
-      const snippetRegex = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-
-      const links: { title: string; rawUrl: string }[] = [];
-      let match;
-      while ((match = linkRegex.exec(html)) !== null && links.length < count) {
-        const rawUrl = match[1];
-        // DDG wraps URLs in a redirect
-        const urlMatch = rawUrl.match(/uddg=([^&]+)/);
-        links.push({ title: match[2].replace(/<[^>]*>/g, '').trim(), rawUrl: urlMatch ? decodeURIComponent(urlMatch[1]) : rawUrl });
-      }
-
-      const snippets: string[] = [];
-      snippetRegex.lastIndex = 0;
-      while ((match = snippetRegex.exec(html)) !== null && snippets.length < count) {
-        snippets.push(match[1].replace(/<[^>]*>/g, '').trim());
-      }
-
-      for (let i = 0; i < Math.min(links.length, snippets.length); i++) {
-        results.push({
-          title: links[i].title,
-          url: links[i].rawUrl,
-          snippet: snippets[i],
-        });
-      }
-      return results;
+      return parseDuckDuckGoResults(html, count);
     } catch (e: any) {
       return [{ title: '搜索失败', url: '', snippet: e.message }];
     }
@@ -282,18 +345,7 @@ export class WebService {
     }
   }
 
-  private extractText(html: string, _mode: 'markdown' | 'text'): string {
-    // Strip scripts and styles
-    let cleaned = html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-    // Strip tags
-    cleaned = cleaned.replace(/<[^>]*>/g, ' ');
-    // Collapse whitespace
-    cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-    cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    return cleaned.slice(0, 10_000);
+  private extractText(html: string, mode: 'markdown' | 'text'): string {
+    return mode === 'markdown' ? htmlToMarkdown(html) : htmlToPlainText(html);
   }
 }
