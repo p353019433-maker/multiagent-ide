@@ -77,7 +77,8 @@ const api = {
     set: (key: string, value: unknown) => ipcRenderer.invoke('store:set', key, value),
     encryptAndStore: (key: string, value: string) =>
       ipcRenderer.invoke('store:encryptAndStore', key, value),
-    decryptAndGet: (key: string) => ipcRenderer.invoke('store:decryptAndGet', key),
+    // Renderer can only check whether a secret exists, never read its plaintext.
+    hasSecret: (key: string) => ipcRenderer.invoke('store:hasSecret', key),
   },
 
   // AI
@@ -233,40 +234,40 @@ const api = {
     writeRound: (root: string, transcript: unknown) => ipcRenderer.invoke('agentLog:writeRound', root, transcript),
   },
 
-  // GitHub
+  // GitHub — token stays in the main process; these never carry it.
   github: {
-    listIssues: (token: string, owner: string, repo: string, state?: string) =>
-      ipcRenderer.invoke('github:listIssues', token, owner, repo, state),
-    getIssue: (token: string, owner: string, repo: string, number: number) =>
-      ipcRenderer.invoke('github:getIssue', token, owner, repo, number),
-    createIssue: (token: string, owner: string, repo: string, title: string, body?: string, labels?: string[]) =>
-      ipcRenderer.invoke('github:createIssue', token, owner, repo, title, body, labels),
-    listIssueComments: (token: string, owner: string, repo: string, number: number) =>
-      ipcRenderer.invoke('github:listIssueComments', token, owner, repo, number),
-    addIssueComment: (token: string, owner: string, repo: string, number: number, body: string) =>
-      ipcRenderer.invoke('github:addIssueComment', token, owner, repo, number, body),
-    listPRs: (token: string, owner: string, repo: string, state?: string) =>
-      ipcRenderer.invoke('github:listPRs', token, owner, repo, state),
-    getPR: (token: string, owner: string, repo: string, number: number) =>
-      ipcRenderer.invoke('github:getPR', token, owner, repo, number),
-    getPRDiff: (token: string, owner: string, repo: string, number: number) =>
-      ipcRenderer.invoke('github:getPRDiff', token, owner, repo, number),
-    createPR: (token: string, owner: string, repo: string, title: string, head: string, base: string, body?: string) =>
-      ipcRenderer.invoke('github:createPR', token, owner, repo, title, head, base, body),
-    listWorkflowRuns: (token: string, owner: string, repo: string, branch?: string) =>
-      ipcRenderer.invoke('github:listWorkflowRuns', token, owner, repo, branch),
-    searchCode: (token: string, query: string, owner?: string, repo?: string) =>
-      ipcRenderer.invoke('github:searchCode', token, query, owner, repo),
-    getRepo: (token: string, owner: string, repo: string) =>
-      ipcRenderer.invoke('github:getRepo', token, owner, repo),
+    listIssues: (owner: string, repo: string, state?: string) =>
+      ipcRenderer.invoke('github:listIssues', owner, repo, state),
+    getIssue: (owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:getIssue', owner, repo, number),
+    createIssue: (owner: string, repo: string, title: string, body?: string, labels?: string[]) =>
+      ipcRenderer.invoke('github:createIssue', owner, repo, title, body, labels),
+    listIssueComments: (owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:listIssueComments', owner, repo, number),
+    addIssueComment: (owner: string, repo: string, number: number, body: string) =>
+      ipcRenderer.invoke('github:addIssueComment', owner, repo, number, body),
+    listPRs: (owner: string, repo: string, state?: string) =>
+      ipcRenderer.invoke('github:listPRs', owner, repo, state),
+    getPR: (owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:getPR', owner, repo, number),
+    getPRDiff: (owner: string, repo: string, number: number) =>
+      ipcRenderer.invoke('github:getPRDiff', owner, repo, number),
+    createPR: (owner: string, repo: string, title: string, head: string, base: string, body?: string) =>
+      ipcRenderer.invoke('github:createPR', owner, repo, title, head, base, body),
+    listWorkflowRuns: (owner: string, repo: string, branch?: string) =>
+      ipcRenderer.invoke('github:listWorkflowRuns', owner, repo, branch),
+    searchCode: (query: string, owner?: string, repo?: string) =>
+      ipcRenderer.invoke('github:searchCode', query, owner, repo),
+    getRepo: (owner: string, repo: string) =>
+      ipcRenderer.invoke('github:getRepo', owner, repo),
     parseRemote: (remoteUrl: string) =>
       ipcRenderer.invoke('github:parseRemote', remoteUrl),
-    createReview: (token: string, owner: string, repo: string, number: number, event: string, body?: string, comments?: GitHubReviewComment[]) =>
-      ipcRenderer.invoke('github:createReview', token, owner, repo, number, event, body, comments),
-    mergePR: (token: string, owner: string, repo: string, number: number, method?: string) =>
-      ipcRenderer.invoke('github:mergePR', token, owner, repo, number, method),
-    createRelease: (token: string, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) =>
-      ipcRenderer.invoke('github:createRelease', token, owner, repo, tag, name, body, draft),
+    createReview: (owner: string, repo: string, number: number, event: string, body?: string, comments?: GitHubReviewComment[]) =>
+      ipcRenderer.invoke('github:createReview', owner, repo, number, event, body, comments),
+    mergePR: (owner: string, repo: string, number: number, method?: string) =>
+      ipcRenderer.invoke('github:mergePR', owner, repo, number, method),
+    createRelease: (owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) =>
+      ipcRenderer.invoke('github:createRelease', owner, repo, tag, name, body, draft),
   },
 };
 

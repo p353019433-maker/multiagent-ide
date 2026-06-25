@@ -76,7 +76,7 @@ function makeCtx(opts: { approve?: boolean } = {}): {
       files.set(filePath, content);
       edited.push(filePath);
     },
-    getGitHubContext: async () => ({ token: null, info: null }),
+    getGitHubContext: async () => ({ hasToken: false, info: null }),
   };
   return { ctx, gate, edited };
 }

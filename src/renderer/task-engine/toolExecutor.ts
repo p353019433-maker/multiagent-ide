@@ -41,9 +41,9 @@ export interface ToolContext {
   ) => Promise<boolean>;
   /** Write a file while recording a checkpoint snapshot + edit tracking. */
   writeFileTracked: (filePath: string, content: string) => Promise<void>;
-  /** Resolve GitHub token + owner/repo from the workspace git remote. */
+  /** Detect whether a GitHub token is configured and resolve owner/repo from git remote. */
   getGitHubContext: () => Promise<{
-    token: string | null;
+    hasToken: boolean;
     info: { owner: string; repo: string } | null;
   }>;
   /** Push the latest Agent execution plan to the host (rendered in the task panel). */
@@ -448,90 +448,90 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
 
     // ── GitHub ──
     case 'github_list_issues': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const issues = await window.api.github.listIssues(token, info.owner, info.repo, (args.state as string) || 'open');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const issues = await window.api.github.listIssues(info.owner, info.repo, (args.state as string) || 'open');
       return JSON.stringify(issues, null, 2);
     }
     case 'github_get_issue': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const issue = await window.api.github.getIssue(token, info.owner, info.repo, args.number as number);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const issue = await window.api.github.getIssue(info.owner, info.repo, args.number as number);
       return JSON.stringify(issue, null, 2);
     }
     case 'github_create_issue': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
       const approved = await gateAction(tc.id, `github issue: ${args.title}`, 'external', '', args.title as string, 'github');
       if (!approved) return 'GitHub 操作被用户拒绝';
-      const result = await window.api.github.createIssue(token, info.owner, info.repo, args.title as string, (args.body as string) || '', args.labels as string[]);
+      const result = await window.api.github.createIssue(info.owner, info.repo, args.title as string, (args.body as string) || '', args.labels as string[]);
       return `已创建 issue #${result.number}: ${result.html_url}`;
     }
     case 'github_list_comments': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const comments = await window.api.github.listIssueComments(token, info.owner, info.repo, args.number as number);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const comments = await window.api.github.listIssueComments(info.owner, info.repo, args.number as number);
       return JSON.stringify(comments, null, 2);
     }
     case 'github_add_comment': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
       const approved = await gateAction(tc.id, `评论 issue`, 'external', '', args.body as string, 'github');
       if (!approved) return 'GitHub 操作被用户拒绝';
-      await window.api.github.addIssueComment(token, info.owner, info.repo, args.number as number, args.body as string);
+      await window.api.github.addIssueComment(info.owner, info.repo, args.number as number, args.body as string);
       return `评论已发布到 issue #${args.number}`;
     }
     case 'github_list_prs': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const prs = await window.api.github.listPRs(token, info.owner, info.repo, (args.state as string) || 'open');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const prs = await window.api.github.listPRs(info.owner, info.repo, (args.state as string) || 'open');
       return JSON.stringify(prs, null, 2);
     }
     case 'github_get_pr': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const pr = await window.api.github.getPR(token, info.owner, info.repo, args.number as number);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const pr = await window.api.github.getPR(info.owner, info.repo, args.number as number);
       return JSON.stringify(pr, null, 2);
     }
     case 'github_get_pr_diff': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const diff = await window.api.github.getPRDiff(token, info.owner, info.repo, args.number as number);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const diff = await window.api.github.getPRDiff(info.owner, info.repo, args.number as number);
       return diff.slice(0, 8000);
     }
     case 'github_create_pr': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
       const title = args.title as string;
       const head = args.head as string;
       const base = (args.base as string) || 'main';
       const body = (args.body as string) || '';
       const approved = await gateAction(tc.id, `创建 PR: ${title}`, 'external', '', `head: ${head} → base: ${base}\n${body}`, 'github');
       if (!approved) return 'GitHub 操作被用户拒绝';
-      const result = await window.api.github.createPR(token, info.owner, info.repo, title, head, base, body);
+      const result = await window.api.github.createPR(info.owner, info.repo, title, head, base, body);
       return `已创建 PR #${result.number}: ${result.html_url}`;
     }
     case 'github_list_workflows': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const runs = await window.api.github.listWorkflowRuns(token, info.owner, info.repo, args.branch as string | undefined);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const runs = await window.api.github.listWorkflowRuns(info.owner, info.repo, args.branch as string | undefined);
       return JSON.stringify(runs, null, 2);
     }
     case 'github_search_code': {
-      const { token, info } = await getGitHubContext();
-      if (!token) throw new Error('未配置 GitHub token');
-      const results = await window.api.github.searchCode(token, args.query as string, info?.owner, info?.repo);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken) throw new Error('未配置 GitHub token');
+      const results = await window.api.github.searchCode(args.query as string, info?.owner, info?.repo);
       return JSON.stringify(results, null, 2);
     }
     case 'github_get_repo': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
-      const repo = await window.api.github.getRepo(token, info.owner, info.repo);
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const repo = await window.api.github.getRepo(info.owner, info.repo);
       return JSON.stringify(repo, null, 2);
     }
     case 'github_create_review': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
       const number = args.number as number;
       const body = (args.body as string) || '';
       const event = (args.event as string) || 'COMMENT';
@@ -547,29 +547,29 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
         event === 'COMMENT' ? undefined : { dangerous: true, dangerReason: `审查动作 ${event}` }
       );
       if (!ok) return 'GitHub 操作被用户拒绝';
-      await window.api.github.createReview(token, info.owner, info.repo, number, event, body, comments);
+      await window.api.github.createReview(info.owner, info.repo, number, event, body, comments);
       return event === 'APPROVE' ? `已批准 PR #${number}` : `已在 PR #${number} 上提交审查`;
     }
     case 'github_merge_pr': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
       const number = args.number as number;
       const method = (args.method as string) || 'merge';
       const approved = await gateAction(tc.id, `合并 PR #${number}`, 'external', '', `${method} PR #${number}`, 'github');
       if (!approved) return 'GitHub 操作被用户拒绝';
-      await window.api.github.mergePR(token, info.owner, info.repo, number, method);
+      await window.api.github.mergePR(info.owner, info.repo, number, method);
       return `PR #${number} 已合并`;
     }
     case 'github_create_release': {
-      const { token, info } = await getGitHubContext();
-      if (!token || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
+      const { hasToken, info } = await getGitHubContext();
+      if (!hasToken || !info) throw new Error('未配置 GitHub token 或无法识别仓库');
       const tag = args.tag as string;
       const name = (args.name as string) || tag;
       const body = (args.body as string) || '';
       const draft = args.draft as boolean | undefined;
       const approved = await gateAction(tc.id, `创建 release: ${tag}`, 'external', '', `tag: ${tag}\n${body}`, 'github');
       if (!approved) return 'GitHub 操作被用户拒绝';
-      const result = await window.api.github.createRelease(token, info.owner, info.repo, tag, name, body, draft);
+      const result = await window.api.github.createRelease(info.owner, info.repo, tag, name, body, draft);
       return `已创建 release ${tag}: ${result.html_url}`;
     }
 

@@ -136,15 +136,15 @@ describe('IPC store key policy', () => {
     expect(storeService.set).not.toHaveBeenCalled();
   });
 
-  it('allows writing provider secrets but only allows renderer to read the GitHub token', async () => {
-    const storeService = { get: vi.fn(), set: vi.fn() };
+  it('allows writing provider secrets but never lets the renderer read any secret plaintext', async () => {
+    const storeService = { get: vi.fn(() => 'enc'), set: vi.fn() };
     registerIpc(deps({ storeService }));
 
     expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'providers')).toThrow(/拒绝读取通用 secret/);
-    expect(handlers.get('store:decryptAndGet')!(appEvent, 'github_token')).toBeNull();
+    expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'github_token')).toThrow(/拒绝读取通用 secret/);
     expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'apiKey:abc')).toThrow(/拒绝读取通用 secret/);
-    expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'apikey_legacy')).toThrow(/拒绝读取通用 secret/);
     expect(handlers.get('store:encryptAndStore')!(appEvent, 'apiKey:abc', 'secret')).toBe(false);
+    expect(handlers.get('store:hasSecret')!(appEvent, 'github_token')).toBe(true);
   });
 });
 

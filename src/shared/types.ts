@@ -9,7 +9,7 @@ export interface ModelProvider {
   name: string;
   type: ProviderType;
   baseURL: string;
-  /** Stored encrypted; UI never sees plaintext until decryptAndGet is called */
+  /** Stored encrypted; only the main process decrypts this (the renderer never sees plaintext). */
   apiKeyRef: string; // key in encrypted store
   models: string[];
   defaultModel: string;

@@ -110,22 +110,22 @@ export function useTaskEngine(deps: TaskEngineDeps) {
     turnEditedFiles.current.add(filePath);
   };
 
-  /** Get GitHub token and resolve owner/repo from git remote */
+  /** Detect whether a GitHub token is configured and resolve owner/repo from git remote. */
   const getGitHubContext = async (): Promise<{
-    token: string | null;
+    hasToken: boolean;
     info: { owner: string; repo: string } | null;
   }> => {
-    const token = await window.api.store.decryptAndGet('github_token');
-    if (!token) return { token: null, info: null };
-    if (!rootPath) return { token, info: null };
+    const hasToken = await window.api.store.hasSecret('github_token');
+    if (!hasToken) return { hasToken: false, info: null };
+    if (!rootPath) return { hasToken: true, info: null };
     try {
       const result = await window.api.terminal.runCommand(rootPath, 'git remote get-url origin', 5000);
       const url = result.stdout.trim();
-      if (!url) return { token, info: null };
+      if (!url) return { hasToken: true, info: null };
       const info = await window.api.github.parseRemote(url);
-      return { token, info };
+      return { hasToken: true, info };
     } catch {
-      return { token, info: null };
+      return { hasToken: true, info: null };
     }
   };
 

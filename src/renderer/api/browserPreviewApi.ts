@@ -138,10 +138,7 @@ export function installBrowserPreviewApi() {
         store.set(key, value);
         return true;
       },
-      decryptAndGet: async (key) => {
-        const value = store.get(key);
-        return typeof value === 'string' ? value : null;
-      },
+      hasSecret: async (key) => Boolean(store.get(key)),
     },
     ai: {
       chat: async () => ({

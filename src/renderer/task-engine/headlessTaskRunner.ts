@@ -159,7 +159,7 @@ export async function runHeadlessTask(params: HeadlessTaskParams): Promise<Headl
       onFileWritten?.(filePath);
     },
     // Background tasks don't act on GitHub; surface a clear failure if they try.
-    getGitHubContext: async () => ({ token: null, info: null }),
+    getGitHubContext: async () => ({ hasToken: false, info: null }),
   };
 
   const systemPrompt = systemPromptSuffix

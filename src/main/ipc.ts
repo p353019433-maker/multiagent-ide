@@ -151,10 +151,9 @@ function assertAllowedSecretWriteKey(key: string): string {
 }
 
 function assertAllowedSecretReadKey(key: string): string {
-  // Renderer currently only needs the GitHub token for GitHub tool calls.
-  // Provider API keys stay in main process and are consumed by AIService.
-  if (key === 'github_token') return key;
-  throw new Error('拒绝读取通用 secret');
+  // The renderer must never read secret plaintext. hasSecret only checks
+  // presence; actual decryption happens inside main-process callers.
+  throw new Error(`拒绝读取通用 secret: ${key}`);
 }
 
 function assertSafeGitRef(ref: string, label: string): string {
@@ -362,6 +361,14 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
     }
     return null;
   });
+  ipcMain.handle('store:hasSecret', (event, key: string) => {
+    assertAppOrigin(event);
+    // Only the GitHub token needs a presence check from the renderer; provider
+    // keys are managed via settings and never need a renderer presence probe.
+    if (key !== 'github_token') throw new Error(`拒绝访问通用 secret: ${key}`);
+    const encrypted = storeService.get(key) as string | undefined;
+    return Boolean(encrypted);
+  });
 }
 
 function registerAIIpc({ aiService }: IpcDeps): void {
@@ -494,62 +501,82 @@ function registerWebIpc({ webService }: IpcDeps): void {
   });
 }
 
-function registerGitHubIpc({ githubService }: IpcDeps): void {
-  ipcMain.handle('github:listIssues', (event, token: string, owner: string, repo: string, state?: string) => {
+function registerGitHubIpc({ githubService, storeService }: IpcDeps): void {
+  // The renderer never holds the GitHub token. Every github:* handler resolves
+  // the stored token inside the main process; no token crosses the IPC boundary.
+  async function resolveToken(): Promise<string> {
+    const encrypted = storeService.get('github_token') as string | undefined;
+    if (!encrypted) throw new Error('未配置 GitHub token');
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('无法解密 GitHub token');
+    return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+  }
+  ipcMain.handle('github:listIssues', async (event, owner: string, repo: string, state?: string) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.listIssues(token, owner, repo, state as any);
   });
-  ipcMain.handle('github:getIssue', (event, token: string, owner: string, repo: string, number: number) => {
+  ipcMain.handle('github:getIssue', async (event, owner: string, repo: string, number: number) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.getIssue(token, owner, repo, number);
   });
   ipcMain.handle(
     'github:createIssue',
-    (event, token: string, owner: string, repo: string, title: string, body?: string, labels?: string[]) => {
+    async (event, owner: string, repo: string, title: string, body?: string, labels?: string[]) => {
       assertAppOrigin(event);
+      const token = await resolveToken();
       return githubService.createIssue(token, owner, repo, title, body || '', labels || []);
     }
   );
-  ipcMain.handle('github:listIssueComments', (event, token: string, owner: string, repo: string, number: number) => {
+  ipcMain.handle('github:listIssueComments', async (event, owner: string, repo: string, number: number) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.listIssueComments(token, owner, repo, number);
   });
   ipcMain.handle(
     'github:addIssueComment',
-    (event, token: string, owner: string, repo: string, number: number, body: string) => {
+    async (event, owner: string, repo: string, number: number, body: string) => {
       assertAppOrigin(event);
+      const token = await resolveToken();
       return githubService.addIssueComment(token, owner, repo, number, body);
     }
   );
-  ipcMain.handle('github:listPRs', (event, token: string, owner: string, repo: string, state?: string) => {
+  ipcMain.handle('github:listPRs', async (event, owner: string, repo: string, state?: string) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.listPRs(token, owner, repo, state as any);
   });
-  ipcMain.handle('github:getPR', (event, token: string, owner: string, repo: string, number: number) => {
+  ipcMain.handle('github:getPR', async (event, owner: string, repo: string, number: number) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.getPR(token, owner, repo, number);
   });
-  ipcMain.handle('github:getPRDiff', (event, token: string, owner: string, repo: string, number: number) => {
+  ipcMain.handle('github:getPRDiff', async (event, owner: string, repo: string, number: number) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.getPRDiff(token, owner, repo, number);
   });
   ipcMain.handle(
     'github:createPR',
-    (event, token: string, owner: string, repo: string, title: string, head: string, base: string, body?: string) => {
+    async (event, owner: string, repo: string, title: string, head: string, base: string, body?: string) => {
       assertAppOrigin(event);
+      const token = await resolveToken();
       return githubService.createPR(token, owner, repo, title, head, base, body || '');
     }
   );
-  ipcMain.handle('github:listWorkflowRuns', (event, token: string, owner: string, repo: string, branch?: string) => {
+  ipcMain.handle('github:listWorkflowRuns', async (event, owner: string, repo: string, branch?: string) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.listWorkflowRuns(token, owner, repo, branch);
   });
-  ipcMain.handle('github:searchCode', (event, token: string, query: string, owner?: string, repo?: string) => {
+  ipcMain.handle('github:searchCode', async (event, query: string, owner?: string, repo?: string) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.searchCode(token, query, owner, repo);
   });
-  ipcMain.handle('github:getRepo', (event, token: string, owner: string, repo: string) => {
+  ipcMain.handle('github:getRepo', async (event, owner: string, repo: string) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.getRepo(token, owner, repo);
   });
   ipcMain.handle('github:parseRemote', (event, remoteUrl: string) => {
@@ -558,19 +585,22 @@ function registerGitHubIpc({ githubService }: IpcDeps): void {
   });
   ipcMain.handle(
     'github:createReview',
-    (event, token: string, owner: string, repo: string, number: number, eventName: string, body?: string, comments?: any[]) => {
+    async (event, owner: string, repo: string, number: number, eventName: string, body?: string, comments?: any[]) => {
       assertAppOrigin(event);
+      const token = await resolveToken();
       return githubService.createReview(token, owner, repo, number, eventName, body || '', comments);
     }
   );
-  ipcMain.handle('github:mergePR', (event, token: string, owner: string, repo: string, number: number, method?: string) => {
+  ipcMain.handle('github:mergePR', async (event, owner: string, repo: string, number: number, method?: string) => {
     assertAppOrigin(event);
+    const token = await resolveToken();
     return githubService.mergePR(token, owner, repo, number, method);
   });
   ipcMain.handle(
     'github:createRelease',
-    (event, token: string, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) => {
+    async (event, owner: string, repo: string, tag: string, name?: string, body?: string, draft?: boolean) => {
       assertAppOrigin(event);
+      const token = await resolveToken();
       return githubService.createRelease(token, owner, repo, tag, name || tag, body || '', draft || false);
     }
   );

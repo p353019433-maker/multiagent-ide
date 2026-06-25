@@ -110,7 +110,7 @@ declare global {
         get: (key: string) => Promise<unknown>;
         set: (key: string, value: unknown) => Promise<void>;
         encryptAndStore: (key: string, value: string) => Promise<boolean>;
-        decryptAndGet: (key: string) => Promise<string | null>;
+        hasSecret: (key: string) => Promise<boolean>;
       };
       ai: {
         chat: (providerId: string, messages: unknown[], options: unknown) => Promise<any>;
@@ -251,29 +251,26 @@ declare global {
         ) => Promise<string | null>;
       };
       github: {
-        listIssues: (token: string, owner: string, repo: string, state?: string) => Promise<any>;
-        getIssue: (token: string, owner: string, repo: string, number: number) => Promise<any>;
+        listIssues: (owner: string, repo: string, state?: string) => Promise<any>;
+        getIssue: (owner: string, repo: string, number: number) => Promise<any>;
         createIssue: (
-          token: string,
           owner: string,
           repo: string,
           title: string,
           body?: string,
           labels?: string[]
         ) => Promise<any>;
-        listIssueComments: (token: string, owner: string, repo: string, number: number) => Promise<any>;
+        listIssueComments: (owner: string, repo: string, number: number) => Promise<any>;
         addIssueComment: (
-          token: string,
           owner: string,
           repo: string,
           number: number,
           body: string
         ) => Promise<any>;
-        listPRs: (token: string, owner: string, repo: string, state?: string) => Promise<any>;
-        getPR: (token: string, owner: string, repo: string, number: number) => Promise<any>;
-        getPRDiff: (token: string, owner: string, repo: string, number: number) => Promise<string>;
+        listPRs: (owner: string, repo: string, state?: string) => Promise<any>;
+        getPR: (owner: string, repo: string, number: number) => Promise<any>;
+        getPRDiff: (owner: string, repo: string, number: number) => Promise<string>;
         createPR: (
-          token: string,
           owner: string,
           repo: string,
           title: string,
@@ -281,12 +278,11 @@ declare global {
           base: string,
           body?: string
         ) => Promise<any>;
-        listWorkflowRuns: (token: string, owner: string, repo: string, branch?: string) => Promise<any>;
-        searchCode: (token: string, query: string, owner?: string, repo?: string) => Promise<any>;
-        getRepo: (token: string, owner: string, repo: string) => Promise<any>;
+        listWorkflowRuns: (owner: string, repo: string, branch?: string) => Promise<any>;
+        searchCode: (query: string, owner?: string, repo?: string) => Promise<any>;
+        getRepo: (owner: string, repo: string) => Promise<any>;
         parseRemote: (remoteUrl: string) => Promise<{ owner: string; repo: string } | null>;
         createReview: (
-          token: string,
           owner: string,
           repo: string,
           number: number,
@@ -295,14 +291,12 @@ declare global {
           comments?: any[]
         ) => Promise<any>;
         mergePR: (
-          token: string,
           owner: string,
           repo: string,
           number: number,
           method?: string
         ) => Promise<any>;
         createRelease: (
-          token: string,
           owner: string,
           repo: string,
           tag: string,
