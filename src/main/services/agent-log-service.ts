@@ -26,6 +26,34 @@ const ROUNDS_DIR = 'rounds';
 const IDE_DIR = '.ide';
 const MAX_LOG_BYTES = 5 * 1024 * 1024; // 5MB before rotating to .1
 
+const SECRET_PATTERNS: RegExp[] = [
+  /sk-[A-Za-z0-9_-]{16,}/g,
+  /(ghp|github_pat|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /AIza[0-9A-Za-z_-]{20,}/g,
+  /(api[_-]?key|token|password|secret)(["'\s:=]+)([^"'\s,;]{8,})/gi,
+];
+
+function redactText(value: string): string {
+  return SECRET_PATTERNS.reduce(
+    (text, pattern) => text.replace(pattern, (_match, p1, p2) => (typeof p1 === 'string' && typeof p2 === 'string' ? `${p1}${p2}[REDACTED]` : '[REDACTED]')),
+    value
+  );
+}
+
+function redactValue(value: unknown): unknown {
+  if (typeof value === 'string') return redactText(value);
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      out[key] = /apiKey|token|password|secret/i.test(key) ? '[REDACTED]' : redactValue(item);
+    }
+    return out;
+  }
+  return value;
+}
+
 /** One JSONL event. `kind` distinguishes call/round/error families. */
 export interface AgentLogEvent {
   /** ISO timestamp at write time. */
@@ -150,7 +178,7 @@ export class AgentLogService {
       await this.ensureDir(this.ideDir(root));
       const file = this.logPath(root);
       await this.rotateIfNeeded(file);
-      const line = JSON.stringify(event) + '\n';
+      const line = JSON.stringify(redactValue(event)) + '\n';
       await fs.appendFile(file, line, 'utf-8');
     } catch {
       // best-effort
@@ -200,7 +228,7 @@ export class AgentLogService {
       const isoSlug = ts.toISOString().replace(/[:.]/g, '-');
       const fname = `${isoSlug}__${slugifyQuestion(t.question)}.md`;
       const fpath = path.join(this.roundsDir(root), fname);
-      const md = renderRoundMarkdown(t);
+      const md = redactText(renderRoundMarkdown(t));
       await fs.writeFile(fpath, md, 'utf-8');
       return fpath;
     } catch {

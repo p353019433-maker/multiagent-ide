@@ -132,6 +132,22 @@ describe('AgentLogService.append + readTail', () => {
     expect(events.map((e) => e.text)).toEqual(['ok', 'still here']);
   });
 
+  it('redacts secrets before appending JSONL events', async () => {
+    const svc = new AgentLogService();
+    await svc.append(tempRoot, {
+      ts: 't',
+      kind: 'notice',
+      text: 'token=ghp_abcdefghijklmnopqrstuvwxyz123456',
+      apiKey: 'sk-abcdefghijklmnopqrstuvwxyz123456',
+    });
+
+    const file = path.join(tempRoot, '.ide', 'agent-log.jsonl');
+    const raw = await fs.readFile(file, 'utf-8');
+    expect(raw).toContain('[REDACTED]');
+    expect(raw).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz123456');
+    expect(raw).not.toContain('sk-abcdefghijklmnopqrstuvwxyz123456');
+  });
+
   it('returns [] when the log file does not exist', async () => {
     const svc = new AgentLogService();
     const events = await svc.readTail(tempRoot);
@@ -185,6 +201,22 @@ describe('AgentLogService.writeRound', () => {
     expect(content).toContain('拆成两层');
     expect(content).toContain('## 权重表');
     expect(content).toContain('"architect": 1');
+  });
+
+  it('redacts secrets before writing markdown transcripts', async () => {
+    const svc = new AgentLogService();
+    const written = await svc.writeRound(tempRoot, {
+      question: 'secret test',
+      agents: [{ id: 'a', name: 'A', kind: 'api' }],
+      messages: [{ agentId: 'a', agentName: 'A', round: 1, text: 'api_key: sk-abcdefghijklmnopqrstuvwxyz123456' }],
+      plan: 'token=ghp_abcdefghijklmnopqrstuvwxyz123456',
+      startedAt: 0,
+      endedAt: 1,
+    });
+    const content = await fs.readFile(written!, 'utf-8');
+    expect(content).toContain('[REDACTED]');
+    expect(content).not.toContain('sk-abcdefghijklmnopqrstuvwxyz123456');
+    expect(content).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz123456');
   });
 
   it('returns null when the transcript has no content', async () => {

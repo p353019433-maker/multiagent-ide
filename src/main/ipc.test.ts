@@ -9,14 +9,14 @@ vi.mock('electron', () => {
     ipcMain: {
       handle: vi.fn((channel: string, fn: Function) => handlers.set(channel, fn)),
     },
-    dialog: { showOpenDialog: vi.fn() },
+    dialog: { showOpenDialog: vi.fn(), showMessageBox: vi.fn(async () => ({ response: 1 })) },
     safeStorage: {
       isEncryptionAvailable: vi.fn(() => false),
       encryptString: vi.fn(),
       decryptString: vi.fn(),
     },
     app: { getPath: vi.fn(() => os.tmpdir()) },
-    BrowserWindow: class {},
+    BrowserWindow: class { static fromWebContents() { return null; } },
     __handlers: handlers,
   };
 });
@@ -154,6 +154,59 @@ describe('IPC file path policy', () => {
     const canonicalNestedFile = path.join(await fs.realpath(root), '.ide', 'history', 'snapshot.snap');
     expect(fileWatcherService.ignoreNext).toHaveBeenCalledWith(canonicalNestedFile);
     expect(fileService.writeFile).toHaveBeenCalledWith(canonicalNestedFile, 'snapshot');
+  });
+});
+
+describe('IPC dangerous action confirmations', () => {
+  let root: string;
+
+  beforeEach(async () => {
+    handlers.clear();
+    vi.mocked(electron.dialog.showMessageBox).mockResolvedValue({ response: 1 } as any);
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ide-ipc-danger-'));
+    root = path.join(base, 'repo');
+    await fs.mkdir(root, { recursive: true });
+  });
+
+  it('requires native confirmation before dangerous terminal commands', async () => {
+    const terminalService = { runCommand: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })) };
+    registerIpc(deps({ terminalService }));
+    await authorizeRoot(root);
+
+    await handlers.get('terminal:runCommand')!(appEvent, root, 'rm -rf dist');
+
+    expect(electron.dialog.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '确认执行高风险命令？' })
+    );
+    expect(terminalService.runCommand).toHaveBeenCalled();
+  });
+
+  it('blocks dangerous terminal commands when the native confirmation is cancelled', async () => {
+    vi.mocked(electron.dialog.showMessageBox).mockResolvedValueOnce({ response: 0 } as any);
+    const terminalService = { runCommand: vi.fn() };
+    registerIpc(deps({ terminalService }));
+    await authorizeRoot(root);
+
+    await expect(handlers.get('terminal:runCommand')!(appEvent, root, 'git reset --hard')).rejects.toThrow(/取消/);
+    expect(terminalService.runCommand).not.toHaveBeenCalled();
+  });
+
+  it('requires native confirmation and validates branch refs before removing worktrees', async () => {
+    const wt = path.join(path.dirname(root), 'repo_wt', 'task-1');
+    await fs.mkdir(wt, { recursive: true });
+    const gitService = { worktreeRemove: vi.fn(async () => ({ success: true, message: 'ok' })) };
+    registerIpc(deps({ gitService }));
+    await authorizeRoot(root);
+    await authorizeRoot(wt);
+
+    await expect(handlers.get('git:worktreeRemove')!(appEvent, root, wt, 'bad..branch')).rejects.toThrow(/非法 deleteBranch/);
+    expect(gitService.worktreeRemove).not.toHaveBeenCalled();
+
+    await handlers.get('git:worktreeRemove')!(appEvent, root, wt, 'task-1');
+    expect(electron.dialog.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '确认删除隔离工作树？' })
+    );
+    expect(gitService.worktreeRemove).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'task-1');
   });
 });
 

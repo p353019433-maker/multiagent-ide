@@ -20,6 +20,7 @@ import type { FileWatcherService } from './services/file-watcher-service';
 import type { CliAgentService, CliAgentResult } from './services/cli-agent-service';
 import type { SkillsService } from './services/skills-service';
 import type { AgentLogService, AgentLogEvent, RoundTranscript } from './services/agent-log-service';
+import { classifyCommand } from '../shared/command-policy';
 
 const allowedRoots = new Set<string>();
 
@@ -87,6 +88,27 @@ function assertAppOrigin(event: IpcMainInvokeEvent): void {
   if (url.startsWith('file://')) return;
   if (url.startsWith('http://localhost:5173/') || url.startsWith('http://127.0.0.1:5173/')) return;
   throw new Error(`拒绝来自非应用页面的 IPC: ${url}`);
+}
+
+async function confirmDangerousAction(
+  event: IpcMainInvokeEvent,
+  title: string,
+  message: string,
+  detail?: string
+): Promise<void> {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options = {
+    type: 'warning' as const,
+    buttons: ['取消', '继续'],
+    defaultId: 0,
+    cancelId: 0,
+    title,
+    message,
+    detail,
+    noLink: true,
+  };
+  const result = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+  if (result.response !== 1) throw new Error('用户取消了高风险操作');
 }
 
 
@@ -272,10 +294,18 @@ function registerTerminalIpc({ terminalService, getMainWindow }: IpcDeps): void 
   });
   ipcMain.handle('terminal:runCommand', async (event, cwd: string, command: string, timeoutMs?: number) => {
     assertAppOrigin(event);
+    const risk = classifyCommand(String(command ?? ''));
+    if (risk.dangerous) {
+      await confirmDangerousAction(event, '确认执行高风险命令？', risk.reason || '该命令可能造成不可逆影响', String(command ?? '').slice(0, 1200));
+    }
     return terminalService.runCommand(await assertAllowedRoot(cwd), command, timeoutMs);
   });
   ipcMain.handle('terminal:runBackgroundCommand', async (event, cwd: string, command: string) => {
     assertAppOrigin(event);
+    const risk = classifyCommand(String(command ?? ''));
+    if (risk.dangerous) {
+      await confirmDangerousAction(event, '确认后台执行高风险命令？', risk.reason || '该命令可能造成不可逆影响', String(command ?? '').slice(0, 1200));
+    }
     return terminalService.startBackgroundCommand(await assertAllowedRoot(cwd), command);
   });
   ipcMain.handle('terminal:getBackgroundOutput', (event, id: string) => {
@@ -409,7 +439,17 @@ function registerGitIpc({ gitService }: IpcDeps): void {
     return authorized;
   });
   ipcMain.handle('git:worktreeList', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreeList(await assertAllowedRoot(cwd)); });
-  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string, deleteBranch?: string) => { assertAppOrigin(event); return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p), deleteBranch); });
+  ipcMain.handle('git:worktreeRemove', async (event, cwd: string, p: string, deleteBranch?: string) => {
+    assertAppOrigin(event);
+    const safeBranch = deleteBranch ? assertSafeGitRef(deleteBranch, 'deleteBranch') : undefined;
+    await confirmDangerousAction(
+      event,
+      '确认删除隔离工作树？',
+      safeBranch ? `将强制删除 worktree，并删除分支 ${safeBranch}` : '将强制删除 worktree',
+      String(p)
+    );
+    return gitService.worktreeRemove(await assertAllowedRoot(cwd), await assertAllowedRoot(p), safeBranch);
+  });
   ipcMain.handle('git:worktreePrune', async (event, cwd: string) => { assertAppOrigin(event); return gitService.worktreePrune(await assertAllowedRoot(cwd)); });
   ipcMain.handle('git:worktreeMerge', async (event, cwd: string, sourceBranch: string, method: string, targetBranch?: string) => {
     assertAppOrigin(event);
@@ -607,6 +647,12 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
     if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
       return { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
     }
+    await confirmDangerousAction(
+      event,
+      '确认启动外部 CLI Agent？',
+      `${p.tool} 将以自动模式运行，可能读写工作区并执行命令。`,
+      String(p.prompt ?? '').slice(0, 1200)
+    );
     return cliAgentService.run({
       tool: p.tool,
       cwd: safeCwd,
@@ -639,12 +685,18 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       baseURL?: unknown;
       apiKey?: unknown;
     };
+    const channel = `cliagent:stream-${callId}`;
     if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
       const err: CliAgentResult = { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
-      safeSend(`cliagent:stream-${callId}`, { type: 'complete', result: err });
+      safeSend(channel, { type: 'complete', result: err });
       return err;
     }
-    const channel = `cliagent:stream-${callId}`;
+    await confirmDangerousAction(
+      event,
+      '确认启动外部 CLI Agent？',
+      `${p.tool} 将以自动模式运行，可能读写工作区并执行命令。`,
+      String(p.prompt ?? '').slice(0, 1200)
+    );
     return cliAgentService
       .runStream(
         {
