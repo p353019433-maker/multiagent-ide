@@ -60,12 +60,12 @@ export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, m
   return (
     <div className="flex h-full flex-col" style={{ background: 'var(--app-bg)' }}>
       <div className="border-b border-border px-4 py-3">
-        <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Inspector</div>
-        <div className="mt-0.5 text-[13px] font-semibold text-foreground">任务详情</div>
+        <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Run Inspector</div>
+        <div className="mt-0.5 text-[13px] font-semibold text-foreground">运行详情</div>
       </div>
       <div className="flex flex-none items-center gap-4 border-b border-border px-4 pt-3">
         <TabBtn id="delivery" label="改动" />
-        <TabBtn id="commands" label="命令" n={toolExecutions.length} />
+        <TabBtn id="commands" label="工具" n={toolExecutions.length} />
         <TabBtn id="verify" label="验证" n={artifacts.length} />
         <TabBtn id="checkpoint" label="回滚" n={checkpoints.length} />
       </div>
@@ -73,6 +73,14 @@ export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, m
       <div className="flex-1 overflow-y-auto">
         {tab === 'delivery' && (
           <div className="p-3.5">
+            <div className="mb-3 rounded-[12px] border border-border bg-background px-3.5 py-2.5 shadow-card">
+              <div className="text-xs font-semibold text-foreground">本次运行</div>
+              <div className="mt-1 grid grid-cols-3 gap-2 font-mono text-10 text-foreground/45">
+                <span>{toolExecutions.length} tools</span>
+                <span>{deliveredFiles.length} files</span>
+                <span>{checkpoints.length} checkpoints</span>
+              </div>
+            </div>
             {deliveredFiles.length === 0 && !multiRoleResult ? (
               <p className="px-1 text-11 leading-relaxed text-foreground/45">本轮还没有文件改动。Agent 写文件后，改动会在这里列出。</p>
             ) : (
@@ -112,7 +120,7 @@ export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, m
         {tab === 'commands' && (
           <div className="p-3.5">
             {toolExecutions.length === 0 ? (
-              <p className="px-1 text-11 leading-relaxed text-foreground/45">还没有工具或命令记录。Agent 开始执行后，读写文件、搜索和命令会显示在这里。</p>
+              <p className="px-1 text-11 leading-relaxed text-foreground/45">Agent 调用工具时会自动显示在这里；对话区只保留上下文和结论。</p>
             ) : (
               <div className="overflow-hidden rounded-[12px] border border-border bg-background shadow-card">
                 <div className="flex items-center justify-between border-b border-border/60 px-3.5 py-2.5">
