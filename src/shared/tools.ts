@@ -212,10 +212,12 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
             },
             required: ['content', 'status'],
           },
-          description: '完整的有序步骤列表（全量覆盖）。',
+          description: '完整的有序步骤列表（全量覆盖）。传入空列表或省略即清空当前计划。',
         },
       },
-      required: ['steps'],
+      // `steps` is intentionally NOT required: omitting it clears the plan
+      // ("0 步"), which the executor handles. Keeping it required would make the
+      // now-wired arg validator reject a legitimate clear-the-plan call.
     },
   },
   {

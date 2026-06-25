@@ -241,6 +241,36 @@ describe('toolExecutor — GitHub gating', () => {
   });
 });
 
+describe('toolExecutor — argument validation (wiring)', () => {
+  it('write_file without content is rejected and writes nothing', async () => {
+    const { ctx, gate } = makeCtx({ approve: true });
+    await expect(
+      executeSingleTool(call('write_file', { path: 'new.ts' }), ctx)
+    ).rejects.toThrow(/参数校验失败.*content/);
+    // Validation runs before the gate and before any disk write.
+    expect(gate).not.toHaveBeenCalled();
+    expect(files.has(`${ROOT}/new.ts`)).toBe(false);
+  });
+
+  it('run_command with a non-string command is rejected before the danger classifier', async () => {
+    const { ctx, gate } = makeCtx();
+    await expect(
+      executeSingleTool(call('run_command', { command: 42 }), ctx)
+    ).rejects.toThrow(/参数校验失败.*command/);
+    expect(gate).not.toHaveBeenCalled();
+  });
+
+  it('still accepts a valid call with extra unknown fields', async () => {
+    const { ctx } = makeCtx({ approve: true });
+    const out = await executeSingleTool(
+      call('write_file', { path: 'ok.ts', content: 'X', surprise: true }),
+      ctx
+    );
+    expect(out).toContain('已写入');
+    expect(files.get(`${ROOT}/ok.ts`)).toBe('X');
+  });
+});
+
 describe('toolExecutor — unknown tool', () => {
   it('throws on unknown tool name', async () => {
     const { ctx } = makeCtx();

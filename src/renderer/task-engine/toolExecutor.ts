@@ -54,6 +54,21 @@ export async function executeSingleTool(tc: ToolCall, ctx: ToolContext): Promise
   const args = tc.arguments as Record<string, unknown>;
   const { rootPath, resolvePath, gateAction, writeFileTracked, getGitHubContext } = ctx;
 
+  // Validate arguments against the tool's declared schema BEFORE dispatch.
+  // Without this, a model that omits `content` writes the literal string
+  // "undefined" to disk, and a non-string `command` reaches the danger
+  // classifier as `undefined` and slips past every regex. A failure here is
+  // deterministic (same args → same result), so classifyToolError treats it as
+  // non-retriable and the message is fed back so the model can fix the call.
+  // Unknown tools have no schema and fall through to the switch's default.
+  const schema = TOOL_SCHEMAS[tc.name];
+  if (schema) {
+    const validationError = validateToolArgs(args, schema);
+    if (validationError) {
+      throw new Error(`参数校验失败（${tc.name}）：${validationError}`);
+    }
+  }
+
   switch (tc.name) {
     // ── File Operations ──
     case 'read_file': {
