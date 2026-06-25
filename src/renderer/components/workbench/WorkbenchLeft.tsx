@@ -19,7 +19,7 @@ export default function WorkbenchLeft({ rootPath, indexStatus, onNewWorktree, on
     <div className="flex h-full min-h-0 flex-col" style={{ background: '#ececea' }}>
       <div className="flex-none px-3.5 pb-2 pt-3.5">
         <div className="rounded-[16px] border border-border bg-background p-3 shadow-ambient">
-          <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Agent Workspace</div>
+          <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Workspace</div>
           <div className="mt-1 truncate text-[15px] font-semibold text-foreground" title={rootPath || undefined}>{projectName}</div>
           <div className="mt-1 truncate font-mono text-10 text-foreground/40">{indexStatus}</div>
         </div>
@@ -44,24 +44,36 @@ export default function WorkbenchLeft({ rootPath, indexStatus, onNewWorktree, on
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3.5">
-        <div className="px-2 py-1.5 text-10 font-bold uppercase tracking-[0.06em] text-foreground/40">任务历史</div>
+        <div className="px-2 py-1.5 text-10 font-bold uppercase tracking-[0.06em] text-foreground/40">任务</div>
         {conversations.length === 0 && (
           <p className="px-2 py-1 text-11 text-foreground/45">还没有任务，点「新任务」开始。</p>
         )}
         {conversations.map((conv) => {
           const active = conv.id === activeConversationId;
+          const isolated = Boolean(conv.worktree);
+          const latest = conv.messages[conv.messages.length - 1];
+          const failed = latest?.role === 'assistant' && /失败|error|failed/i.test(latest.content || '');
           return (
             <button
               key={conv.id}
               type="button"
               onClick={() => setActiveConversation(conv.id)}
-              className={`my-0.5 block w-full cursor-pointer rounded-[9px] px-[11px] py-[9px] text-left ${
+              className={`my-0.5 grid w-full cursor-pointer grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2 rounded-[9px] px-[11px] py-[9px] text-left ${
                 active
                   ? 'border border-border-strong bg-background shadow-[0_1px_3px_rgba(0,0,0,.07)]'
                   : 'border border-transparent hover:bg-foreground/[0.05]'
               }`}
             >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  failed ? 'bg-red-400' : active ? 'bg-foreground' : isolated ? 'bg-yellow-400' : 'bg-foreground/20'
+                }`}
+                aria-hidden="true"
+              />
               <span className="block min-w-0 truncate text-[13px] font-medium text-foreground">{conv.title}</span>
+              {isolated && (
+                <span className="rounded bg-warn-surface px-1.5 py-0.5 font-mono text-10 text-warn">WT</span>
+              )}
             </button>
           );
         })}
