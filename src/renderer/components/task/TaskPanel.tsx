@@ -16,7 +16,7 @@ import TaskSessionTabs from './TaskSessionTabs';
 import ModelPicker from './ModelPicker';
 import DeliveryTray from '../workbench/DeliveryTray';
 import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
-import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Square } from 'lucide-react';
+import { ArrowUp, CheckCircle2, CircleAlert, CircleDot, GitBranch, Paperclip, Plus, Sparkles, Square } from 'lucide-react';
 import { AgentPlan, AgentRunBar, PendingApprovalView } from './TaskPanelSections';
 import type { AgentReadiness, ReadinessActionId, ReadinessStatus } from '../../readiness/agentReadiness';
 
@@ -57,12 +57,15 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
     deleteConversation,
     addMessage,
     renameConversation,
+    runDebateTask,
+    currentDebate,
   } = useTaskWorkspace();
   const { rootPath } = useWorkspace();
   const { activeFilePath, openFiles, openFile, reloadFileFromDisk } = useEditor();
 
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [multiRoleMode, setMultiRoleMode] = useState(false);
   const [worktreeNotice, setWorktreeNotice] = useState<{
     tone: 'success' | 'error';
     text: string;
@@ -299,16 +302,30 @@ ${suffix.slice(0, 500)}${editsCtx}
     addMessage(convId, userMsg);
     const turnImages = pendingImages;
     const turnLabel = input.slice(0, 60);
+    const requestText = contextPrefix + userMsg.content;
     setInput('');
     setPendingImages([]);
 
+    if (multiRoleMode) {
+      if (!effectiveRootPath) return;
+      await runDebateTask(requestText, effectiveRootPath);
+      const assistantMsg: ChatMessageType = {
+        id: uuid(),
+        role: 'assistant',
+        content: '多角色流程已完成：解析、方案、异议、综合和执行阶段已运行。请在右侧查看命令、验证和改动详情。',
+        timestamp: Date.now(),
+      };
+      addMessage(convId, assistantMsg);
+      return;
+    }
+
     const apiMessages: ChatMessageType[] = [
       ...messages,
-      { ...userMsg, content: contextPrefix + userMsg.content, images: turnImages.length ? turnImages : undefined },
+      { ...userMsg, content: requestText, images: turnImages.length ? turnImages : undefined },
     ];
 
     await runTurn(convId, apiMessages, turnLabel);
-  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages, effectiveRootPath, runTurn, newConversation]);
+  }, [input, activeProviderId, activeModel, activeConversationId, messages, activeFilePath, openFiles, pendingImages, effectiveRootPath, runTurn, newConversation, multiRoleMode, runDebateTask, addMessage]);
 
   /** Create a new isolated worktree session */
   const handleNewWorktreeSession = async () => {
@@ -448,6 +465,20 @@ ${suffix.slice(0, 500)}${editsCtx}
           runningCount={toolExecutions.filter((e) => e.status === 'running').length}
           tokens={turnTokens}
         />
+      )}
+
+      {currentDebate && (
+        <div className="border-b border-border bg-surface-1 px-6 py-2">
+          <div className="mx-auto flex max-w-[760px] flex-wrap items-center gap-2 text-[11px] text-foreground/55">
+            <span className="font-semibold text-foreground">多角色流程</span>
+            {currentDebate.stages.map((stage) => (
+              <span key={stage.name} className="rounded-md bg-background px-2 py-1 font-mono text-10 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
+                {stage.name} · {stage.status}
+              </span>
+            ))}
+            {currentDebate.error && <span className="text-diffdel">{currentDebate.error}</span>}
+          </div>
+        </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 selectable">
@@ -591,6 +622,16 @@ ${suffix.slice(0, 500)}${editsCtx}
                   <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/60" style={{ background: '#f1f1ef' }}>
                     {APPROVAL_MODE_META[approvalMode].hint}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => setMultiRoleMode((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all"
+                    style={multiRoleMode ? { color: '#0d0d0d', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.12)' } : { color: 'rgba(13,13,13,.5)', background: '#f1f1ef' }}
+                    title="按解析、方案、异议、综合、执行分阶段运行"
+                  >
+                    <Sparkles size={12} strokeWidth={1.8} />
+                    多角色
+                  </button>
                   {isStreaming ? (
                     <button onClick={handleAbort} className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white" style={{ background: '#c1374a' }} title="停止" aria-label="停止任务">
                       <Square size={14} strokeWidth={2} />

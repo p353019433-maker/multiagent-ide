@@ -213,7 +213,7 @@ export default function AgentsTab() {
           </span>
         </div>
         <p className="mt-1 text-13 leading-relaxed text-foreground/55">
-          每个 = 一个 CLI 外壳或纯 API。启用的参与下一次圆桌。
+          每个 = 一个 CLI 外壳或纯 API。可用于 Agent 任务和高级执行流程。
         </p>
       </div>
 
@@ -240,7 +240,7 @@ export default function AgentsTab() {
                         <span
                           className="flex-none rounded font-mono text-[9px] font-semibold"
                           style={{ color: '#0d0d0d', background: '#eef0e6', padding: '1px 5px' }}
-                          title="圆桌评审角色"
+                          title="Agent 角色"
                         >
                           {ROLE_LABELS[a.role || 'general']}
                         </span>
@@ -269,7 +269,7 @@ export default function AgentsTab() {
                   </div>
                   {a.kind === 'antigravity' && (
                     <div className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg bg-warn-surface px-3 py-1.5 text-11 text-warn">
-                      ⚠ 共享同一登录，多开会互相影响，只允许一个。
+                      ⚠ 共享同一登录，多任务并行时会互相影响，只允许一个。
                     </div>
                   )}
                 </div>
@@ -316,7 +316,7 @@ export default function AgentsTab() {
               <input className={FIELD} placeholder="名称(可选)" value={name} onChange={(e) => setName(e.target.value)} />
               {addingType === 'antigravity' ? (
                 <p className="text-11 leading-relaxed text-foreground/50">
-                  用本机 Google 登录(agy)驱动，无需 API key。共享同一登录，多开会互相影响，只允许添加一个。
+                  用本机 Google 登录(agy)驱动，无需 API key。共享同一登录，多任务并行时会互相影响，只允许添加一个。
                 </p>
               ) : addingType === 'opencode' ? (
                 <p className="text-11 leading-relaxed text-foreground/50">
@@ -357,7 +357,7 @@ export default function AgentsTab() {
                 spellCheck={false}
               />
               <label className="block">
-                <span className="mb-1 block font-mono text-10 text-foreground/50">圆桌评审角色</span>
+                <span className="mb-1 block font-mono text-10 text-foreground/50">Agent 角色</span>
                 <select
                   className={FIELD}
                   value={role}

@@ -7,8 +7,9 @@ import { useEditorState, useEditorActions } from '../../context/EditorContext';
 import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
-import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Users } from 'lucide-react';
+import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Sparkles, Users } from 'lucide-react';
 import AgentsTab from './AgentsTab';
+import { RolesSettings } from './RolesSettings';
 import { FIELD as FIELD_CLASS } from '../../styles/recipes';
 
 /** Common embedding model names by provider, shown as quick hints. */
@@ -20,7 +21,7 @@ const EMBEDDING_MODEL_HINTS = [
   'bge-m3',
 ];
 
-export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index';
+export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index' | 'roles';
 
 interface Props {
   onClose: () => void;
@@ -206,6 +207,7 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
   const navItems: { id: typeof tab; label: string; icon: typeof Users }[] = [
     { id: 'providers', label: '模型供应商', icon: Boxes },
     { id: 'agents', label: '智能体', icon: Users },
+    { id: 'roles', label: '多角色流程', icon: Sparkles },
     { id: 'editor', label: '编辑器 / 外观', icon: SettingsIcon },
     { id: 'index', label: '代码索引', icon: Search },
   ];
@@ -480,6 +482,8 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
           )}
 
           {tab === 'agents' && <AgentsTab />}
+
+          {tab === 'roles' && <RolesSettings />}
 
           {tab === 'index' && (
             <div>
