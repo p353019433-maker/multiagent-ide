@@ -132,8 +132,10 @@ export default function MainLayout({ onOpenSettings, settingsVersion, shortcutsD
     { id: 'toggleEditor', label: '打开文件查看器', hint: '⌘E', keywords: 'editor monaco file viewer', run: () => setShowEditor((p) => !p) },
     { id: 'toggleTerminal', label: '切换终端', keywords: 'terminal pty shell', run: () => setShowTerminal((p) => !p) },
     { id: 'saveFile', label: '保存当前文件', hint: '⌘S', keywords: 'save file', run: () => void saveActiveFile() },
-    { id: 'editorSettings', label: '编辑器 / 外观设置…', keywords: 'theme font tab wrap', run: () => onOpenSettings('editor') },
-    { id: 'indexSettings', label: '代码索引设置…', keywords: 'embedding index search semantic', run: () => onOpenSettings('index') },
+    { id: 'providerSettings', label: '打开设置: 模型与 Provider', keywords: 'provider model api key', run: () => onOpenSettings('providers') },
+    { id: 'rolesSettings', label: '打开设置: Agent / 多角色', keywords: 'agent multi role roles', run: () => onOpenSettings('roles') },
+    { id: 'editorSettings', label: '打开设置: 编辑器与外观', keywords: 'theme font tab wrap', run: () => onOpenSettings('editor') },
+    { id: 'indexSettings', label: '打开设置: 索引与代码理解', keywords: 'embedding index search semantic', run: () => onOpenSettings('index') },
     ...Object.values(THEMES).map((t) => ({ id: `theme-${t.name}`, label: `切换主题: ${t.name}`, run: () => setThemeName(t.name) })),
   ];
 

@@ -204,13 +204,14 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
     }
   };
 
-  const navItems: { id: typeof tab; label: string; icon: typeof Users }[] = [
-    { id: 'providers', label: '模型供应商', icon: Boxes },
-    { id: 'roles', label: '多角色流程', icon: Sparkles },
-    { id: 'editor', label: '编辑器 / 外观', icon: SettingsIcon },
-    { id: 'index', label: '代码索引', icon: Search },
+  const navItems: { id: typeof tab; label: string; icon: typeof Users; description: string }[] = [
+    { id: 'providers', label: '模型与 Provider', icon: Boxes, description: '配置模型服务、API Key、baseURL 和默认模型' },
+    { id: 'roles', label: 'Agent / 多角色', icon: Sparkles, description: '配置多角色阶段、角色职责和运行参数' },
+    { id: 'index', label: '索引与代码理解', icon: Search, description: '配置 embedding、语义索引和重建索引' },
+    { id: 'editor', label: '编辑器与外观', icon: SettingsIcon, description: '主题、字体、编辑器行为和补全体验' },
   ];
-  const activeNavLabel = navItems.find((item) => item.id === tab)?.label || '设置';
+  const activeNav = navItems.find((item) => item.id === tab);
+  const activeNavLabel = activeNav?.label || '设置';
 
   return (
     <div
@@ -273,8 +274,11 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
         <main className="min-w-0 flex-1 overflow-y-auto">
           {tab !== 'agents' && (
-            <div className="flex h-[46px] items-center justify-between border-b border-border px-6">
-              <span className="text-sm font-semibold text-foreground">{activeNavLabel}</span>
+            <div className="flex min-h-[54px] items-center justify-between gap-4 border-b border-border px-6 py-2">
+              <div>
+                <div className="text-sm font-semibold text-foreground">{activeNavLabel}</div>
+                {activeNav?.description && <div className="mt-0.5 text-11 text-foreground/45">{activeNav.description}</div>}
+              </div>
               {tab === 'providers' && (
                 <span className="font-mono text-10 text-muted-foreground">{providers.length} 个服务</span>
               )}
@@ -346,6 +350,9 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                   兼容 OpenAI API 的服务端点
                 </span>
               </button>
+              <div className="border-t border-editor-border px-3 py-3 text-11 leading-relaxed text-muted-foreground">
+                API Key 使用主进程加密存储。GitHub token 和外部写操作确认将在后续设置页中独立展示；当前外部操作仍会在运行详情中要求确认。
+              </div>
             </div>
           )}
 
