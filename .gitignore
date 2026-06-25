@@ -13,10 +13,10 @@ HEARTBEAT.md
 IDENTITY.md
 SOUL.md
 TOOLS.md
-USER.mdvitest.config.mts.timestamp-*
+USER.md
 
 # vitest config rebuild artifacts
-vitest.config.mts.timestamp-*.mjs
+vitest.config.mts.timestamp-*
 
 # scratch / experiments
 tmp/
