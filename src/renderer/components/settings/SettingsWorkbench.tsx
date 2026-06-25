@@ -7,10 +7,11 @@ import { useEditorState, useEditorActions } from '../../context/EditorContext';
 import { THEMES } from '../../theme';
 import type { ModelProvider, ProviderType } from '@shared/types';
 import type { ThemeName } from '../../theme';
-import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Sparkles, Users } from 'lucide-react';
+import { ArrowLeft, Boxes, Search, Settings as SettingsIcon, Sparkles, ShieldCheck, Plug, Wrench, Users } from 'lucide-react';
 import AgentsTab from './AgentsTab';
 import { RolesSettings } from './RolesSettings';
 import { FIELD as FIELD_CLASS } from '../../styles/recipes';
+import { APPROVAL_MODE_META, type ApprovalMode } from '@shared/command-policy';
 
 /** Common embedding model names by provider, shown as quick hints. */
 const EMBEDDING_MODEL_HINTS = [
@@ -21,7 +22,7 @@ const EMBEDDING_MODEL_HINTS = [
   'bge-m3',
 ];
 
-export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index' | 'roles';
+export type SettingsTab = 'providers' | 'agents' | 'editor' | 'index' | 'roles' | 'github' | 'safety' | 'advanced';
 
 interface Props {
   onClose: () => void;
@@ -99,6 +100,67 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
   const [reindexState, setReindexState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [reindexMsg, setReindexMsg] = useState('');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // ── GitHub token config ──
+  const [githubToken, setGithubToken] = useState('');
+  const [githubHasToken, setGithubHasToken] = useState(false);
+  const [githubMsg, setGithubMsg] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+
+  // ── Safety / approval config ──
+  const [approvalMode, setApprovalModeState] = useState<ApprovalMode>('auto');
+  const [allowExternalInFull, setAllowExternalInFullState] = useState(false);
+
+  // ── App diagnostics ──
+  const [appInfo, setAppInfo] = useState<{ version: string; electron: string; node: string; userData: string; logs: string } | null>(null);
+
+  useEffect(() => {
+    window.api.appInfo().then(setAppInfo).catch(() => undefined);
+  }, []);
+
+  // Load persisted GitHub token presence, approval mode, and external opt-in.
+  useEffect(() => {
+    window.api.store.hasSecret('github_token').then((v) => setGithubHasToken(v)).catch(() => undefined);
+    window.api.store.get('approvalMode').then((m) => {
+      if (m === 'readonly' || m === 'auto' || m === 'full') setApprovalModeState(m);
+    }).catch(() => undefined);
+    window.api.store.get('allowExternalInFull').then((v) => {
+      if (v === true) setAllowExternalInFullState(true);
+    }).catch(() => undefined);
+  }, []);
+
+  const saveGithubToken = async () => {
+    setGithubMsg(null);
+    const value = githubToken.trim();
+    if (!value) {
+      setGithubMsg({ tone: 'error', text: '请输入 token（留空保存可清除现有 token）' });
+      return;
+    }
+    try {
+      const ok = await window.api.store.encryptAndStore('github_token', value);
+      if (ok === false) throw new Error('保存失败');
+      setGithubHasToken(true);
+      setGithubToken('');
+      setGithubMsg({ tone: 'success', text: 'GitHub token 已加密保存到主进程' });
+    } catch (e) {
+      setGithubMsg({ tone: 'error', text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  const clearGithubToken = async () => {
+    await window.api.store.clearSecret('github_token').catch(() => undefined);
+    setGithubHasToken(false);
+    setGithubMsg({ tone: 'success', text: '已清除 GitHub token' });
+  };
+
+  const changeApprovalMode = (m: ApprovalMode) => {
+    setApprovalModeState(m);
+    window.api.store.set('approvalMode', m).catch(() => undefined);
+  };
+
+  const changeAllowExternalInFull = (v: boolean) => {
+    setAllowExternalInFullState(v);
+    window.api.store.set('allowExternalInFull', v).catch(() => undefined);
+  };
 
   useEffect(() => {
     closeButtonRef.current?.focus();
@@ -208,7 +270,10 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
     { id: 'providers', label: '模型与 Provider', icon: Boxes, description: '配置模型服务、API Key、baseURL 和默认模型' },
     { id: 'roles', label: 'Agent / 多角色', icon: Sparkles, description: '配置多角色阶段、角色职责和运行参数' },
     { id: 'index', label: '索引与代码理解', icon: Search, description: '配置 embedding、语义索引和重建索引' },
+    { id: 'github', label: 'GitHub / 外部服务', icon: Plug, description: '配置 GitHub token 与外部写操作说明' },
+    { id: 'safety', label: '安全与审批', icon: ShieldCheck, description: '审批模式与外部不可逆操作确认' },
     { id: 'editor', label: '编辑器与外观', icon: SettingsIcon, description: '主题、字体、编辑器行为和补全体验' },
+    { id: 'advanced', label: '高级 / 诊断', icon: Wrench, description: '版本、配置位置与重载窗口' },
   ];
   const activeNav = navItems.find((item) => item.id === tab);
   const activeNavLabel = activeNav?.label || '设置';
@@ -642,6 +707,156 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
                     />
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'github' && (
+            <div>
+              <div className={SECTION_HEADER_CLASS}>GitHub Token</div>
+              <div className={SETTING_ROW_CLASS}>
+                <label className={SETTING_LABEL_CLASS}>访问令牌</label>
+                <div className={SETTING_VALUE_CLASS}>
+                  <input
+                    type="password"
+                    value={githubToken}
+                    onChange={(e) => setGithubToken(e.target.value)}
+                    placeholder={githubHasToken ? '已配置（输入新值替换）' : 'ghp_... / github_pat_...'}
+                    className={FIELD_CLASS}
+                  />
+                  <p className="mt-1 text-11 text-muted-foreground">
+                    Token 仅保存在主进程加密存储中，不会暴露给渲染层。Agent 调用 GitHub 工具时由主进程解密使用。
+                  </p>
+                </div>
+              </div>
+              <div className="flex min-h-10 items-center gap-2 border-b border-editor-border px-3">
+                <button type="button" onClick={saveGithubToken} className={PRIMARY_BUTTON_CLASS}>
+                  保存
+                </button>
+                {githubHasToken && (
+                  <button type="button" onClick={clearGithubToken} className={SECONDARY_BUTTON_CLASS}>
+                    清除
+                  </button>
+                )}
+                {githubHasToken && <span className="font-mono text-11 text-green-400">已配置</span>}
+                {githubMsg && (
+                  <span className={`truncate text-11 ${githubMsg.tone === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                    {githubMsg.text}
+                  </span>
+                )}
+              </div>
+              <div className="border-t border-editor-border px-3 py-3 text-11 leading-relaxed text-muted-foreground">
+                外部写操作（创建 PR、合并、release 等）在运行时仍会在右侧运行详情中要求确认，与 token 配置无关。
+              </div>
+            </div>
+          )}
+
+          {tab === 'safety' && (
+            <div>
+              <div className={SECTION_HEADER_CLASS}>审批模式</div>
+              <div className={SETTING_ROW_CLASS}>
+                <label className={SETTING_LABEL_CLASS}>运行模式</label>
+                <div className={`${SETTING_VALUE_CLASS} flex flex-wrap gap-2`}>
+                  {(['readonly', 'auto', 'full'] as ApprovalMode[]).map((m) => {
+                    const meta = APPROVAL_MODE_META[m];
+                    const active = approvalMode === m;
+                    const danger = m === 'full';
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => changeApprovalMode(m)}
+                        title={meta.hint}
+                        className={`h-8 border px-3 text-xs transition-colors ${
+                          active
+                            ? danger
+                              ? 'border-editor-border bg-[#fdeccd] text-[#9a4a00]'
+                              : 'border-editor-accent bg-editor-active text-foreground'
+                            : 'border-editor-border text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        {meta.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className={SETTING_ROW_CLASS}>
+                <span className={SETTING_LABEL_CLASS}>模式说明</span>
+                <div className={SETTING_VALUE_CLASS}>
+                  <p className="py-2 text-11 leading-relaxed text-muted-foreground">
+                    {APPROVAL_MODE_META[approvalMode].hint}
+                  </p>
+                </div>
+              </div>
+              <div className={SECTION_HEADER_CLASS}>外部不可逆操作</div>
+              <div className={SETTING_ROW_CLASS}>
+                <span className={SETTING_LABEL_CLASS}>完全模式下确认外部操作</span>
+                <div className={`${SETTING_VALUE_CLASS} flex items-center`}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={allowExternalInFull}
+                    onClick={() => changeAllowExternalInFull(!allowExternalInFull)}
+                    className="relative flex-none rounded-full transition-colors"
+                    style={{
+                      width: 34,
+                      height: 19,
+                      background: allowExternalInFull ? 'var(--status-green)' : 'rgba(13,13,13,.18)',
+                    }}
+                    title="开启后，完全模式下的 GitHub 写操作也将自动执行"
+                  >
+                    <span
+                      className="absolute rounded-full bg-white transition-all"
+                      style={{ top: 2, left: allowExternalInFull ? 17 : 2, width: 15, height: 15, boxShadow: '0 1px 2px rgba(0,0,0,.25)' }}
+                    />
+                  </button>
+                  <span className="ml-2 text-11 text-muted-foreground">
+                    默认开启确认。关闭此项需谨慎：完全模式下的 PR 合并 / release 等将不再询问。
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'advanced' && (
+            <div>
+              <div className={SECTION_HEADER_CLASS}>诊断信息</div>
+              {appInfo ? (
+                <>
+                  <div className={SETTING_ROW_CLASS}>
+                    <span className={SETTING_LABEL_CLASS}>版本</span>
+                    <span className={`${SETTING_VALUE_CLASS} py-2 font-mono text-xs text-foreground`}>v{appInfo.version}</span>
+                  </div>
+                  <div className={SETTING_ROW_CLASS}>
+                    <span className={SETTING_LABEL_CLASS}>运行环境</span>
+                    <span className={`${SETTING_VALUE_CLASS} py-2 font-mono text-11 text-muted-foreground`}>
+                      Electron {appInfo.electron} · Node {appInfo.node}
+                    </span>
+                  </div>
+                  <div className={SETTING_ROW_CLASS}>
+                    <span className={SETTING_LABEL_CLASS}>配置位置</span>
+                    <span className={`${SETTING_VALUE_CLASS} break-all py-2 font-mono text-11 text-muted-foreground`}>{appInfo.userData}</span>
+                  </div>
+                  {appInfo.logs && (
+                    <div className={SETTING_ROW_CLASS}>
+                      <span className={SETTING_LABEL_CLASS}>日志位置</span>
+                      <span className={`${SETTING_VALUE_CLASS} break-all py-2 font-mono text-11 text-muted-foreground`}>{appInfo.logs}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="px-3 py-2 text-xs text-muted-foreground">正在读取诊断信息…</div>
+              )}
+              <div className="flex min-h-10 items-center gap-2 border-b border-editor-border px-3">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className={SECONDARY_BUTTON_CLASS}
+                >
+                  重载窗口
+                </button>
+                <span className="text-11 text-muted-foreground">重载会重新加载渲染层，不会丢失已保存的配置。</span>
               </div>
             </div>
           )}

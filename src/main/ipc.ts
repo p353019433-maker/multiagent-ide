@@ -4,7 +4,7 @@
  * service; registerIpc() calls them all. Behavior is identical to the original.
  */
 
-import { ipcMain, dialog, safeStorage, BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, dialog, safeStorage, BrowserWindow, IpcMainInvokeEvent, app } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
 import type { FileService } from './services/file-service';
@@ -214,6 +214,16 @@ function registerDialogIpc(): void {
     if (result.canceled) return null;
     return allowRoot(result.filePaths[0]);
   });
+  ipcMain.handle('app:info', (event) => {
+    assertAppOrigin(event);
+    return {
+      version: app.getVersion(),
+      electron: process.versions.electron,
+      node: process.versions.node,
+      userData: app.getPath('userData'),
+      logs: app.getPath('logs'),
+    };
+  });
 }
 
 function registerFileSystemIpc({ fileService, fileWatcherService, getMainWindow }: IpcDeps): void {
@@ -372,6 +382,13 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
     if (key !== 'github_token') throw new Error(`拒绝访问通用 secret: ${key}`);
     const encrypted = storeService.get(key) as string | undefined;
     return Boolean(encrypted);
+  });
+  ipcMain.handle('store:clearSecret', (event, key: string) => {
+    assertAppOrigin(event);
+    // Only the GitHub token may be cleared from the renderer.
+    if (key !== 'github_token') throw new Error(`拒绝访问通用 secret: ${key}`);
+    storeService.delete(key);
+    return true;
   });
 }
 

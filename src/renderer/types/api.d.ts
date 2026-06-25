@@ -12,6 +12,13 @@ declare global {
   interface Window {
     api: {
       openFolder: () => Promise<string | null>;
+      appInfo: () => Promise<{
+        version: string;
+        electron: string;
+        node: string;
+        userData: string;
+        logs: string;
+      }>;
       fs: {
         readDirectory: (path: string) => Promise<FileNode[]>;
         readFile: (path: string) => Promise<string>;
@@ -57,6 +64,7 @@ declare global {
         set: (key: string, value: unknown) => Promise<void>;
         encryptAndStore: (key: string, value: string) => Promise<boolean>;
         hasSecret: (key: string) => Promise<boolean>;
+        clearSecret: (key: string) => Promise<boolean>;
       };
       ai: {
         chat: (providerId: string, messages: unknown[], options: unknown) => Promise<any>;

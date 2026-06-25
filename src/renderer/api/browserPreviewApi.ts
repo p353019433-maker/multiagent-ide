@@ -85,6 +85,7 @@ export function installBrowserPreviewApi() {
 
   const api: RendererApi = {
     openFolder: async () => previewRoot,
+    appInfo: async () => ({ version: 'preview', electron: '0.0.0', node: '0.0.0', userData: '', logs: '' }),
     fs: {
       readDirectory: async (path) => findChildren(path),
       readFile: async (path) => previewFileContents.get(path) ?? '',
@@ -139,6 +140,7 @@ export function installBrowserPreviewApi() {
         return true;
       },
       hasSecret: async (key) => Boolean(store.get(key)),
+      clearSecret: async () => true,
     },
     ai: {
       chat: async () => ({

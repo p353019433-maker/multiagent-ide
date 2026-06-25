@@ -5,6 +5,9 @@ const api = {
   // Dialog
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
+  // App diagnostics (version + storage locations)
+  appInfo: () => ipcRenderer.invoke('app:info'),
+
   // File system
   fs: {
     readDirectory: (path: string) => ipcRenderer.invoke('fs:readDirectory', path),
@@ -65,7 +68,8 @@ const api = {
     encryptAndStore: (key: string, value: string) =>
       ipcRenderer.invoke('store:encryptAndStore', key, value),
     // Renderer can only check whether a secret exists, never read its plaintext.
-    hasSecret: (key: string) => ipcRenderer.invoke('store:hasSecret', key),
+      hasSecret: (key: string) => ipcRenderer.invoke('store:hasSecret', key),
+      clearSecret: (key: string) => ipcRenderer.invoke('store:clearSecret', key),
   },
 
   // AI
