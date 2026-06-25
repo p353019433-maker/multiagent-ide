@@ -36,6 +36,7 @@ export interface DebateCallbacks {
   /** Streaming token delta from the current stage's model call. */
   onToken?: (token: string) => void;
   onError?: (message: string) => void;
+  signal?: AbortSignal;
 }
 
 export interface DebateResult {
@@ -85,6 +86,10 @@ export async function runDebate(
   ];
 
   for (const { role, cfg, isRevision } of stageConfigs) {
+    if (cbs.signal?.aborted) {
+      cbs.onError?.('多角色流程已取消');
+      return { scratchpad: s, calls };
+    }
     cbs.onStage?.({ stage: role, start: true });
     try {
       s = await callRole(role, cfg, s, isRevision, cbs);
@@ -105,6 +110,8 @@ export interface DebateFullResult extends DebateResult {
   worktreePath?: string;
   /** Branch name of the worktree. */
   worktreeBranch?: string;
+  /** Base branch the worktree was created from. */
+  worktreeBaseBranch?: string;
 }
 
 /** Run the 5-stage debate, then execute the final plan in an isolated worktree. */
@@ -115,6 +122,10 @@ export async function runDebateFull(
   cbs: DebateCallbacks
 ): Promise<DebateFullResult> {
   const debate = await runDebate(config, createScratchpad(request), cbs);
+  if (cbs.signal?.aborted) {
+    cbs.onError?.('多角色流程已取消');
+    return { ...debate };
+  }
   if (!debate.scratchpad.final_plan) {
     cbs.onError?.('辩论未产出 final_plan，跳过执行');
     return { ...debate };
@@ -128,8 +139,8 @@ export async function runDebateFull(
   const parentDir = workspaceRoot.endsWith('/') ? workspaceRoot.slice(0, -1) : workspaceRoot;
   const wtPath = `${parentDir}_wt/${branch}`;
   let worktreePath: string;
+  let baseBranch: string | undefined;
   try {
-    let baseBranch: string | undefined;
     try {
       baseBranch = await window.api.git.currentBranch(workspaceRoot);
     } catch {
@@ -144,6 +155,12 @@ export async function runDebateFull(
     return { ...debate };
   }
 
+  if (cbs.signal?.aborted) {
+    cbs.onError?.('多角色流程已取消');
+    cbs.onStage?.({ stage: 'executor', start: false });
+    return { ...debate, worktreePath, worktreeBranch: branch, worktreeBaseBranch: baseBranch };
+  }
+
   const taskText = debate.scratchpad.final_plan.steps
     .map((s) => `${s.action} ${s.target}：${s.detail}`)
     .join('\n');
@@ -153,7 +170,8 @@ export async function runDebateFull(
     workspaceRoot: worktreePath,
     task: taskText,
     systemPromptSuffix: `项目背景：${request}\n回滚方案：${debate.scratchpad.final_plan.rollback}`,
+    signal: cbs.signal,
   });
   cbs.onStage?.({ stage: 'executor', start: false });
-  return { ...debate, execution, worktreePath, worktreeBranch: branch };
+  return { ...debate, execution, worktreePath, worktreeBranch: branch, worktreeBaseBranch: baseBranch };
 }

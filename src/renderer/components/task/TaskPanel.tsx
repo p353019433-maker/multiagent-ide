@@ -74,6 +74,7 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
     renameConversation,
     runDebateTask,
     currentDebate,
+    stopDebate,
   } = useTaskWorkspace();
   const { rootPath } = useWorkspace();
   const { activeFilePath, openFiles, openFile, reloadFileFromDisk } = useEditor();
@@ -81,6 +82,15 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [multiRoleMode, setMultiRoleMode] = useState(false);
+  const [multiRoleRunning, setMultiRoleRunning] = useState(false);
+  const [multiRoleResult, setMultiRoleResult] = useState<{
+    ok: boolean;
+    error?: string;
+    editedFiles?: string[];
+    note?: string;
+    worktreePath?: string;
+    worktreeBranch?: string;
+  } | null>(null);
   const [worktreeNotice, setWorktreeNotice] = useState<{
     tone: 'success' | 'error';
     text: string;
@@ -161,8 +171,14 @@ export default function TaskPanel({ readiness, onReadinessAction }: Props) {
       gateAction,
       onFileChanged: reloadFileFromDisk,
     });
-  const handleAbort = abort;
-  const hasRuntimeRows = messages.length > 0 || toolExecutions.length > 0 || isStreaming;
+  const handleAbort = () => {
+    abort();
+    if (multiRoleRunning) {
+      stopDebate();
+      setMultiRoleRunning(false);
+    }
+  };
+  const hasRuntimeRows = messages.length > 0 || toolExecutions.length > 0 || isStreaming || multiRoleRunning;
 
   const resolvePath = (p: string): string => resolveWorkspacePath(effectiveRootPath, p);
 
@@ -331,7 +347,14 @@ ${suffix.slice(0, 500)}${editsCtx}
         });
         return;
       }
-      const result = await runDebateTask(requestText, effectiveRootPath);
+      setMultiRoleRunning(true);
+      setMultiRoleResult(null);
+      const result = await runDebateTask(convId, requestText, effectiveRootPath).catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+      setMultiRoleRunning(false);
+      setMultiRoleResult(result);
       const details = result.ok
         ? [
             result.editedFiles?.length ? `改动文件：${result.editedFiles.length} 个` : null,
@@ -478,7 +501,7 @@ ${suffix.slice(0, 500)}${editsCtx}
         </div>
       </div>
 
-      {conversations.length > 1 && (
+      {(conversations.length > 1 || !!activeWorktree) && (
         <TaskSessionTabs
           conversations={conversations}
           activeId={activeConversationId}
@@ -489,9 +512,9 @@ ${suffix.slice(0, 500)}${editsCtx}
         />
       )}
 
-      {(isStreaming || toolExecutions.length > 0 || !!pendingApproval) && (
+      {(isStreaming || multiRoleRunning || toolExecutions.length > 0 || !!pendingApproval) && (
         <AgentRunBar
-          isStreaming={isStreaming}
+          isStreaming={isStreaming || multiRoleRunning}
           awaitingApproval={!!pendingApproval}
           toolCount={toolExecutions.length}
           runningCount={toolExecutions.filter((e) => e.status === 'running').length}
@@ -688,6 +711,7 @@ ${suffix.slice(0, 500)}${editsCtx}
           toolExecutions={toolExecutions}
           checkpoints={checkpoints}
           artifacts={artifacts}
+          multiRoleResult={multiRoleResult}
           onRevert={revertCheckpoint}
           onOpen={openFile}
         />

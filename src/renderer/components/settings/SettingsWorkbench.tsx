@@ -206,7 +206,6 @@ export default function SettingsWorkbench({ onClose, initialTab = 'providers' }:
 
   const navItems: { id: typeof tab; label: string; icon: typeof Users }[] = [
     { id: 'providers', label: '模型供应商', icon: Boxes },
-    { id: 'agents', label: '智能体', icon: Users },
     { id: 'roles', label: '多角色流程', icon: Sparkles },
     { id: 'editor', label: '编辑器 / 外观', icon: SettingsIcon },
     { id: 'index', label: '代码索引', icon: Search },

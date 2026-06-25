@@ -17,6 +17,7 @@ export interface RunDebateTaskResult {
   note?: string;
   worktreePath?: string;
   worktreeBranch?: string;
+  worktreeBaseBranch?: string;
 }
 
 interface TaskContextValue {
@@ -56,7 +57,7 @@ interface TaskContextValue {
   debateConfig: DebateConfig;
   setDebateRoleConfig: (role: DebateStageName, cfg: Partial<DebateConfig[DebateStageName]>) => void;
   currentDebate: DebateRun | null;
-  runDebateTask: (request: string, workspaceRoot: string) => Promise<RunDebateTaskResult>;
+  runDebateTask: (conversationId: string, request: string, workspaceRoot: string) => Promise<RunDebateTaskResult>;
   stopDebate: () => void;
 }
 
@@ -224,6 +225,7 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
 
   const providersRef = useRef<ModelProviderConfig[]>([]);
   providersRef.current = providers;
+  const debateAbortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
 
@@ -408,16 +410,19 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
   );
 
   const runDebateTask = useCallback(
-    async (request: string, workspaceRoot: string): Promise<RunDebateTaskResult> => {
+    async (conversationId: string, request: string, workspaceRoot: string): Promise<RunDebateTaskResult> => {
       const normalizedConfig = normalizeDebateConfig(debateConfig, providersRef.current);
       const configError = validateDebateConfig(normalizedConfig, providersRef.current);
       if (configError) return { ok: false, error: configError };
 
+      debateAbortRef.current?.abort();
+      const controller = new AbortController();
+      debateAbortRef.current = controller;
       const run: DebateRun = { id: uuid(), request, stages: [], startedAt: Date.now() };
       setCurrentDebate(run);
       let runError: string | undefined;
-      const result = await runDebateFull(normalizedConfig, request, workspaceRoot, {
-        onStage: (e) => {
+      const callbacks = {
+        onStage: (e: { stage: DebateStageName; start: boolean }) => {
           setCurrentDebate((prev) => {
             if (!prev) return prev;
             const stages = [...prev.stages];
@@ -433,28 +438,60 @@ export function TaskContextProvider({ children }: { children: React.ReactNode })
             return { ...prev, stages };
           });
         },
-        onError: (msg) => {
+        onError: (msg: string) => {
           runError = msg;
           setCurrentDebate((prev) => (prev ? { ...prev, error: msg, finishedAt: Date.now() } : prev));
         },
+        signal: controller.signal,
+      };
+      const result: Awaited<ReturnType<typeof runDebateFull>> = await runDebateFull(normalizedConfig, request, workspaceRoot, callbacks).catch((error) => {
+        runError = error instanceof Error ? error.message : String(error);
+        return { scratchpad: null as never, calls: 0 };
       });
       const finalError = runError || (!result.execution ? '多角色流程未产生可执行结果' : undefined);
+      if (result.worktreePath && result.worktreeBranch) {
+        const baseBranch = result.worktreeBaseBranch || (await window.api.git.currentBranch(workspaceRoot).catch(() => 'main'));
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  title: conv.title === '新任务' ? `多角色 ${result.worktreeBranch}` : conv.title,
+                  updatedAt: Date.now(),
+                  worktree: { path: result.worktreePath!, branch: result.worktreeBranch!, baseBranch },
+                }
+              : conv
+          )
+        );
+      }
       setCurrentDebate((prev) => (prev ? { ...prev, error: finalError ?? prev.error, finishedAt: Date.now() } : prev));
-      if (finalError) return { ok: false, error: finalError, worktreePath: result.worktreePath, worktreeBranch: result.worktreeBranch };
+      if (debateAbortRef.current === controller) debateAbortRef.current = null;
+      if (finalError) {
+        return {
+          ok: false,
+          error: finalError,
+          worktreePath: result.worktreePath,
+          worktreeBranch: result.worktreeBranch,
+          worktreeBaseBranch: result.worktreeBaseBranch,
+        };
+      }
       return {
         ok: true,
         editedFiles: result.execution?.editedFiles,
         note: result.execution?.note,
         worktreePath: result.worktreePath,
         worktreeBranch: result.worktreeBranch,
+        worktreeBaseBranch: result.worktreeBaseBranch,
       };
     },
     [debateConfig]
   );
 
   const stopDebate = useCallback(() => {
+    debateAbortRef.current?.abort();
+    debateAbortRef.current = null;
     void window.api.ai.abort();
-    setCurrentDebate((prev) => (prev ? { ...prev, finishedAt: Date.now() } : prev));
+    setCurrentDebate((prev) => (prev ? { ...prev, error: prev.error || '多角色流程已取消', finishedAt: Date.now() } : prev));
   }, []);
 
   const newConversation = useCallback(

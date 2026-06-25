@@ -103,6 +103,8 @@ export interface HeadlessTaskParams {
   systemPromptSuffix?: string;
   /** Callback fired when a file is written. */
   onFileWritten?: (path: string) => void;
+  /** Cancel the autonomous loop between model/tool calls. */
+  signal?: AbortSignal;
 }
 
 /** Run a tool with exponential-backoff retry on transient (retriable) errors. */
@@ -128,7 +130,7 @@ async function runToolWithRetry(tc: ToolCall, ctx: ToolContext, maxAttempts = 3)
  * can record a per-task status without aborting its siblings.
  */
 export async function runHeadlessTask(params: HeadlessTaskParams): Promise<HeadlessTaskResult> {
-  const { providerId, model, workspaceRoot, task, systemPromptSuffix, onFileWritten } = params;
+  const { providerId, model, workspaceRoot, task, systemPromptSuffix, onFileWritten, signal } = params;
 
   const editedFiles = new Set<string>();
   const ctx: ToolContext = {
@@ -176,6 +178,10 @@ export async function runHeadlessTask(params: HeadlessTaskParams): Promise<Headl
   let selfHealAttempted = false;
 
   while (iterations < MAX_ITERATIONS) {
+    if (signal?.aborted) {
+      note = '任务已取消';
+      break;
+    }
     iterations++;
 
     let result: { content: string; toolCalls?: ToolCall[]; finishReason: string };
@@ -245,6 +251,10 @@ export async function runHeadlessTask(params: HeadlessTaskParams): Promise<Headl
 
     const toolResults = [];
     for (const tc of result.toolCalls) {
+      if (signal?.aborted) {
+        note = '任务已取消';
+        break;
+      }
       try {
         const content = await runToolWithRetry(tc, ctx);
         toolResults.push({ toolCallId: tc.id, content });

@@ -4,10 +4,20 @@ import { ArtifactList, CheckpointList } from '../task/TaskPanelSections';
 import { changedFiles } from './workbenchUtils';
 import type { Artifact, Checkpoint, TaskToolExecution } from '@shared/types';
 
+interface MultiRoleResult {
+  ok: boolean;
+  error?: string;
+  editedFiles?: string[];
+  note?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+}
+
 interface Props {
   toolExecutions: TaskToolExecution[];
   checkpoints: Checkpoint[];
   artifacts: Artifact[];
+  multiRoleResult?: MultiRoleResult | null;
   onRevert: (cp: Checkpoint) => Promise<{ reverted: number; failed: number }>;
   onOpen: (path: string) => void;
 }
@@ -20,15 +30,19 @@ const TOOL_TAG: Record<string, string> = {
   replace_in_file: '改',
   search_and_replace: '改',
   apply_patch: '改',
+  multi_role: '多',
 };
 
 /**
  * Chat-mode right tray (340): 本轮交付 / 验证记录 / 检查点. Reads the live task
  * engine state (changed files, verification artifacts, checkpoints).
  */
-export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, onRevert, onOpen }: Props) {
+export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, multiRoleResult, onRevert, onOpen }: Props) {
   const [tab, setTab] = useState<Tab>('delivery');
   const changed = changedFiles(toolExecutions);
+  const deliveredFiles = changed.length > 0
+    ? changed.map(({ file, tool }) => ({ file, tool }))
+    : (multiRoleResult?.editedFiles || []).map((file) => ({ file, tool: 'multi_role' }));
 
   const TabBtn = ({ id, label, n }: { id: Tab; label: string; n?: number }) => (
     <button
@@ -59,15 +73,25 @@ export default function DeliveryTray({ toolExecutions, checkpoints, artifacts, o
       <div className="flex-1 overflow-y-auto">
         {tab === 'delivery' && (
           <div className="p-3.5">
-            {changed.length === 0 ? (
+            {deliveredFiles.length === 0 && !multiRoleResult ? (
               <p className="px-1 text-11 leading-relaxed text-foreground/45">本轮还没有文件改动。Agent 写文件后，改动会在这里列出。</p>
             ) : (
               <div className="overflow-hidden rounded-[12px] border border-border bg-background shadow-card">
                 <div className="flex items-center justify-between border-b border-border/60 px-3.5 py-2.5">
                   <span className="text-xs font-semibold text-foreground">改动文件</span>
-                  <span className="font-mono text-10 text-foreground/45">{changed.length} 个</span>
+                  <span className="font-mono text-10 text-foreground/45">{deliveredFiles.length} 个</span>
                 </div>
-                {changed.map(({ file, tool }) => (
+                {multiRoleResult && (
+                  <div className="border-b border-border/50 px-3.5 py-2 text-11 text-foreground/55">
+                    <div className={multiRoleResult.ok ? 'text-diffadd' : 'text-diffdel'}>
+                      多角色流程：{multiRoleResult.ok ? '已完成' : '未完成'}
+                    </div>
+                    {multiRoleResult.worktreeBranch && <div className="mt-1 font-mono text-10 text-foreground/40">{multiRoleResult.worktreeBranch}</div>}
+                    {multiRoleResult.error && <div className="mt-1 text-diffdel">{multiRoleResult.error}</div>}
+                    {multiRoleResult.note && <div className="mt-1">{multiRoleResult.note}</div>}
+                  </div>
+                )}
+                {deliveredFiles.map(({ file, tool }) => (
                   <button
                     key={file}
                     onClick={() => onOpen(file)}
