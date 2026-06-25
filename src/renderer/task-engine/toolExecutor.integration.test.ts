@@ -271,6 +271,32 @@ describe('toolExecutor — argument validation (wiring)', () => {
   });
 });
 
+describe('toolExecutor — git approval classification', () => {
+  it('git_push is gated as external (full mode cannot push silently)', async () => {
+    const { ctx, gate } = makeCtx({ approve: false });
+    const out = await executeSingleTool(call('git_push', { remote: 'origin' }), ctx);
+    expect(gate).toHaveBeenCalledOnce();
+    expect(gate.mock.calls[0][2]).toBe('external'); // kind
+    expect(out).toContain('拒绝'); // rejected before any window.api.git.push
+  });
+
+  it('git_merge is gated as external', async () => {
+    const { ctx, gate } = makeCtx({ approve: false });
+    await executeSingleTool(call('git_merge', { source: 'feature' }), ctx);
+    expect(gate.mock.calls[0][2]).toBe('external');
+  });
+
+  it('local git (commit / create_branch) is a plain command, not forced-dangerous', async () => {
+    for (const c of [call('git_commit', { message: 'x' }), call('git_create_branch', { name: 'b' })]) {
+      const { ctx, gate } = makeCtx({ approve: false });
+      await executeSingleTool(c, ctx);
+      expect(gate.mock.calls[0][2]).toBe('command'); // kind
+      const opts = gate.mock.calls[0][6] as { dangerous?: boolean } | undefined;
+      expect(opts?.dangerous).toBeFalsy(); // auto mode auto-runs it (charter §3.4)
+    }
+  });
+});
+
 describe('toolExecutor — unknown tool', () => {
   it('throws on unknown tool name', async () => {
     const { ctx } = makeCtx();
