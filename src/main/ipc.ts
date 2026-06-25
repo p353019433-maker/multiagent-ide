@@ -85,8 +85,16 @@ async function assertAllowedWorktreePath(repoRoot: string, requestedPath: string
 
 function assertAppOrigin(event: IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url || '';
-  if (url.startsWith('file://')) return;
-  if (url.startsWith('http://localhost:5173/') || url.startsWith('http://127.0.0.1:5173/')) return;
+  if (url.startsWith('http://localhost:5173/') || url === 'http://localhost:5173' || url.startsWith('http://127.0.0.1:5173/') || url === 'http://127.0.0.1:5173') return;
+  if (url.startsWith('file://')) {
+    try {
+      const parsed = new URL(url);
+      const normalizedPath = decodeURIComponent(parsed.pathname).replace(/\\/g, '/');
+      if (normalizedPath.endsWith('/renderer/index.html') || normalizedPath.endsWith('/dist/renderer/index.html')) return;
+    } catch {
+      // fall through
+    }
+  }
   throw new Error(`拒绝来自非应用页面的 IPC: ${url}`);
 }
 
@@ -137,9 +145,16 @@ function assertAllowedStoreKey(key: string): string {
   throw new Error(`拒绝访问 store key: ${key}`);
 }
 
-function assertAllowedSecretKey(key: string): string {
+function assertAllowedSecretWriteKey(key: string): string {
   if (key === 'github_token' || key.startsWith('apiKey:') || key.startsWith('apikey_')) return key;
-  throw new Error('拒绝访问通用 secret');
+  throw new Error('拒绝写入通用 secret');
+}
+
+function assertAllowedSecretReadKey(key: string): string {
+  // Renderer currently only needs the GitHub token for GitHub tool calls.
+  // Provider API keys stay in main process and are consumed by AIService.
+  if (key === 'github_token') return key;
+  throw new Error('拒绝读取通用 secret');
 }
 
 function assertSafeGitRef(ref: string, label: string): string {
@@ -329,7 +344,7 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
   });
   ipcMain.handle('store:encryptAndStore', (event, key: string, value: string) => {
     assertAppOrigin(event);
-    const safeKey = assertAllowedSecretKey(key);
+    const safeKey = assertAllowedSecretWriteKey(key);
     if (safeStorage.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(value);
       storeService.set(safeKey, encrypted.toString('base64'));
@@ -339,7 +354,7 @@ function registerStoreIpc({ storeService }: IpcDeps): void {
   });
   ipcMain.handle('store:decryptAndGet', (event, key: string) => {
     assertAppOrigin(event);
-    const safeKey = assertAllowedSecretKey(key);
+    const safeKey = assertAllowedSecretReadKey(key);
     const encrypted = storeService.get(safeKey) as string | undefined;
     if (!encrypted) return null;
     if (safeStorage.isEncryptionAvailable()) {
@@ -643,6 +658,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       model?: unknown;
       baseURL?: unknown;
       apiKey?: unknown;
+      allowDangerousBypass?: unknown;
     };
     if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
       return { ok: false, output: '', error: `未知 CLI agent: ${String(p.tool)}` };
@@ -650,7 +666,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
     await confirmDangerousAction(
       event,
       '确认启动外部 CLI Agent？',
-      `${p.tool} 将以自动模式运行，可能读写工作区并执行命令。`,
+      p.allowDangerousBypass ? `${p.tool} 将使用权限绕过参数运行，可能读写工作区并执行命令。` : `${p.tool} 将不使用权限绕过参数运行；如 CLI 要求确认，可能会中止或等待。`,
       String(p.prompt ?? '').slice(0, 1200)
     );
     return cliAgentService.run({
@@ -660,6 +676,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       model: p.model ? String(p.model) : undefined,
       baseURL: p.baseURL ? String(p.baseURL) : undefined,
       apiKey: p.apiKey ? String(p.apiKey) : undefined,
+      allowDangerousBypass: p.allowDangerousBypass === true,
     });
   });
 
@@ -684,6 +701,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
       model?: unknown;
       baseURL?: unknown;
       apiKey?: unknown;
+      allowDangerousBypass?: unknown;
     };
     const channel = `cliagent:stream-${callId}`;
     if (p.tool !== 'claude-code' && p.tool !== 'codex' && p.tool !== 'antigravity' && p.tool !== 'opencode') {
@@ -694,7 +712,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
     await confirmDangerousAction(
       event,
       '确认启动外部 CLI Agent？',
-      `${p.tool} 将以自动模式运行，可能读写工作区并执行命令。`,
+      p.allowDangerousBypass ? `${p.tool} 将使用权限绕过参数运行，可能读写工作区并执行命令。` : `${p.tool} 将不使用权限绕过参数运行；如 CLI 要求确认，可能会中止或等待。`,
       String(p.prompt ?? '').slice(0, 1200)
     );
     return cliAgentService
@@ -706,6 +724,7 @@ function registerCliAgentIpc({ cliAgentService }: IpcDeps): void {
           model: p.model ? String(p.model) : undefined,
           baseURL: p.baseURL ? String(p.baseURL) : undefined,
           apiKey: p.apiKey ? String(p.apiKey) : undefined,
+          allowDangerousBypass: p.allowDangerousBypass === true,
         },
         {
           onStart: () => safeSend(channel, { type: 'start' }),

@@ -42,6 +42,8 @@ export interface RunCliAgentParams {
   /** Custom API backend for claude-code/codex; empty = the CLI's own login. */
   baseURL?: string;
   apiKey?: string;
+  /** Explicitly allow CLI-specific permission-bypass flags after user confirmation. */
+  allowDangerousBypass?: boolean;
 }
 
 export interface CliAgentResult {
@@ -55,7 +57,8 @@ function buildCommand(p: RunCliAgentParams): { file: string; args: string[]; env
   const env: Record<string, string> = {};
   switch (p.tool) {
     case 'claude-code': {
-      const args = ['-p', p.prompt, '--dangerously-skip-permissions'];
+      const args = ['-p', p.prompt];
+      if (p.allowDangerousBypass) args.push('--dangerously-skip-permissions');
       if (p.model) args.push('--model', p.model);
       if (p.baseURL) {
         env.ANTHROPIC_BASE_URL = p.baseURL;
@@ -65,12 +68,14 @@ function buildCommand(p: RunCliAgentParams): { file: string; args: string[]; env
       return { file: 'claude', args, env };
     }
     case 'antigravity': {
-      const args = ['-p', p.prompt, '--add-dir', p.cwd, '--dangerously-skip-permissions'];
+      const args = ['-p', p.prompt, '--add-dir', p.cwd];
+      if (p.allowDangerousBypass) args.push('--dangerously-skip-permissions');
       if (p.model) args.push('--model', p.model);
       return { file: 'agy', args, env }; // Google login; no API backend
     }
     case 'codex': {
-      const args = ['exec', '--dangerously-bypass-approvals-and-sandbox', '-C', p.cwd];
+      const args = ['exec', '-C', p.cwd];
+      if (p.allowDangerousBypass) args.splice(1, 0, '--dangerously-bypass-approvals-and-sandbox');
       if (p.model) args.push('-m', p.model);
       args.push(p.prompt);
       if (p.baseURL) {
@@ -82,9 +87,8 @@ function buildCommand(p: RunCliAgentParams): { file: string; args: string[]; env
     case 'opencode': {
       // opencode has its own provider/auth system (`opencode providers login`);
       // we just hand it the prompt and let it pick the active provider/model.
-      // `--dangerously-skip-permissions` matches what we do for the others —
-      // round-table is non-interactive and approval prompts would hang stdin.
-      const args = ['run', '--dangerously-skip-permissions', '--format', 'default'];
+      const args = ['run', '--format', 'default'];
+      if (p.allowDangerousBypass) args.splice(1, 0, '--dangerously-skip-permissions');
       if (p.model) args.push('-m', p.model);
       args.push(p.prompt);
       return { file: 'opencode', args, env };

@@ -25,7 +25,7 @@ import * as electron from 'electron';
 import { registerIpc } from './ipc';
 
 const handlers = (electron as unknown as { __handlers: Map<string, Function> }).__handlers;
-const appEvent = { senderFrame: { url: 'file:///app/index.html' } };
+const appEvent = { senderFrame: { url: 'file:///app/renderer/index.html' } };
 
 function deps(overrides: Partial<any> = {}) {
   return {
@@ -96,6 +96,21 @@ describe('IPC worktree path policy', () => {
   });
 });
 
+describe('IPC origin policy', () => {
+  beforeEach(() => {
+    handlers.clear();
+  });
+
+  it('rejects arbitrary file origins', async () => {
+    const storeService = { get: vi.fn(), set: vi.fn() };
+    registerIpc(deps({ storeService }));
+    const evilEvent = { senderFrame: { url: 'file:///tmp/evil.html' } };
+
+    expect(() => handlers.get('store:get')!(evilEvent, 'providers')).toThrow(/非应用页面/);
+    expect(storeService.get).not.toHaveBeenCalled();
+  });
+});
+
 describe('IPC store key policy', () => {
   beforeEach(() => {
     handlers.clear();
@@ -121,14 +136,15 @@ describe('IPC store key policy', () => {
     expect(storeService.set).not.toHaveBeenCalled();
   });
 
-  it('allows only dedicated secret keys through encrypted secret IPC', async () => {
+  it('allows writing provider secrets but only allows renderer to read the GitHub token', async () => {
     const storeService = { get: vi.fn(), set: vi.fn() };
     registerIpc(deps({ storeService }));
 
-    expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'providers')).toThrow(/拒绝访问通用 secret/);
+    expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'providers')).toThrow(/拒绝读取通用 secret/);
     expect(handlers.get('store:decryptAndGet')!(appEvent, 'github_token')).toBeNull();
-    expect(handlers.get('store:decryptAndGet')!(appEvent, 'apiKey:abc')).toBeNull();
-    expect(handlers.get('store:decryptAndGet')!(appEvent, 'apikey_legacy')).toBeNull();
+    expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'apiKey:abc')).toThrow(/拒绝读取通用 secret/);
+    expect(() => handlers.get('store:decryptAndGet')!(appEvent, 'apikey_legacy')).toThrow(/拒绝读取通用 secret/);
+    expect(handlers.get('store:encryptAndStore')!(appEvent, 'apiKey:abc', 'secret')).toBe(false);
   });
 });
 
@@ -189,6 +205,18 @@ describe('IPC dangerous action confirmations', () => {
 
     await expect(handlers.get('terminal:runCommand')!(appEvent, root, 'git reset --hard')).rejects.toThrow(/取消/);
     expect(terminalService.runCommand).not.toHaveBeenCalled();
+  });
+
+  it('passes CLI dangerous bypass only when explicitly requested', async () => {
+    const cliAgentService = { run: vi.fn(async () => ({ ok: true, output: '' })) };
+    registerIpc(deps({ cliAgentService }));
+    await authorizeRoot(root);
+
+    await handlers.get('cliagent:run')!(appEvent, root, { tool: 'codex', prompt: 'review' });
+    expect(cliAgentService.run).toHaveBeenLastCalledWith(expect.objectContaining({ allowDangerousBypass: false }));
+
+    await handlers.get('cliagent:run')!(appEvent, root, { tool: 'codex', prompt: 'edit', allowDangerousBypass: true });
+    expect(cliAgentService.run).toHaveBeenLastCalledWith(expect.objectContaining({ allowDangerousBypass: true }));
   });
 
   it('requires native confirmation and validates branch refs before removing worktrees', async () => {
