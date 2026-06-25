@@ -684,7 +684,10 @@ ${suffix.slice(0, 500)}${editsCtx}
                     })}
                   </div>
                   <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/60" style={{ background: '#f1f1ef' }}>
-                    {APPROVAL_MODE_META[approvalMode].hint}
+                    安全：{APPROVAL_MODE_META[approvalMode].label}
+                  </span>
+                  <span className="inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/50" style={{ background: '#f1f1ef' }}>
+                    当前任务设置
                   </span>
                   <button
                     type="button"
@@ -701,7 +704,14 @@ ${suffix.slice(0, 500)}${editsCtx}
                       <Square size={14} strokeWidth={2} />
                     </button>
                   ) : (
-                    <button onClick={handleRunTask} disabled={!input.trim() && pendingImages.length === 0} className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white transition-colors hover:bg-[#262626] disabled:opacity-30" style={{ background: '#0d0d0d' }} title="运行任务" aria-label="运行任务">
+                    <button
+                      onClick={handleRunTask}
+                      disabled={!input.trim() && pendingImages.length === 0}
+                      className="ml-auto flex h-8 w-8 flex-none items-center justify-center rounded-full text-white transition-colors hover:bg-[#262626] disabled:opacity-30"
+                      style={{ background: '#0d0d0d' }}
+                      title={multiRoleMode ? '启动多角色任务' : '运行任务'}
+                      aria-label={multiRoleMode ? '启动多角色任务' : '运行任务'}
+                    >
                       <ArrowUp size={16} strokeWidth={2} />
                     </button>
                   )}
