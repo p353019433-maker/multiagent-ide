@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FileText } from 'lucide-react';
 import { ArtifactList, CheckpointList } from '../task/TaskPanelSections';
 import { changedFiles } from './workbenchUtils';
-import type { Artifact, Checkpoint, TaskToolExecution } from '@shared/types';
+import type { Artifact, Checkpoint, DebateRun, DebateStageState, TaskToolExecution } from '@shared/types';
 
 interface MultiRoleResult {
   ok: boolean;
@@ -18,6 +18,8 @@ interface Props {
   checkpoints: Checkpoint[];
   artifacts: Artifact[];
   multiRoleResult?: MultiRoleResult | null;
+  multiRoleRunning?: boolean;
+  currentDebate?: DebateRun | null;
   onRevert: (cp: Checkpoint) => Promise<{ reverted: number; failed: number }>;
   onOpen: (path: string) => void;
 }
@@ -33,12 +35,53 @@ const TOOL_TAG: Record<string, string> = {
   multi_role: '多',
 };
 
+const STAGE_LABEL: Record<DebateStageState['name'], string> = {
+  analyst: '解析',
+  proposer: '方案',
+  critic: '异议',
+  synthesizer: '综合',
+  executor: '执行',
+};
+
+function MultiRoleProgress({ debate, running, result }: { debate?: DebateRun | null; running?: boolean; result?: MultiRoleResult | null }) {
+  if (!debate && !running && !result) return null;
+  const stages = debate?.stages ?? [];
+  const finished = result?.ok;
+  return (
+    <div className="border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Multi-role</span>
+        <span className={`text-10 ${finished ? 'text-emerald-500' : running ? 'text-foreground/50' : result ? 'text-red-400' : 'text-foreground/40'}`}>
+          {finished ? '已完成' : running ? '运行中' : result ? '未完成' : ''}
+        </span>
+      </div>
+      {stages.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {stages.map((s) => {
+            const dot =
+              s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-foreground animate-pulse' : s.status === 'error' ? 'bg-red-400' : 'bg-foreground/20';
+            return (
+              <span key={s.name} className="inline-flex items-center gap-1.5 rounded-md bg-background px-2 py-1 text-10 text-foreground/70 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
+                <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                {STAGE_LABEL[s.name] || s.name}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {result?.worktreeBranch && <div className="mt-2 font-mono text-10 text-foreground/40">{result.worktreeBranch}</div>}
+      {result?.error && <div className="mt-1 text-11 text-red-400">{result.error}</div>}
+    </div>
+  );
+}
+
+
 /**
  * Right-side Run Inspector (340): live run evidence for the current task —
  * 改动 / 工具 / 验证 / 回滚. Reads the live task engine state. Center stays the
  * conversation; this panel is the operational evidence surface.
  */
-export default function RunInspector({ toolExecutions, checkpoints, artifacts, multiRoleResult, onRevert, onOpen }: Props) {
+export default function RunInspector({ toolExecutions, checkpoints, artifacts, multiRoleResult, multiRoleRunning, currentDebate, onRevert, onOpen }: Props) {
   const [tab, setTab] = useState<Tab>('delivery');
   const changed = changedFiles(toolExecutions);
   const deliveredFiles = changed.length > 0
@@ -64,6 +107,7 @@ export default function RunInspector({ toolExecutions, checkpoints, artifacts, m
         <div className="text-10 font-bold uppercase tracking-[0.08em] text-foreground/35">Run Inspector</div>
         <div className="mt-0.5 text-[13px] font-semibold text-foreground">运行详情</div>
       </div>
+      <MultiRoleProgress debate={currentDebate} running={multiRoleRunning} result={multiRoleResult} />
       <div className="flex flex-none items-center gap-4 border-b border-border px-4 pt-3">
         <TabBtn id="delivery" label="改动" />
         <TabBtn id="commands" label="工具" n={toolExecutions.length} />
@@ -81,6 +125,13 @@ export default function RunInspector({ toolExecutions, checkpoints, artifacts, m
                 <span>{deliveredFiles.length} files</span>
                 <span>{checkpoints.length} checkpoints</span>
               </div>
+              {artifacts.length > 0 && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-10">
+                  <span className={`rounded px-1.5 py-0.5 ${artifacts[0].verified ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-500'}`}>
+                    验证 {artifacts[0].verified ? '通过' : '未通过'}
+                  </span>
+                </div>
+              )}
             </div>
             {deliveredFiles.length === 0 && !multiRoleResult ? (
               <p className="px-1 text-11 leading-relaxed text-foreground/45">本轮还没有文件改动。Agent 写文件后，改动会在这里列出。</p>

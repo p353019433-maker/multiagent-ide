@@ -39,13 +39,6 @@ const DEBATE_STAGE_LABEL: Record<string, string> = {
   executor: '执行',
 };
 
-const DEBATE_STATUS_LABEL: Record<string, string> = {
-  pending: '等待',
-  running: '运行中',
-  done: '完成',
-  error: '失败',
-};
-
 function ReadinessIcon({ status }: { status: ReadinessStatus }) {
   if (status === 'done' || status === 'ready') {
     return <CheckCircle2 size={13} strokeWidth={1.8} className="text-emerald-400" />;
@@ -539,14 +532,19 @@ ${suffix.slice(0, 500)}${editsCtx}
 
       {currentDebate && (
         <div className="border-b border-border bg-surface-1 px-6 py-2">
-          <div className="mx-auto flex max-w-[760px] flex-wrap items-center gap-2 text-[11px] text-foreground/55">
+          <div className="mx-auto flex max-w-[760px] items-center gap-2 text-[11px] text-foreground/55">
             <span className="font-semibold text-foreground">多角色流程</span>
-            {currentDebate.stages.map((stage) => (
-              <span key={stage.name} className="rounded-md bg-background px-2 py-1 text-10 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
-                {DEBATE_STAGE_LABEL[stage.name] || stage.name} · {DEBATE_STATUS_LABEL[stage.status] || stage.status}
-              </span>
-            ))}
-            {currentDebate.error && <span className="text-diffdel">{currentDebate.error}</span>}
+            {(() => {
+              const active = currentDebate.stages.find((s) => s.status === 'running');
+              const lastDone = [...currentDebate.stages].reverse().find((s) => s.status === 'done');
+              const label = active
+                ? `进行中：${DEBATE_STAGE_LABEL[active.name] || active.name}`
+                : lastDone
+                ? `已完成：${DEBATE_STAGE_LABEL[lastDone.name] || lastDone.name}`
+                : '准备中';
+              return <span>{label}</span>;
+            })()}
+            <span className="text-foreground/35">· 阶段详情见右侧运行详情</span>
           </div>
         </div>
       )}
@@ -741,6 +739,8 @@ ${suffix.slice(0, 500)}${editsCtx}
                 checkpoints={checkpoints}
                 artifacts={artifacts}
                 multiRoleResult={multiRoleResult}
+                multiRoleRunning={multiRoleRunning}
+                currentDebate={currentDebate}
                 onRevert={revertCheckpoint}
                 onOpen={openFile}
               />
