@@ -39,6 +39,9 @@ node_modules/
 dist/
 release/
 .claude/settings.local.json
+.claude/skills/
+.opencode/skills/
+.superpowers/
 .openclaw/
 ```
 
@@ -57,6 +60,7 @@ Do not put secrets in:
 - PR descriptions
 - logs
 - local rule files that may be committed later
+- local skills that may be committed later
 
 If a secret was committed, rotate it immediately. Deleting it from the latest commit is not enough if the repository is public.
 
@@ -70,8 +74,9 @@ The app can store local state such as:
 - Agent checkpoints
 - code snippets used in prompts or tool outputs
 - index/cache data
+- private local skills and workflow notes
 
-Treat `.ide/`, logs, app config exports, and local profile files as private unless explicitly scrubbed.
+Treat `.ide/`, logs, app config exports, local profile files, and local skills as private unless explicitly scrubbed.
 
 ## Commands and Agent automation
 
@@ -85,4 +90,4 @@ Web fetching should reject localhost, private IP ranges, metadata IPs, and unsaf
 
 ## Reporting security issues
 
-For now, open a private channel with the maintainer if possible. If using a public issue, do not include secrets, private URLs, logs, screenshots with tokens, or complete local config files.
+For now, open a private channel with the maintainer if possible. If using a public issue, do not include secrets, private URLs, logs, screenshots with tokens, complete local config files, or local skill content.
