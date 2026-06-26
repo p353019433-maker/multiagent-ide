@@ -6,12 +6,10 @@
  *  - auto:     reads run freely; workspace writes auto-accept after a short
  *              preview; shell commands run unless they match a danger pattern,
  *              in which case they require manual approval regardless of tier
- *  - full:     everything runs with no prompts EXCEPT external/irreversible
- *              operations (GitHub writes, remote API), which still need an
- *              explicit manual approval unless the user has opted in to
- *              `allowExternalInFull`. The opt-in flag exists to preserve the
- *              "trust myself" intent of `full` mode without making external
- *              actions irreversibly silent.
+ *  - full:     local operations run with minimal prompts EXCEPT external /
+ *              irreversible operations (GitHub writes, remote API writes),
+ *              which still need an explicit manual approval unless the user has
+ *              opted in to `allowExternalInFull`.
  */
 
 export type ApprovalMode = 'readonly' | 'auto' | 'full';
@@ -32,7 +30,7 @@ export const APPROVAL_MODE_META: Record<
   },
   full: {
     label: '完全',
-    hint: '全部自动执行，无拦截（有风险）',
+    hint: '本地操作尽量自动；对外/不可逆操作默认仍需确认',
   },
 };
 
@@ -116,10 +114,10 @@ export function decideApproval(
   if (kind === 'read') return 'allow';
 
   if (mode === 'full') {
-    // external/irreversible ops (GitHub writes, remote API calls) still require
-    // explicit confirmation in `full` mode unless the user has explicitly opted
-    // in via `allowExternalInFull`. This keeps the "trust myself" intent of
-    // `full` while preventing silent irreversible actions.
+    // External/irreversible ops (GitHub PR/merge/release, remote writes, etc.)
+    // still require explicit confirmation in `full` mode unless the user has
+    // explicitly opted in via `allowExternalInFull`. This keeps the local
+    // automation intent of `full` without making external actions silent.
     if (kind === 'external' && !opts?.allowExternalInFull) return 'manual';
     return 'allow';
   }
