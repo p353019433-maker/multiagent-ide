@@ -4,16 +4,22 @@ release/
 .DS_Store
 *.log
 .env
+.env.*.local
 .ide/
+.local/
+*.local.json
+*.local.md
+*.local.yaml
+*.local.yml
 
+# Local assistant / IDE state
 .openclaw/
 .claude/settings.local.json
+.agent.local.md
+agents.local.md
+
+# Project-specific local instructions should stay out of public commits.
 AGENTS.md
-HEARTBEAT.md
-IDENTITY.md
-SOUL.md
-TOOLS.md
-USER.md
 
 # vitest config rebuild artifacts
 vitest.config.mts.timestamp-*
