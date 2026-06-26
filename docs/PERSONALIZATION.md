@@ -29,6 +29,7 @@ These should stay out of git:
 - local CLI names and paths
 - personal Agent roles or identity files
 - private project rules
+- private UI/design skills used for one-off local work
 - workspace-specific scratch files
 
 Recommended ignored paths:
@@ -42,6 +43,9 @@ agents.local.md
 .env
 .env.*.local
 .ide/
+.claude/skills/
+.opencode/skills/
+.superpowers/
 ```
 
 ## Provider setup
@@ -98,6 +102,26 @@ Examples of private local rules:
 - personal tone or workflow preferences
 - temporary experiment instructions
 
+## Skills
+
+Skills are optional workflow modules loaded by `use_skill`. Keep the default product boundary clean:
+
+```text
+.multiagent/skills/   # shareable project-level skills, only if intentionally public
+.local/skills/        # private local skills, ignored by git
+.claude/skills/       # compatibility path only, ignored by git
+```
+
+Do not commit one-off UI/design skills, local review prompts, personal taste guides, or provider-specific skill packs unless they are intentionally productized and useful to all users.
+
+If a skill is worth sharing, make it generic first:
+
+- remove personal taste and local machine assumptions
+- remove private model/provider names
+- remove one-off project context
+- add neutral examples
+- document when the skill should be used
+
 ## CLI integrations
 
 The app repairs PATH for GUI-launched desktop sessions so common CLI tools can be found. Keep code comments generic; document specific local tools in ignored local notes.
@@ -123,6 +147,7 @@ Local personalization can contain sensitive data. Do not commit:
 - `.ide/` artifacts containing prompts, diffs, or code snippets
 - logs containing model requests or tool outputs
 - project rules that reveal private workflow or credentials
+- local skills that encode personal UI taste, private review criteria, or private workflow assumptions
 
 If a personal file is useful as a template, convert it into an example with placeholders before committing.
 
@@ -134,6 +159,7 @@ Before pushing, check whether a change makes the project feel like one person's 
 - Does it name a private model, local proxy, or personal CLI?
 - Does it encode a workflow that should be a profile/preset instead?
 - Does it make a private rule public?
+- Does it ship a local UI/design skill as a built-in feature?
 - Does it assume one school, one machine, one account, or one provider?
 
 If yes, move it to local config, a preset example, or a docs recipe.
