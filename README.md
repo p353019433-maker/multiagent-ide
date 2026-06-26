@@ -207,6 +207,60 @@ Agent 完成一轮文件改动后，会自动对**它改过的文件**跑 ESLint
 
 危险命令（`rm -rf`、`git push --force`、`git reset --hard`、`curl … \| sh`、`sudo`、`chmod 777`、`mkfs`、`dd`、fork bomb 等）无论何种档位都会强制弹出审批并标红提示。
 
+## 本地个性化边界
+
+所有配置**留在本机**——无账号、无云同步。以下说明哪些配置持久化、存在哪里、以及边界在哪里。
+
+### 持久化配置（跨重启保留）
+
+| 配置项 | 存储键 | 说明 |
+|--------|--------|------|
+| AI 供应商列表 | `providers` | 名称、端点、模型列表；API Key 单独加密 |
+| API Key | `apiKey:<uuid>` | Electron `safeStorage` 加密，渲染进程不可读取明文 |
+| 当前供应商/模型 | `activeProviderId` / `activeModel` | 上次选择的供应商和模型 |
+| Agent 名单 | `agents` | CLI/API agent 列表、启用状态、角色分配 |
+| 多角色辩论配置 | `debateConfig` | 每个角色（解析员/方案者/批评者/综合者/执行者）的供应商、模型、temperature |
+| Embedding 配置 | `embeddingConfig` | 语义索引用的供应商 + 模型 |
+| 重排配置 | `rerankConfig` | 可选的重排模型 |
+| 审批模式 | `approvalMode` | `readonly` / `auto`（默认）/ `full` |
+| 外部操作自动放行 | `allowExternalInFull` | 完全档时是否自动放行 `git push` / GitHub 写操作 |
+| 编辑器偏好 | `editorSettings` | 字体大小、Tab 宽度、自动换行 |
+| 工作区布局 | `workbenchView` | 上次使用的面板布局 |
+| 对话记录 | `conv:<id>` + `conversationIndex` | 每个会话单独存储（v2 schema），含消息和检查点元数据 |
+| GitHub Token | `github_token` | 同样由 `safeStorage` 加密 |
+| 主题 | `ide-theme`（localStorage） | `dark` / `light` / `high-contrast`，独立于 electron-store |
+
+### 临时状态（会话内，重启丢失）
+
+- 已打开的文件标签页
+- 终端输出缓冲
+- 当前 Agent 任务执行状态（进度、审批队列、辩论草稿）
+- 未保存的文件内容（Monaco buffer）
+
+### 配置文件位置与迁移
+
+```
+# macOS
+~/Library/Application Support/ai-code-ide/ai-code-ide-config.json
+
+# Linux
+~/.config/ai-code-ide/ai-code-ide-config.json
+
+# Windows
+%APPDATA%\ai-code-ide\ai-code-ide-config.json
+```
+
+实际路径在**设置 → 高级 → 配置文件位置**中显示。
+
+**迁移到新机器**：复制上述 JSON 文件可迁移所有配置，但 **API Key 和 GitHub Token 无法跨机器迁移**——它们由 OS 级 `safeStorage`（macOS Keychain / Linux libsecret / Windows DPAPI）加密，绑定当前机器，迁移后需在新机器重新填写。
+
+### 边界
+
+- **Store Key 白名单**：IPC 层只允许渲染进程读写固定的 key 集合（`providers`、`agents`、`conv:*` 等），访问白名单之外的 key 会直接抛错，防止意外越界读写。
+- **路径围栏**：Agent 文件操作被限制在已授权工作区（`allowedRoots`）内；worktree 只能创建在 `<project-root>_wt/<branch>` 下。
+- **渲染进程不触明文密钥**：API Key 和 GitHub Token 由主进程持有、按需注入请求头；preload 桥只暴露 `hasSecret` / `clearSecret`，不暴露解密接口。
+- **无遥测、无同步**：不存在配置同步机制，也没有使用数据上报。配置完全本机自治。
+
 ## 支持的 AI 供应商
 
 - **OpenAI** — GPT-4o, GPT-4o-mini, o1
