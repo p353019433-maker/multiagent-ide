@@ -1,16 +1,19 @@
 /**
- * Skills reader — lets the IDE's own (API) agents use the same `.claude/skills/`
- * skills the CLI agents load natively. `list` returns a lightweight menu (dir
- * name + frontmatter description); `read` returns one skill's full SKILL.md on
- * demand. This is the progressive-disclosure half: the menu goes into the
- * agent's prompt, and a `use_skill` tool calls `read` only when needed.
+ * Workspace skills reader.
+ *
+ * Skills are optional user/workspace instructions loaded on demand by the
+ * `use_skill` tool. The product-neutral location is `.multiagent/skills/`.
+ * Personal local skills can live in `.local/skills/` and stay ignored by git.
+ * `.claude/skills/` is kept only as a compatibility path for users migrating
+ * from Claude-style local skills; it should not be treated as the public
+ * product default or a place for committed built-in skills.
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 
 export interface SkillMeta {
-  /** Directory name under .claude/skills/ — the canonical id. */
+  /** Directory name under one of the supported skills directories. */
   name: string;
   description: string;
 }
@@ -26,34 +29,57 @@ function frontmatterDescription(md: string): string {
 }
 
 export class SkillsService {
-  private skillsDir(root: string): string {
-    return path.join(root, '.claude', 'skills');
+  private skillsDirs(root: string): string[] {
+    return [
+      // Public/project-level skills, if a repository intentionally provides any.
+      path.join(root, '.multiagent', 'skills'),
+      // Private local skills for one user's workflow; ignored by default.
+      path.join(root, '.local', 'skills'),
+      // Compatibility only. Do not use this as the product's canonical location.
+      path.join(root, '.claude', 'skills'),
+    ];
   }
 
   /** List installed skills (dir name + description). Empty if none / no dir. */
   async list(root: string): Promise<SkillMeta[]> {
-    let entries: import('fs').Dirent[];
-    try {
-      entries = await fs.readdir(this.skillsDir(root), { withFileTypes: true });
-    } catch {
-      return [];
-    }
     const out: SkillMeta[] = [];
-    for (const e of entries) {
-      if (!e.isDirectory() || !SAFE_NAME.test(e.name)) continue;
+    const seen = new Set<string>();
+
+    for (const dir of this.skillsDirs(root)) {
+      let entries: import('fs').Dirent[];
       try {
-        const md = await fs.readFile(path.join(this.skillsDir(root), e.name, 'SKILL.md'), 'utf-8');
-        out.push({ name: e.name, description: frontmatterDescription(md) });
+        entries = await fs.readdir(dir, { withFileTypes: true });
       } catch {
-        // directory without a SKILL.md — skip
+        continue;
+      }
+
+      for (const e of entries) {
+        if (!e.isDirectory() || !SAFE_NAME.test(e.name) || seen.has(e.name)) continue;
+        try {
+          const md = await fs.readFile(path.join(dir, e.name, 'SKILL.md'), 'utf-8');
+          out.push({ name: e.name, description: frontmatterDescription(md) });
+          seen.add(e.name);
+        } catch {
+          // Directory without a SKILL.md — skip.
+        }
       }
     }
+
     return out;
   }
 
   /** Read one skill's full SKILL.md. Rejects unsafe names (path traversal). */
   async read(root: string, name: string): Promise<string> {
     if (!SAFE_NAME.test(name)) throw new Error(`非法技能名: ${name}`);
-    return fs.readFile(path.join(this.skillsDir(root), name, 'SKILL.md'), 'utf-8');
+
+    for (const dir of this.skillsDirs(root)) {
+      try {
+        return await fs.readFile(path.join(dir, name, 'SKILL.md'), 'utf-8');
+      } catch {
+        // Try the next supported skills directory.
+      }
+    }
+
+    throw new Error(`未找到技能: ${name}`);
   }
 }
